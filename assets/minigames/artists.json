@@ -7,7 +7,7 @@
 "lang": "english",
 "city": "Toronto",
 "country": "Canada",
-"year": 2009,
+"year": 2006,
 "fans": 24129475
 },
 {
@@ -18,7 +18,7 @@
 "lang": "english",
 "city": "Halifax",
 "country": "United Kingdom",
-"year": 2011,
+"year": 2005,
 "fans": 20962050
 },
 {
@@ -26,10 +26,10 @@
 "name": "David Guetta",
 "pic": "2d527fa03e106ed82a28f161694278d3",
 "genre": "electronic",
-"lang": "french",
+"lang": "english",
 "city": "Paris",
 "country": "France",
-"year": 2002,
+"year": 1994,
 "fans": 20171041
 },
 {
@@ -40,7 +40,7 @@
 "lang": "english",
 "city": "St. Joseph",
 "country": "United States",
-"year": 2000,
+"year": 1988,
 "fans": 19174882
 },
 {
@@ -51,7 +51,7 @@
 "lang": "english",
 "city": "London",
 "country": "United Kingdom",
-"year": 2000,
+"year": 1998,
 "fans": 18453091
 },
 {
@@ -73,7 +73,7 @@
 "lang": "english",
 "city": "Scarborough",
 "country": "Canada",
-"year": 2012,
+"year": 2011,
 "fans": 14788450
 },
 {
@@ -88,6 +88,17 @@
 "fans": 13466442
 },
 {
+"id": 259,
+"name": "Michael Jackson",
+"pic": "97fae13b2b30e4aec2e8c9e0c7839d92",
+"genre": "pop",
+"lang": "english",
+"city": "Gary",
+"country": "United States",
+"year": 1972,
+"fans": 13260978
+},
+{
 "id": 145,
 "name": "Beyoncé",
 "pic": "0aa9d669be4e7310b8647afae37ffaab",
@@ -95,8 +106,19 @@
 "lang": "english",
 "city": "Houston",
 "country": "United States",
-"year": 2003,
+"year": 2002,
 "fans": 12875585
+},
+{
+"id": 412,
+"name": "Queen",
+"pic": "71eeb9e2eeb375df35a3c0654a5a01ab",
+"genre": "rock",
+"lang": "english",
+"city": "London",
+"country": "United Kingdom",
+"year": 1973,
+"fans": 12862394
 },
 {
 "id": 429675,
@@ -106,18 +128,18 @@
 "lang": "english",
 "city": "Honolulu",
 "country": "United States",
-"year": 2010,
+"year": 1990,
 "fans": 12858864
 },
 {
 "id": 12246,
 "name": "Taylor Swift",
 "pic": "cc2495870fe1a792ad0cdb05501ad5ec",
-"genre": "pop",
+"genre": "country",
 "lang": "english",
 "city": "West Reading",
 "country": "United States",
-"year": 2008,
+"year": 2006,
 "fans": 12776001
 },
 {
@@ -128,18 +150,18 @@
 "lang": "english",
 "city": "Dumfries",
 "country": "Scotland",
-"year": 2007,
+"year": 2002,
 "fans": 12347034
 },
 {
 "id": 92,
 "name": "Linkin Park",
 "pic": "4886905210739af3438990897bad3a98",
-"genre": "rock",
+"genre": "metal",
 "lang": "english",
 "city": "Agoura Hills",
 "country": "United States",
-"year": 2000,
+"year": 1999,
 "fans": 12273878
 },
 {
@@ -150,7 +172,7 @@
 "lang": "spanish",
 "city": "Barranquilla",
 "country": "Colombia",
-"year": 1995,
+"year": 1991,
 "fans": 11797936
 },
 {
@@ -172,7 +194,7 @@
 "lang": "spanish",
 "city": "Medellín",
 "country": "Colombia",
-"year": 2011,
+"year": 2009,
 "fans": 10350633
 },
 {
@@ -183,18 +205,18 @@
 "lang": "english",
 "city": "Aberdeen",
 "country": "United States",
-"year": 1989,
+"year": 1988,
 "fans": 10105557
 },
 {
 "id": 115,
 "name": "AC/DC",
 "pic": "7dbc950be70f997ba0cd2b39de7f2aa7",
-"genre": "rock",
+"genre": "metal",
 "lang": "english",
 "city": "Sydney",
 "country": "Australia",
-"year": 1976,
+"year": 1974,
 "fans": 9971245
 },
 {
@@ -205,7 +227,7 @@
 "lang": "english",
 "city": "Santa Barbara",
 "country": "United States",
-"year": 2008,
+"year": 2001,
 "fans": 9821495
 },
 {
@@ -216,7 +238,7 @@
 "lang": "english",
 "city": "Las Vegas",
 "country": "United States",
-"year": 2012,
+"year": 2009,
 "fans": 9561379
 },
 {
@@ -227,7 +249,7 @@
 "lang": "english",
 "city": "Upper East Side",
 "country": "United States",
-"year": 2008,
+"year": 2006,
 "fans": 9348586
 },
 {
@@ -238,7 +260,7 @@
 "lang": "english",
 "city": "Los Angeles",
 "country": "United States",
-"year": 2016,
+"year": 2015,
 "fans": 9301220
 },
 {
@@ -260,7 +282,7 @@
 "lang": "french",
 "city": "Longjumeau",
 "country": "France",
-"year": 2016,
+"year": 2014,
 "fans": 9042839
 },
 {
@@ -275,14 +297,25 @@
 "fans": 8811345
 },
 {
+"id": 3469,
+"name": "Sia",
+"pic": "f3d1301aeb356dc0f40440c3d4f39d0e",
+"genre": "pop",
+"lang": "english",
+"city": "Adelaide",
+"country": "Australia",
+"year": 1997,
+"fans": 8733936
+},
+{
 "id": 663,
 "name": "Guns N' Roses",
 "pic": "c62989722e38d7a2ab18afde3c19bc5c",
-"genre": "rock",
+"genre": "metal",
 "lang": "english",
 "city": "Los Angeles",
 "country": "United States",
-"year": 1991,
+"year": 1986,
 "fans": 8628345
 },
 {
@@ -293,7 +326,7 @@
 "lang": "english",
 "city": "Stockholm",
 "country": "Sweden",
-"year": 2011,
+"year": 2008,
 "fans": 8377107
 },
 {
@@ -315,7 +348,7 @@
 "lang": "english",
 "city": "Liverpool",
 "country": "United Kingdom",
-"year": 1993,
+"year": 1963,
 "fans": 8168525
 },
 {
@@ -328,6 +361,17 @@
 "country": "Colombia",
 "year": 2011,
 "fans": 8082552
+},
+{
+"id": 10583405,
+"name": "Bad Bunny",
+"pic": "044a3f315b041864887a8dd8709e6926",
+"genre": "pop",
+"lang": "spanish",
+"city": "San Juan",
+"country": "Puerto Rico",
+"year": 2016,
+"fans": 8072142
 },
 {
 "id": 3,
@@ -348,7 +392,7 @@
 "lang": "english",
 "city": "South Jamaica",
 "country": "United States",
-"year": 2003,
+"year": 1999,
 "fans": 7888524
 },
 {
@@ -381,8 +425,30 @@
 "lang": "english",
 "city": "Saint James",
 "country": "United States",
-"year": 2010,
+"year": 2007,
 "fans": 7421275
+},
+{
+"id": 163,
+"name": "U2",
+"pic": "a0c5a1ade4409513eb1d69dc6622e5a5",
+"genre": "rock",
+"lang": "english",
+"city": "Dublin",
+"country": "Ireland",
+"year": 1979,
+"fans": 7370155
+},
+{
+"id": 17,
+"name": "Usher",
+"pic": "7c25d479052a51ecc4674eae6e4c1c27",
+"genre": "rnb",
+"lang": "english",
+"city": "Dallas",
+"country": "United States",
+"year": 1994,
+"fans": 7233387
 },
 {
 "id": 3839,
@@ -392,7 +458,7 @@
 "lang": "spanish",
 "city": "San Juan",
 "country": "Puerto Rico",
-"year": 2001,
+"year": 1995,
 "fans": 7171586
 },
 {
@@ -403,7 +469,7 @@
 "lang": "english",
 "city": "London",
 "country": "United Kingdom",
-"year": 1970,
+"year": 1964,
 "fans": 7125249
 },
 {
@@ -414,7 +480,7 @@
 "lang": "french",
 "city": "Kinshasa",
 "country": "France",
-"year": 2013,
+"year": 2006,
 "fans": 7005937
 },
 {
@@ -425,8 +491,30 @@
 "lang": "english",
 "city": "London",
 "country": "England",
-"year": 1971,
+"year": 1967,
 "fans": 6843788
+},
+{
+"id": 15691,
+"name": "Nicky Jam",
+"pic": "b1fb6dc2c446495917b88a1c63b4a0e3",
+"genre": "pop",
+"lang": "spanish",
+"city": "Boston",
+"country": "Puerto Rico",
+"year": 1995,
+"fans": 6435711
+},
+{
+"id": 45,
+"name": "Jennifer Lopez",
+"pic": "2fa1c95948cf111e38aed58b64b49556",
+"genre": "pop",
+"lang": "english",
+"city": "The Bronx",
+"country": "United States",
+"year": 1999,
+"fans": 6409658
 },
 {
 "id": 390,
@@ -436,7 +524,7 @@
 "lang": "french",
 "city": "Boulogne-Billancourt",
 "country": "France",
-"year": 2004,
+"year": 2002,
 "fans": 6304220
 },
 {
@@ -447,8 +535,19 @@
 "lang": "english",
 "city": "Compton",
 "country": "United States",
-"year": 2010,
+"year": 2005,
 "fans": 6201060
+},
+{
+"id": 1020109,
+"name": "Black Eyed Peas",
+"pic": "4230c9807b45b78df8ce1255ca5ca594",
+"genre": "hiphop",
+"lang": "english",
+"city": "Los Angeles",
+"country": "United States",
+"year": 1998,
+"fans": 6121851
 },
 {
 "id": 2792,
@@ -458,18 +557,40 @@
 "lang": "spanish",
 "city": "Madrid",
 "country": "Spain",
-"year": 1999,
+"year": 1995,
 "fans": 5961969
+},
+{
+"id": 4104927,
+"name": "The Chainsmokers",
+"pic": "461231bf0a032d7b8b315e05d1b4bbd7",
+"genre": "electronic",
+"lang": "english",
+"city": "New York",
+"country": "United States",
+"year": 2012,
+"fans": 5851924
+},
+{
+"id": 74309,
+"name": "Lil Wayne",
+"pic": "3ced6f5ba94b771cf704fec83c58c798",
+"genre": "hiphop",
+"lang": "english",
+"city": "New Orleans",
+"country": "United States",
+"year": 1999,
+"fans": 5847493
 },
 {
 "id": 1424821,
 "name": "Lana Del Rey",
 "pic": "8994d3be1a59a72f887f1f8afd2d4c6c",
-"genre": "pop",
+"genre": "indie",
 "lang": "english",
 "city": "Manhattan",
 "country": "United States",
-"year": 2012,
+"year": 2008,
 "fans": 5843751
 },
 {
@@ -480,7 +601,7 @@
 "lang": "english",
 "city": "Glendale",
 "country": "United States",
-"year": 1998,
+"year": 1995,
 "fans": 5823340
 },
 {
@@ -495,10 +616,21 @@
 "fans": 5814880
 },
 {
+"id": 482758,
+"name": "DJ Snake",
+"pic": "f4b1cf6875953f8747a73006928ae172",
+"genre": "electronic",
+"lang": "english",
+"city": "Paris",
+"country": "France",
+"year": 2013,
+"fans": 5806336
+},
+{
 "id": 848,
 "name": "Led Zeppelin",
 "pic": "2cf138b96a63da677ac6fb79846607c8",
-"genre": "rock",
+"genre": "metal",
 "lang": "english",
 "city": "London",
 "country": "United Kingdom",
@@ -513,18 +645,18 @@
 "lang": "english",
 "city": "McComb",
 "country": "United States",
-"year": 1999,
+"year": 1998,
 "fans": 5473860
 },
 {
 "id": 1005,
 "name": "Aerosmith",
 "pic": "ccf17d65bed9b9809b556debb10fc3a3",
-"genre": "rock",
+"genre": "metal",
 "lang": "english",
 "city": "Boston",
 "country": "United States",
-"year": 1989,
+"year": 1973,
 "fans": 5347175
 },
 {
@@ -535,7 +667,7 @@
 "lang": "english",
 "city": "Sayreville",
 "country": "United States",
-"year": 1998,
+"year": 1984,
 "fans": 5294724
 },
 {
@@ -546,7 +678,7 @@
 "lang": "english",
 "city": "Berkeley",
 "country": "United States",
-"year": 1994,
+"year": 1989,
 "fans": 5254792
 },
 {
@@ -554,11 +686,22 @@
 "name": "Daft Punk",
 "pic": "638e69b9caaf9f9f3f8826febea7b543",
 "genre": "electronic",
-"lang": "french",
+"lang": "english",
 "city": "Paris",
 "country": "France",
-"year": 1997,
+"year": 1994,
 "fans": 5234404
+},
+{
+"id": 647650,
+"name": "Twenty One Pilots",
+"pic": "2e6d4d494a7b7b2c4bea2ccefad368f5",
+"genre": "hiphop",
+"lang": "english",
+"city": "Columbus",
+"country": "United States",
+"year": 2009,
+"fans": 5017325
 },
 {
 "id": 1182,
@@ -568,7 +711,7 @@
 "lang": "english",
 "city": "High Green",
 "country": "United Kingdom",
-"year": 2005,
+"year": 2004,
 "fans": 4980607
 },
 {
@@ -579,8 +722,41 @@
 "lang": "english",
 "city": "Bay City",
 "country": "United States",
-"year": 1983,
+"year": 1980,
 "fans": 4933941
+},
+{
+"id": 4937383,
+"name": "Ozuna",
+"pic": "df2030b9e796f55f58d2c4b68aecb18f",
+"genre": "pop",
+"lang": "spanish",
+"city": "San Juan",
+"country": "Puerto Rico",
+"year": 2014,
+"fans": 4741367
+},
+{
+"id": 927,
+"name": "Oasis",
+"pic": "4bf3bc8291361eb562d188c2b92b7b86",
+"genre": "rock",
+"lang": "english",
+"city": "Manchester",
+"country": "United Kingdom",
+"year": 1993,
+"fans": 4718296
+},
+{
+"id": 69925,
+"name": "P!nk",
+"pic": "429e67544862ed2b4c820a02acc24ad1",
+"genre": "pop",
+"lang": "english",
+"city": "Doylestown",
+"country": "United States",
+"year": 2000,
+"fans": 4678778
 },
 {
 "id": 566,
@@ -605,6 +781,28 @@
 "fans": 4561629
 },
 {
+"id": 763,
+"name": "Dr. Dre",
+"pic": "5af98b093efb7b818e4e084621c76b85",
+"genre": "hiphop",
+"lang": "english",
+"city": "Compton",
+"country": "United States",
+"year": 1985,
+"fans": 4499868
+},
+{
+"id": 849,
+"name": "Jimi Hendrix",
+"pic": "2deec542fc75d5691434c407ee077ff7",
+"genre": "rock",
+"lang": "english",
+"city": "Seattle",
+"country": "United States",
+"year": 1968,
+"fans": 4272494
+},
+{
 "id": 7543848,
 "name": "Post Malone",
 "pic": "a5a8cca44e7eab2db7d44e039bed2574",
@@ -612,7 +810,7 @@
 "lang": "english",
 "city": "Syracuse",
 "country": "United States",
-"year": 2016,
+"year": 2013,
 "fans": 4219897
 },
 {
@@ -623,7 +821,7 @@
 "lang": "english",
 "city": "Des Moines",
 "country": "United States",
-"year": 1999,
+"year": 1995,
 "fans": 4157091
 },
 {
@@ -634,14 +832,14 @@
 "lang": "english",
 "city": "East Harlem",
 "country": "United States",
-"year": 1998,
+"year": 1991,
 "fans": 4145639
 },
 {
 "id": 399,
 "name": "Radiohead",
 "pic": "0d58cfbc90f2e776608bcdc0c45a4711",
-"genre": "indie",
+"genre": "rock",
 "lang": "english",
 "city": "Abingdon-on-Thames",
 "country": "United Kingdom",
@@ -656,18 +854,29 @@
 "lang": "english",
 "city": "Breda",
 "country": "Netherlands",
-"year": 1998,
+"year": 1996,
 "fans": 4101850
+},
+{
+"id": 165930,
+"name": "Future",
+"pic": "1a695ee9c2cb49fab81d408836100ff3",
+"genre": "hiphop",
+"lang": "english",
+"city": "Atlanta",
+"country": "United States",
+"year": 2010,
+"fans": 3996970
 },
 {
 "id": 174,
 "name": "Whitney Houston",
 "pic": "7d7916383f536969db91430a2707d3c0",
-"genre": "pop",
+"genre": "rnb",
 "lang": "english",
 "city": "Newark",
 "country": "United States",
-"year": 1985,
+"year": 1984,
 "fans": 3942303
 },
 {
@@ -675,11 +884,33 @@
 "name": "Romeo Santos",
 "pic": "0a20c1c5fb5cdd61052c915a325b3589",
 "genre": "pop",
-"lang": "english",
+"lang": "spanish",
 "city": "The Bronx",
 "country": "United States",
-"year": 2011,
+"year": 2010,
 "fans": 3906917
+},
+{
+"id": 9052,
+"name": "Amy Winehouse",
+"pic": "0cacb43a576b031eb169cca27171c1f5",
+"genre": "rnb",
+"lang": "english",
+"city": "Southgate",
+"country": "United Kingdom",
+"year": 2003,
+"fans": 3884627
+},
+{
+"id": 6982223,
+"name": "BTS",
+"pic": "b5c64fa8216ca158e52b4d88bd9388ff",
+"genre": "kpop",
+"lang": "korean",
+"city": "Seoul",
+"country": "South Korea",
+"year": 2013,
+"fans": 3875622
 },
 {
 "id": 525643,
@@ -689,7 +920,7 @@
 "lang": "english",
 "city": "Los Angeles",
 "country": "United States",
-"year": 2010,
+"year": 2009,
 "fans": 3852481
 },
 {
@@ -711,7 +942,7 @@
 "lang": "english",
 "city": "Leyton",
 "country": "United Kingdom",
-"year": 1992,
+"year": 1979,
 "fans": 3798078
 },
 {
@@ -722,8 +953,19 @@
 "lang": "english",
 "city": "Brooklyn",
 "country": "United States",
-"year": 1996,
+"year": 1994,
 "fans": 3582909
+},
+{
+"id": 313,
+"name": "John Legend",
+"pic": "4ce9071cd0da497e8bd75337a5a21294",
+"genre": "rnb",
+"lang": "english",
+"city": "Springfield",
+"country": "United States",
+"year": 1999,
+"fans": 3558893
 },
 {
 "id": 310260,
@@ -733,7 +975,7 @@
 "lang": "french",
 "city": "Etterbeek",
 "country": "Belgium",
-"year": 2010,
+"year": 2007,
 "fans": 3502070
 },
 {
@@ -755,19 +997,52 @@
 "lang": "spanish",
 "city": "Medellín",
 "country": "Colombia",
-"year": 2014,
+"year": 2012,
 "fans": 3424566
+},
+{
+"id": 75156,
+"name": "Wisin & Yandel",
+"pic": "c66afc8b2577dc7356e43422e5138ad0",
+"genre": "pop",
+"lang": "spanish",
+"city": null,
+"country": "Puerto Rico",
+"year": 2000,
+"fans": 3349696
+},
+{
+"id": 1981,
+"name": "The Police",
+"pic": "5b4796f1d81da41fa45db0eda8d51b04",
+"genre": "rock",
+"lang": "english",
+"city": "London",
+"country": "United Kingdom",
+"year": 1977,
+"fans": 3340773
 },
 {
 "id": 1125,
 "name": "Elvis Presley",
 "pic": "935d35a45e061e7640a0becfa42cef6e",
-"genre": "pop",
+"genre": "rock",
 "lang": "english",
 "city": "Tupelo",
 "country": "United States",
-"year": 1958,
+"year": 1956,
 "fans": 3276712
+},
+{
+"id": 338,
+"name": "Nickelback",
+"pic": "1df489757fec41bff96adf2ad588b301",
+"genre": "rock",
+"lang": "english",
+"city": "Hanna",
+"country": "Canada",
+"year": 1996,
+"fans": 3189948
 },
 {
 "id": 4495513,
@@ -777,8 +1052,19 @@
 "lang": "english",
 "city": "Houston",
 "country": "United States",
-"year": 2013,
+"year": 2008,
 "fans": 3158406
+},
+{
+"id": 10977,
+"name": "Paramore",
+"pic": "60dc1956a36a5e552384b4a32b0cbf9b",
+"genre": "rock",
+"lang": "english",
+"city": "Franklin",
+"country": "United States",
+"year": 2005,
+"fans": 3155971
 },
 {
 "id": 6707,
@@ -799,7 +1085,7 @@
 "lang": "english",
 "city": "Philadelphia",
 "country": "United States",
-"year": 2016,
+"year": 2015,
 "fans": 3120207
 },
 {
@@ -810,30 +1096,52 @@
 "lang": "english",
 "city": "Birmingham",
 "country": "United Kingdom",
-"year": 1973,
+"year": 1970,
 "fans": 3045994
 },
 {
 "id": 14,
 "name": "Gorillaz",
 "pic": "ebbb1c133ed0220c714b9ed5d254561f",
-"genre": "indie",
+"genre": "electronic",
 "lang": "english",
 "city": "Essex",
 "country": "England",
-"year": 2002,
+"year": 2000,
 "fans": 3036743
 },
 {
 "id": 413,
 "name": "Elton John",
 "pic": "38ac9f6685f8d07d9528d41503bf450f",
-"genre": "pop",
+"genre": "rock",
 "lang": "english",
 "city": "Pinner",
 "country": "United Kingdom",
-"year": 1970,
+"year": 1969,
 "fans": 3024439
+},
+{
+"id": 1342,
+"name": "Ray Charles",
+"pic": "13ff3fb9ce04d808362f487ca36543b9",
+"genre": "rnb",
+"lang": "english",
+"city": "Albany",
+"country": "United States",
+"year": 1957,
+"fans": 2936189
+},
+{
+"id": 4476,
+"name": "Reik",
+"pic": "341c108bdba81d9320eac91ebb3257a1",
+"genre": "pop",
+"lang": "spanish",
+"city": "Mexicali",
+"country": "Mexico",
+"year": 2005,
+"fans": 2918052
 },
 {
 "id": 1412564,
@@ -847,10 +1155,21 @@
 "fans": 2905929
 },
 {
+"id": 186,
+"name": "Phil Collins",
+"pic": "206b79a942ee278de023a9d3cd732f87",
+"genre": "rock",
+"lang": "english",
+"city": "Hounslow",
+"country": "United Kingdom",
+"year": 1981,
+"fans": 2857732
+},
+{
 "id": 8909272,
 "name": "Aya Nakamura",
 "pic": "c8bca3e6aed3da8de8cbe0edd91bc156",
-"genre": "hiphop",
+"genre": "rnb",
 "lang": "french",
 "city": "Bamako",
 "country": "France",
@@ -865,7 +1184,7 @@
 "lang": "english",
 "city": "Frankfurt am Main",
 "country": "United States",
-"year": 2012,
+"year": 2001,
 "fans": 2750925
 },
 {
@@ -876,8 +1195,19 @@
 "lang": "german",
 "city": "Berlin",
 "country": "Germany",
-"year": 1999,
+"year": 1994,
 "fans": 2736020
+},
+{
+"id": 129,
+"name": "R.E.M.",
+"pic": "3a7f353f78c9a2cb48c50ea554d877d7",
+"genre": "rock",
+"lang": "english",
+"city": "Athens",
+"country": "United States",
+"year": 1981,
+"fans": 2673477
 },
 {
 "id": 10803980,
@@ -891,6 +1221,39 @@
 "fans": 2663393
 },
 {
+"id": 2527,
+"name": "T.I.",
+"pic": "77f8109f2a8f6bf0ebaf7214d9e964ab",
+"genre": "hiphop",
+"lang": "english",
+"city": "Atlanta",
+"country": "United States",
+"year": 2001,
+"fans": 2642168
+},
+{
+"id": 404,
+"name": "Fall Out Boy",
+"pic": "f53434390dd76ef724cdc26df7a0b64d",
+"genre": "rock",
+"lang": "english",
+"city": "Wilmette",
+"country": "United States",
+"year": 2001,
+"fans": 2620547
+},
+{
+"id": 823,
+"name": "Ozzy Osbourne",
+"pic": "e18bac5143c6764b58096640b7a93f06",
+"genre": "metal",
+"lang": "english",
+"city": "Aston",
+"country": "United Kingdom",
+"year": 1980,
+"fans": 2613343
+},
+{
 "id": 9064930,
 "name": "Cardi B",
 "pic": "af776cd99efbc010c3782030df0e7e1e",
@@ -898,7 +1261,7 @@
 "lang": "english",
 "city": "The Bronx",
 "country": "United States",
-"year": 2016,
+"year": 2015,
 "fans": 2607740
 },
 {
@@ -906,7 +1269,7 @@
 "name": "Marc Anthony",
 "pic": "fc838a70027abfd9b9d0f8906f2a1421",
 "genre": "pop",
-"lang": "english",
+"lang": "spanish",
 "city": "New York",
 "country": "United States",
 "year": 1991,
@@ -920,8 +1283,19 @@
 "lang": "english",
 "city": "Tarzana",
 "country": "United States",
-"year": 2014,
+"year": 2012,
 "fans": 2520908
+},
+{
+"id": 9763952,
+"name": "Christian Nodal",
+"pic": "59a4942bf8534ac3a2d0b39a78037d12",
+"genre": "pop",
+"lang": "spanish",
+"city": "Sonora",
+"country": "Mexico",
+"year": 2017,
+"fans": 2514543
 },
 {
 "id": 7961888,
@@ -942,7 +1316,7 @@
 "lang": "english",
 "city": "Brixton",
 "country": "England",
-"year": 1969,
+"year": 1967,
 "fans": 2481128
 },
 {
@@ -953,8 +1327,19 @@
 "lang": "english",
 "city": "Saginaw",
 "country": "United States",
-"year": 1968,
+"year": 1962,
 "fans": 2461684
+},
+{
+"id": 7343,
+"name": "Carlos Vives",
+"pic": "9592d2d181744833e5aa6c2701ee24e3",
+"genre": "pop",
+"lang": "spanish",
+"city": "Santa Marta",
+"country": "Colombia",
+"year": 1986,
+"fans": 2447578
 },
 {
 "id": 4768753,
@@ -968,6 +1353,17 @@
 "fans": 2399649
 },
 {
+"id": 409,
+"name": "blink-182",
+"pic": "3c60337b3a7cf8d3740bcea4c277f4e1",
+"genre": "rock",
+"lang": "english",
+"city": "Poway",
+"country": "United States",
+"year": 1988,
+"fans": 2341622
+},
+{
 "id": 897,
 "name": "The Killers",
 "pic": "979d671d4b391bc07747bd1569e51997",
@@ -977,6 +1373,17 @@
 "country": "United States",
 "year": 1978,
 "fans": 2246193
+},
+{
+"id": 2789,
+"name": "Ricky Martin",
+"pic": "d1f0759714219db995124470310ad665",
+"genre": "pop",
+"lang": "spanish",
+"city": "San Juan",
+"country": "Puerto Rico",
+"year": 1991,
+"fans": 2219299
 },
 {
 "id": 5313805,
@@ -997,7 +1404,7 @@
 "lang": "english",
 "city": "Stockholm",
 "country": "Sweden",
-"year": 2010,
+"year": 2009,
 "fans": 2172366
 },
 {
@@ -1012,15 +1419,48 @@
 "fans": 2144612
 },
 {
+"id": 15898,
+"name": "Wisin",
+"pic": "2835d5ae661fb00c0d7a8558bba86c7c",
+"genre": "pop",
+"lang": "spanish",
+"city": "Cayey",
+"country": "Puerto Rico",
+"year": 2004,
+"fans": 2116509
+},
+{
 "id": 4448485,
 "name": "Lorde",
 "pic": "a0d7a8d43d6d5736529374fabd9336a2",
-"genre": "indie",
+"genre": "pop",
 "lang": "english",
 "city": "Takapuna",
 "country": "New Zealand",
 "year": 2012,
 "fans": 2094644
+},
+{
+"id": 700,
+"name": "Aventura",
+"pic": "8d7b77db2a5e318b72ebff508d962d72",
+"genre": "pop",
+"lang": "spanish",
+"city": "The Bronx",
+"country": "United States",
+"year": 1999,
+"fans": 2080917
+},
+{
+"id": 113,
+"name": "Rage Against the Machine",
+"pic": "1550b258713b3a49cdde60de7757abf7",
+"genre": "metal",
+"lang": "english",
+"city": "Los Angeles",
+"country": "United States",
+"year": 1991,
+"fans": 1987852
 },
 {
 "id": 2519,
@@ -1030,7 +1470,7 @@
 "lang": "english",
 "city": "Clinton Hill",
 "country": "United States",
-"year": 1994,
+"year": 1991,
 "fans": 1969489
 },
 {
@@ -1041,7 +1481,7 @@
 "lang": "english",
 "city": "Washington, D.C.",
 "country": "United States",
-"year": 1964,
+"year": 1961,
 "fans": 1952008
 },
 {
@@ -1052,8 +1492,30 @@
 "lang": "english",
 "city": "Huntington Beach",
 "country": "United States",
-"year": 2002,
+"year": 2001,
 "fans": 1937816
+},
+{
+"id": 1462230,
+"name": "Charli xcx",
+"pic": "5a4f593c65c71292b4389e871f76c023",
+"genre": "electronic",
+"lang": "english",
+"city": "Cambridge",
+"country": "England",
+"year": 2008,
+"fans": 1898602
+},
+{
+"id": 189,
+"name": "Lenny Kravitz",
+"pic": "92aebe4cb6c6038df04b1b006ed372ad",
+"genre": "rock",
+"lang": "english",
+"city": "Manhattan",
+"country": "United States",
+"year": 1989,
+"fans": 1884062
 },
 {
 "id": 2059,
@@ -1063,19 +1525,52 @@
 "lang": "english",
 "city": "Memphis",
 "country": "United States",
-"year": 1962,
+"year": 1961,
 "fans": 1874862
+},
+{
+"id": 4698748,
+"name": "Becky G",
+"pic": "4592b032de9d1393fcd1c32780755372",
+"genre": "pop",
+"lang": "spanish",
+"city": "Inglewood",
+"country": "United States",
+"year": 2012,
+"fans": 1871515
 },
 {
 "id": 11152580,
 "name": "Olivia Rodrigo",
 "pic": "2c9e480317183c037eaebcd7ba96daf4",
-"genre": "pop",
+"genre": "rock",
 "lang": "english",
 "city": "Murrieta",
 "country": "United States",
 "year": 2016,
 "fans": 1853720
+},
+{
+"id": 599,
+"name": "My Chemical Romance",
+"pic": "8c78e78c01bbdc0c80fb4556c762d3bb",
+"genre": "rock",
+"lang": "english",
+"city": "Newark",
+"country": "United States",
+"year": 2001,
+"fans": 1844955
+},
+{
+"id": 4492087,
+"name": "Bebe Rexha",
+"pic": "315f8e20f0cd18735e6b9a9f5fd9adda",
+"genre": "pop",
+"lang": "english",
+"city": "New York",
+"country": "United States",
+"year": 2012,
+"fans": 1842477
 },
 {
 "id": 1176900,
@@ -1096,8 +1591,41 @@
 "lang": "english",
 "city": "Kingsland",
 "country": "United States",
-"year": 1958,
+"year": 1957,
 "fans": 1829190
+},
+{
+"id": 4762,
+"name": "Bruce Springsteen",
+"pic": "7003fc8e2a26471a8bf000b10eff8698",
+"genre": "rock",
+"lang": "english",
+"city": "Long Branch",
+"country": "United States",
+"year": 1973,
+"fans": 1821789
+},
+{
+"id": 1168,
+"name": "Van Halen",
+"pic": "df8a8ba1d58fe78d173f1fae5e9e8fc3",
+"genre": "metal",
+"lang": "english",
+"city": "Pasadena",
+"country": "United States",
+"year": 1978,
+"fans": 1814779
+},
+{
+"id": 517429,
+"name": "Yandel",
+"pic": "1d6fdd7f4dfd5ca9fdf057f86bd9ef08",
+"genre": "pop",
+"lang": "spanish",
+"city": null,
+"country": "Puerto Rico",
+"year": 2003,
+"fans": 1812527
 },
 {
 "id": 595,
@@ -1107,7 +1635,7 @@
 "lang": "english",
 "city": "Houston",
 "country": "United States",
-"year": 1998,
+"year": 1997,
 "fans": 1807210
 },
 {
@@ -1118,7 +1646,7 @@
 "lang": "english",
 "city": "Los Angeles",
 "country": "United States",
-"year": 1988,
+"year": 1984,
 "fans": 1804610
 },
 {
@@ -1140,8 +1668,30 @@
 "lang": "english",
 "city": "New York",
 "country": "United States",
-"year": 2001,
+"year": 2000,
 "fans": 1760315
+},
+{
+"id": 170,
+"name": "Bryan Adams",
+"pic": "b46a9b348d4cee93fabd6cd31a0c3952",
+"genre": "rock",
+"lang": "english",
+"city": "Kingston",
+"country": "Canada",
+"year": 1978,
+"fans": 1760222
+},
+{
+"id": 1042268,
+"name": "Angèle",
+"pic": "0f94e17cc0c77cc18c2751fd0e269a32",
+"genre": "pop",
+"lang": "french",
+"city": "Linkebeek",
+"country": "Belgium",
+"year": 2017,
+"fans": 1758130
 },
 {
 "id": 85,
@@ -1155,6 +1705,28 @@
 "fans": 1745414
 },
 {
+"id": 1181430,
+"name": "Meghan Trainor",
+"pic": "cce89f3297e257613eea9c090bab6b02",
+"genre": "pop",
+"lang": "english",
+"city": "Nantucket",
+"country": "United States",
+"year": 2009,
+"fans": 1719615
+},
+{
+"id": 12029862,
+"name": "Myke Towers",
+"pic": "d3a7418b4e44bf8ee3ae268067a86f09",
+"genre": "pop",
+"lang": "spanish",
+"city": "Río Piedras",
+"country": "Puerto Rico",
+"year": 2016,
+"fans": 1713129
+},
+{
 "id": 183716,
 "name": "Florence + The Machine",
 "pic": "03380466e2b2c6c681357f0de682b320",
@@ -1162,8 +1734,19 @@
 "lang": "english",
 "city": "London",
 "country": "England",
-"year": 2009,
+"year": 2008,
 "fans": 1699256
+},
+{
+"id": 15888,
+"name": "Jonas Brothers",
+"pic": "7a8fb7b9433605f55cbb18e6bb3e90f8",
+"genre": "pop",
+"lang": "english",
+"city": "Wyckoff",
+"country": "United States",
+"year": 2006,
+"fans": 1690637
 },
 {
 "id": 169,
@@ -1173,14 +1756,47 @@
 "lang": "english",
 "city": "London",
 "country": "United Kingdom",
-"year": 1969,
+"year": 1968,
 "fans": 1689009
+},
+{
+"id": 2,
+"name": "The Clash",
+"pic": "82a5fe6ba783cf618d5394ae0b8129b9",
+"genre": "rock",
+"lang": "english",
+"city": "London",
+"country": "United Kingdom",
+"year": 1977,
+"fans": 1679221
+},
+{
+"id": 4103977,
+"name": "Tove Lo",
+"pic": "0e5945bfdd3a0c8a66a2bb758571b225",
+"genre": "pop",
+"lang": "english",
+"city": "Stockholm",
+"country": "Sweden",
+"year": 2012,
+"fans": 1667543
+},
+{
+"id": 1454,
+"name": "Tina Turner",
+"pic": "6dfabac67edec77d322a2d85be60d87a",
+"genre": "rnb",
+"lang": "english",
+"city": "Nutbush",
+"country": "Switzerland",
+"year": 1969,
+"fans": 1664459
 },
 {
 "id": 70,
 "name": "Juanes",
 "pic": "bdc812bc942510433031868a1088d732",
-"genre": "pop",
+"genre": "rock",
 "lang": "spanish",
 "city": "Medellín",
 "country": "Colombia",
@@ -1195,19 +1811,63 @@
 "lang": "english",
 "city": "Arlington",
 "country": "United States",
-"year": 1990,
+"year": 1983,
 "fans": 1623978
+},
+{
+"id": 105,
+"name": "Nelly",
+"pic": "dc43f109ef8abdcfe23c1894ac1d54ce",
+"genre": "hiphop",
+"lang": "english",
+"city": "Austin",
+"country": "United States",
+"year": 2000,
+"fans": 1612626
+},
+{
+"id": 2468,
+"name": "Creedence Clearwater Revival",
+"pic": "3854c0eca16431e26987bf515f83d364",
+"genre": "rock",
+"lang": "english",
+"city": "El Cerrito",
+"country": "United States",
+"year": 1968,
+"fans": 1604299
 },
 {
 "id": 4437965,
 "name": "Indila",
 "pic": "d24d498af970c6feda6c2069cfdff56b",
-"genre": "pop",
+"genre": "indie",
 "lang": "french",
 "city": "Paris",
 "country": "France",
-"year": 2014,
+"year": 2013,
 "fans": 1588422
+},
+{
+"id": 11559031,
+"name": "Manuel Turizo",
+"pic": "72bb383c1872be5312b29a859001d66a",
+"genre": "pop",
+"lang": "spanish",
+"city": "Córdoba",
+"country": "Colombia",
+"year": 2016,
+"fans": 1570411
+},
+{
+"id": 152,
+"name": "Mary J. Blige",
+"pic": "ac0e5c2a7fa62aa9d8aa87e3cd66fe3c",
+"genre": "rnb",
+"lang": "english",
+"city": "The Bronx",
+"country": "United States",
+"year": 1992,
+"fans": 1529180
 },
 {
 "id": 2127,
@@ -1217,8 +1877,30 @@
 "lang": "english",
 "city": "Chicago",
 "country": "United States",
-"year": 2000,
+"year": 1995,
 "fans": 1513038
+},
+{
+"id": 1297,
+"name": "The Smiths",
+"pic": "458e4ee61a7fc57a79ac2b9b20c47bd9",
+"genre": "indie",
+"lang": "english",
+"city": "Manchester",
+"country": "United Kingdom",
+"year": 1983,
+"fans": 1512082
+},
+{
+"id": 202,
+"name": "Sade",
+"pic": "61ef9f8e27a31325d45f8623fe3000c6",
+"genre": "rnb",
+"lang": "english",
+"city": "London",
+"country": "United Kingdom",
+"year": 1984,
+"fans": 1465813
 },
 {
 "id": 81,
@@ -1228,19 +1910,74 @@
 "lang": "english",
 "city": "Manchester",
 "country": "United Kingdom",
-"year": 1995,
+"year": 1992,
 "fans": 1459575
+},
+{
+"id": 398521,
+"name": "Lil Baby",
+"pic": "40eb91eecca8f455b0ce06da80509775",
+"genre": "hiphop",
+"lang": "english",
+"city": "Atlanta",
+"country": "United States",
+"year": 2017,
+"fans": 1454231
+},
+{
+"id": 267,
+"name": "DMX",
+"pic": "6c9736b65a2a759dda59b6bba2329a62",
+"genre": "hiphop",
+"lang": "english",
+"city": "Mount Vernon",
+"country": "United States",
+"year": 1993,
+"fans": 1450114
+},
+{
+"id": 1622,
+"name": "James Brown",
+"pic": "c9629ef2cc26ee5559900063aac52ffd",
+"genre": "rnb",
+"lang": "english",
+"city": "Barnwell",
+"country": "United States",
+"year": 1961,
+"fans": 1447844
 },
 {
 "id": 5062414,
 "name": "Hozier",
 "pic": "4970da41372f40bb2d85b71d41c359e8",
-"genre": "indie",
+"genre": "rnb",
 "lang": "english",
 "city": "Bray",
 "country": "Ireland",
 "year": 2013,
 "fans": 1418389
+},
+{
+"id": 1725,
+"name": "Ramones",
+"pic": "566dc9dd5d0a8f4a834db3cf5d39a2fb",
+"genre": "rock",
+"lang": "english",
+"city": "New York",
+"country": "United States",
+"year": 1976,
+"fans": 1416223
+},
+{
+"id": 210,
+"name": "Eagles",
+"pic": "178be204025c8d38a72113564b647baf",
+"genre": "country",
+"lang": "english",
+"city": "Los Angeles",
+"country": "United States",
+"year": 1972,
+"fans": 1403197
 },
 {
 "id": 1194083,
@@ -1250,7 +1987,7 @@
 "lang": "english",
 "city": "Hawthorne",
 "country": "United States",
-"year": 2011,
+"year": 2007,
 "fans": 1394344
 },
 {
@@ -1265,6 +2002,39 @@
 "fans": 1379009
 },
 {
+"id": 3445,
+"name": "Lionel Richie",
+"pic": "37fd8a27cbce33ecf2bacca4a30da26c",
+"genre": "rnb",
+"lang": "english",
+"city": "Tuskegee",
+"country": "United States",
+"year": 1981,
+"fans": 1373157
+},
+{
+"id": 161553,
+"name": "TWICE",
+"pic": "1f4acadade675899b7f775ae4ac67faa",
+"genre": "kpop",
+"lang": "korean",
+"city": "Seoul",
+"country": "South Korea",
+"year": 2015,
+"fans": 1363142
+},
+{
+"id": 326042,
+"name": "Ñengo Flow",
+"pic": "a46c1cdd1827016f412b89b91ee22f0c",
+"genre": "pop",
+"lang": "spanish",
+"city": "Las Piedras",
+"country": "Puerto Rico",
+"year": 2005,
+"fans": 1349293
+},
+{
 "id": 5531258,
 "name": "SZA",
 "pic": "8ced041da2bed70d5715f0860956169b",
@@ -1272,8 +2042,19 @@
 "lang": "english",
 "city": "St. Louis",
 "country": "United States",
-"year": 2014,
+"year": 2012,
 "fans": 1345577
+},
+{
+"id": 3841221,
+"name": "Jhené Aiko",
+"pic": "9c336a353852d62e2664f2df3461b052",
+"genre": "rnb",
+"lang": "english",
+"city": "Los Angeles",
+"country": "United States",
+"year": 2003,
+"fans": 1339197
 },
 {
 "id": 636,
@@ -1287,6 +2068,39 @@
 "fans": 1323019
 },
 {
+"id": 2829671,
+"name": "NATTI NATASHA",
+"pic": "a25e772e5eff34271c59a4038b610056",
+"genre": "pop",
+"lang": "spanish",
+"city": "Santiago de los Caballeros",
+"country": "Dominican Republic",
+"year": 2012,
+"fans": 1307061
+},
+{
+"id": 596,
+"name": "Duran Duran",
+"pic": "86f76b67c1ac24310182281b4f1a419b",
+"genre": "pop",
+"lang": "english",
+"city": "Birmingham",
+"country": "United Kingdom",
+"year": 1981,
+"fans": 1294003
+},
+{
+"id": 632926,
+"name": "MAC MILLER",
+"pic": "d868d87e47d0597e6ba36d49eadec848",
+"genre": "hiphop",
+"lang": "english",
+"city": "Pittsburgh",
+"country": "United States",
+"year": 2007,
+"fans": 1291247
+},
+{
 "id": 13923487,
 "name": "Stray Kids",
 "pic": "5cba9e96cd7a44955d47ff3d7eb16ef3",
@@ -1294,7 +2108,7 @@
 "lang": "korean",
 "city": "Seoul",
 "country": "South Korea",
-"year": 2018,
+"year": 2017,
 "fans": 1282039
 },
 {
@@ -1305,8 +2119,19 @@
 "lang": "english",
 "city": "Long Beach",
 "country": "United States",
-"year": 2011,
+"year": 2010,
 "fans": 1277844
+},
+{
+"id": 248,
+"name": "Earth, Wind & Fire",
+"pic": "0be4c99a97b1073be467961c5d02acc6",
+"genre": "rnb",
+"lang": "english",
+"city": "Chicago",
+"country": "United States",
+"year": 1971,
+"fans": 1275842
 },
 {
 "id": 273,
@@ -1327,7 +2152,7 @@
 "lang": "english",
 "city": "Birmingham",
 "country": "United Kingdom",
-"year": 1988,
+"year": 1974,
 "fans": 1254490
 },
 {
@@ -1338,8 +2163,19 @@
 "lang": "english",
 "city": "Bromley",
 "country": "United Kingdom",
-"year": 1997,
+"year": 1995,
 "fans": 1250815
+},
+{
+"id": 893222,
+"name": "Macklemore & Ryan Lewis",
+"pic": "7b626fd854d98dc1d98b7062ff8b4b0b",
+"genre": "hiphop",
+"lang": "english",
+"city": "Seattle",
+"country": "United States",
+"year": 2009,
+"fans": 1236686
 },
 {
 "id": 69627,
@@ -1349,8 +2185,52 @@
 "lang": "english",
 "city": "Middletown",
 "country": "United States",
-"year": 2005,
+"year": 2000,
 "fans": 1203440
+},
+{
+"id": 3037,
+"name": "Genesis",
+"pic": "c0ed2cf09c7bf072111d614fc4557b66",
+"genre": "rock",
+"lang": "english",
+"city": "Godalming",
+"country": "United Kingdom",
+"year": 1969,
+"fans": 1201422
+},
+{
+"id": 1192,
+"name": "Tears for Fears",
+"pic": "4c802732227999ca78fdb5c8d76eae50",
+"genre": "rock",
+"lang": "english",
+"city": "Bath",
+"country": "United Kingdom",
+"year": 1981,
+"fans": 1198632
+},
+{
+"id": 9662,
+"name": "Timbaland",
+"pic": "6e0c9bc17bf9abc30181d6c9a8ca1613",
+"genre": "pop",
+"lang": "english",
+"city": "Norfolk",
+"country": "United States",
+"year": 1998,
+"fans": 1187027
+},
+{
+"id": 3106,
+"name": "a-ha",
+"pic": "5b66e3647ecffe097744e2479c689c41",
+"genre": "pop",
+"lang": "english",
+"city": "Oslo",
+"country": "Norway",
+"year": 1984,
+"fans": 1183777
 },
 {
 "id": 134790,
@@ -1364,6 +2244,17 @@
 "fans": 1166898
 },
 {
+"id": 11363014,
+"name": "DaBaby",
+"pic": "0570f0dde1e2a1121d8da9b2664a3ad7",
+"genre": "hiphop",
+"lang": "english",
+"city": "Cleveland",
+"country": "United States",
+"year": 2015,
+"fans": 1147088
+},
+{
 "id": 919,
 "name": "Franz Ferdinand",
 "pic": "0312c5b8e0c0f9ac7b0c4a1dfbd21d4e",
@@ -1371,8 +2262,19 @@
 "lang": "english",
 "city": "Glasgow",
 "country": "United Kingdom",
-"year": 2004,
+"year": 2003,
 "fans": 1134857
+},
+{
+"id": 12487862,
+"name": "Bizarrap",
+"pic": "e121c1ef9b1135e6a5b71c1e65ab10b4",
+"genre": "pop",
+"lang": "spanish",
+"city": "Ramos Mejía",
+"country": "Argentina",
+"year": 2017,
+"fans": 1127507
 },
 {
 "id": 2996,
@@ -1393,8 +2295,41 @@
 "lang": "english",
 "city": "Niagara Falls",
 "country": "Canada",
-"year": 2006,
+"year": 2005,
 "fans": 1121224
+},
+{
+"id": 652,
+"name": "Pixies",
+"pic": "521844a11b4e92f9ace7a6374c68ae7e",
+"genre": "rock",
+"lang": "english",
+"city": "Boston",
+"country": "United States",
+"year": 1987,
+"fans": 1110010
+},
+{
+"id": 2483,
+"name": "The Black Keys",
+"pic": "3b27055c39125c3e3133a595990e86a1",
+"genre": "rock",
+"lang": "english",
+"city": "Akron",
+"country": "United States",
+"year": 2002,
+"fans": 1099891
+},
+{
+"id": 7327640,
+"name": "Morat",
+"pic": "98d8836cb131fb50bc733ff2b3328497",
+"genre": "pop",
+"lang": "spanish",
+"city": "Bogotá",
+"country": "Colombia",
+"year": 2015,
+"fans": 1097523
 },
 {
 "id": 554792,
@@ -1404,8 +2339,52 @@
 "lang": "spanish",
 "city": "Sant Cugat del Vallès",
 "country": "Spain",
-"year": 2017,
+"year": 2016,
 "fans": 1069839
+},
+{
+"id": 2025,
+"name": "Cyndi Lauper",
+"pic": "be571d6d5dddf76f76db97dc077a3465",
+"genre": "pop",
+"lang": "english",
+"city": "Brooklyn",
+"country": "United States",
+"year": 1983,
+"fans": 1057048
+},
+{
+"id": 535,
+"name": "Deftones",
+"pic": "a4fab59f82dc48f2c636ce8497282e67",
+"genre": "metal",
+"lang": "english",
+"city": "Sacramento",
+"country": "United States",
+"year": 1992,
+"fans": 1054390
+},
+{
+"id": 2945,
+"name": "Otis Redding",
+"pic": "8db430bd07e5bc668ed64fb6db90f4e4",
+"genre": "rnb",
+"lang": "english",
+"city": "Dawson",
+"country": "United States",
+"year": 1961,
+"fans": 1042162
+},
+{
+"id": 7208392,
+"name": "Lenny Tavarez",
+"pic": "d86168dc506d0692735dbd3cb3a75ad1",
+"genre": "pop",
+"lang": "spanish",
+"city": null,
+"country": "Puerto Rico",
+"year": 2014,
+"fans": 1041713
 },
 {
 "id": 493,
@@ -1415,8 +2394,41 @@
 "lang": "english",
 "city": "Harlem",
 "country": "United States",
-"year": 1991,
+"year": 1990,
 "fans": 1040314
+},
+{
+"id": 4794264,
+"name": "Niall Horan",
+"pic": "36a047a6cea9461ada0df8614d0836c7",
+"genre": "pop",
+"lang": "english",
+"city": "Mullingar",
+"country": "Ireland",
+"year": 2016,
+"fans": 1033163
+},
+{
+"id": 4699,
+"name": "Diana Ross",
+"pic": "ebe2c56e022f8ab92bbe03a6f936785d",
+"genre": "rnb",
+"lang": "english",
+"city": "Detroit",
+"country": "United States",
+"year": 1970,
+"fans": 1012770
+},
+{
+"id": 7004075,
+"name": "Bryson Tiller",
+"pic": "d7af8b6f54a0e2b825d5ae92f9e767da",
+"genre": "rnb",
+"lang": "english",
+"city": "Louisville",
+"country": "United States",
+"year": 2011,
+"fans": 1001493
 },
 {
 "id": 358,
@@ -1426,7 +2438,7 @@
 "lang": "french",
 "city": "Pierrefonds",
 "country": "France",
-"year": 1989,
+"year": 1984,
 "fans": 973485
 },
 {
@@ -1470,7 +2482,7 @@
 "lang": "korean",
 "city": "Seoul",
 "country": "South Korea",
-"year": 2020,
+"year": 2019,
 "fans": 908979
 },
 {
@@ -1481,7 +2493,7 @@
 "lang": "korean",
 "city": "Gangnam District",
 "country": "South Korea",
-"year": 2002,
+"year": 2000,
 "fans": 895089
 },
 {
@@ -1500,10 +2512,10 @@
 "name": "Justice",
 "pic": "3dca9fb58e93ea3901c2e8e50cf130a7",
 "genre": "electronic",
-"lang": "french",
+"lang": "english",
 "city": "Paris",
 "country": "France",
-"year": 2005,
+"year": 2003,
 "fans": 814467
 },
 {
@@ -1525,7 +2537,7 @@
 "lang": "english",
 "city": "Ada",
 "country": "United States",
-"year": 2003,
+"year": 2001,
 "fans": 738180
 },
 {
@@ -1533,10 +2545,10 @@
 "name": "Christine and the Queens",
 "pic": "82805ca87186714d1d961d2d2b621925",
 "genre": "pop",
-"lang": "french",
+"lang": "english",
 "city": "Nantes",
 "country": "France",
-"year": 2013,
+"year": 2011,
 "fans": 684265
 },
 {
@@ -1547,7 +2559,7 @@
 "lang": "french",
 "city": "Belleville",
 "country": "France",
-"year": 1987,
+"year": 1947,
 "fans": 660655
 },
 {
@@ -1566,10 +2578,10 @@
 "name": "Phoenix",
 "pic": "f89bd9be6606ebda61eaa21ebc00dbe1",
 "genre": "indie",
-"lang": "french",
+"lang": "english",
 "city": "Versailles",
 "country": "France",
-"year": 2000,
+"year": 1997,
 "fans": 632230
 },
 {
@@ -1580,7 +2592,7 @@
 "lang": "english",
 "city": "Leesburg",
 "country": "United States",
-"year": 2007,
+"year": 2006,
 "fans": 624829
 },
 {
@@ -1591,7 +2603,7 @@
 "lang": "english",
 "city": "Wilmslow",
 "country": "United Kingdom",
-"year": 2012,
+"year": 2011,
 "fans": 608671
 },
 {
@@ -1602,7 +2614,7 @@
 "lang": "english",
 "city": "Bowling Green",
 "country": "United States",
-"year": 2009,
+"year": 2007,
 "fans": 581445
 },
 {
@@ -1624,7 +2636,7 @@
 "lang": "english",
 "city": "Eau Claire",
 "country": "United States",
-"year": 2008,
+"year": 2007,
 "fans": 550636
 },
 {
@@ -1635,7 +2647,7 @@
 "lang": "english",
 "city": "Muskogee",
 "country": "United States",
-"year": 2005,
+"year": 1997,
 "fans": 517735
 },
 {
@@ -1646,7 +2658,7 @@
 "lang": "spanish",
 "city": "Zapopan",
 "country": "Mexico",
-"year": 2021,
+"year": 2020,
 "fans": 512376
 },
 {
@@ -1723,7 +2735,7 @@
 "lang": "english",
 "city": "Houston",
 "country": "United States",
-"year": 1979,
+"year": 1969,
 "fans": 412539
 },
 {
@@ -1734,7 +2746,7 @@
 "lang": "english",
 "city": "Delhi",
 "country": "United States",
-"year": 2012,
+"year": 1993,
 "fans": 380334
 },
 {
@@ -1745,7 +2757,7 @@
 "lang": "english",
 "city": "Abbott",
 "country": "United States",
-"year": 1967,
+"year": 1962,
 "fans": 372035
 },
 {
@@ -1756,7 +2768,7 @@
 "lang": "english",
 "city": "Charlotte",
 "country": "United States",
-"year": 2016,
+"year": 2014,
 "fans": 367639
 },
 {
@@ -1811,7 +2823,7 @@
 "lang": "english",
 "city": "Oxford",
 "country": "United Kingdom",
-"year": 2013,
+"year": 2012,
 "fans": 324792
 },
 {
@@ -1822,7 +2834,7 @@
 "lang": "english",
 "city": "Willard",
 "country": "United States",
-"year": 2017,
+"year": 2015,
 "fans": 321052
 },
 {
@@ -1855,7 +2867,7 @@
 "lang": "english",
 "city": "Pasadena",
 "country": "United States",
-"year": 2017,
+"year": 2014,
 "fans": 210393
 }
 ]

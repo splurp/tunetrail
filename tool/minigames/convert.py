@@ -74,7 +74,12 @@ def genre(a):
     return None  # chart-only artists without tags are too uncertain
 
 
+LANG_OVERRIDE = {'Bad Bunny': 'spanish', 'Shakira': 'spanish', 'David Guetta': 'english', 'Daft Punk': 'english'}
+
+
 def language(a, g):
+    if a['name'] in LANG_OVERRIDE:
+        return LANG_OVERRIDE[a['name']]
     if g == 'kpop' or a.get('country') == 'KR':
         return 'korean'
     words = re.findall(r"[a-zà-ÿ']+", ' '.join(a.get('titles', [])).lower())
@@ -83,7 +88,7 @@ def language(a, g):
     counts = {l: sum(1 for w in words if w in s) for l, s in STOPS.items()}
     prior = COUNTRY_LANG.get(a.get('country'))
     if prior:
-        counts[prior] = counts.get(prior, 0) + 1.5
+        counts[prior] = counts.get(prior, 0) + 3
     best = max(counts, key=counts.get)
     return best if counts[best] > 0 else (prior or 'english')
 
@@ -103,7 +108,7 @@ for a in json.load(open(src)):
     year = a.get('mbFirstYear') or a.get('firstYear')
     if a.get('firstYear') and year and a['firstYear'] < year and a['firstYear'] > 1940:
         year = min(year, a['firstYear'])
-    out.append({'id': a['id'], 'name': a['name'], 'pic': a['pic'], 'genre': g, 'lang': language(a, g),
+    out.append({'id': a['id'], 'name': a['name'].strip(), 'pic': a['pic'], 'genre': g, 'lang': language(a, g),
                 'city': city, 'country': country, 'year': year, 'fans': a['fans']})
 out.sort(key=lambda x: -x['fans'])
 json.dump(out, open(dst, 'w'), ensure_ascii=False, indent=0)
