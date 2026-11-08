@@ -58,12 +58,16 @@ Without the secrets, CI falls back to the debug key and prints a warning. Keep t
   The map shows the zone you're standing in; tap it to see every zone.
 * **Wild spawns.** The world is split into ~200 m cells and 15-minute windows. Each cell/window is hashed into a seed, so **everyone in the same place at the same time sees the same songs**, with no server needed. Time of day biases genres (electronic & R&B at night, folk & pop in the morning…).
 * **Rarities:** Common (grey), Uncommon (green), Rare (blue), Epic (purple), Legendary (gold). A song's rarity is half *how big the artist is* and half *where the song ranks among that artist's songs*. Tiny artists span Common to Rare; superstars are mostly Epic/Legendary, with Rare reserved for their least-played tracks (deep cuts, remixes, edits). Popularity comes from **Last.fm all-time play counts** when a Last.fm API key is configured (Settings, or `--dart-define=LASTFM_API_KEY=…` / the `LASTFM_API_KEY` repo secret in CI); otherwise Deezer's popularity rank is used, which is less accurate. Rarer spawns glow brighter, and Legendaries get rotating light rays.
-* **Shiny variants** (1/128): an animated glint sweeps across the card and across the rarity name everywhere it's shown (collection, market, playlists, showcases).
-* **Favourite artists:** pick up to 10. They're shown on your profile/showcase to other players, and their songs spawn 10× more often for you.
+* **Shiny variants** (1/128): an animated glint sweeps across the card and across the rarity name everywhere it's shown (collection, market, playlists, showcases). The label still just says the rarity ("Legendary"), with the glint.
+* **Editions:**
+  * **Movie** (~3.5% of wild spawns, only for songs with a music video): the card is a full-size, looping clip of the music video with the details overlaid. Clips are Apple's free music-video previews from the iTunes Search API, downloaded once and cached.
+  * **Sample**: for songs in the sample library, the card shows the song's waveform aligned with the waveform of the record it samples, Tracklib-style. *Play breakdown* plays the original, then any transformation (sped up/slowed, or chopped), then crossfades into the song at the exact point it uses the sample. There's no free sample API (WhoSampled has none, and MusicBrainz rarely records samples), so the library is curated in `lib/data/samples.dart`. It currently holds **Kanye West – I Wonder ← Labi Siffre – My Song**. The debug menu has a sync tuner to refine an entry's alignment.
+* **One copy per variant:** song × rarity × shiny × edition is a variant, and you own at most one of each (a Rare, a shiny Rare and a Movie Rare of the same song are three different cards). Duplicates from catches, packs, trades or returns go straight to the scrapyard for their coin value, with a notice. Buying a variant you already own is blocked.
+* **Favourite artists:** add as many as you like. On your profile (and your public showcase) they're an expandable tab with a scrollable list. Each spawn is 10× as likely to be by *one of* your favourites (the boost is for the list as a whole, not per artist), and that artist is picked at random from your list.
 * **Character:** idles naturally. It glances around, and after standing still for a while it sits down with headphones (notes float out) or summons a turntable and scratches, then gets up smoothly when you move.
-* **Catching:** tap a song within 70 m to open the encounter. The 30-second preview plays while a beat ring pulses; tap when it lines up with the target. Every tap shows its timing accuracy. **A 100% perfect tap (within ±0.25% of the beat, measured with a precise clock) always catches the song and turns it shiny**; 99% doesn't. Rarer songs pulse faster and flee more often. The preview stops once the song is caught (Settings can keep it playing).
+* **Catching:** tap a song within 70 m to open the encounter. The minigame waits for the music to start, then the ring pulses **at the song's BPM, landing on its beats**: tempo comes from Deezer, and the beat grid is found by onset analysis of the decoded audio. Audio runs on SoLoud, so timing is judged against the real playback position. If the music hasn't started after 5 s, the ring starts anyway, unsynced. Every tap shows its timing accuracy. **A 100% perfect tap (within ±0.25% of the beat) always catches the song and turns it shiny**; 99% doesn't. Rarer songs flee more often. A caught card spins and pumps toward you, then settles. After a catch you can **List for sale**, **Quicksell** (send it to the scrapyard), view the card or go back. The preview stops once the song is caught (Settings can keep it playing).
 * **Nearby:** tapping a song in the Nearby list turns the camera to face it if it's in range. Otherwise the view pulls up overhead, draws a trail of footsteps along the streets to it (A* routing over the road network), then drops back down facing the song.
-* **Camera:** drag horizontally or vertically to orbit around your character (the view turns the way your finger travels around it), pinch or scroll to zoom.
+* **Camera:** drag to orbit around your character (dragging right turns the view counter-clockwise), pinch or scroll to zoom. On Windows/Linux, press **Alt** to lock the cursor and aim with the mouse like a normal PC game (Alt or Esc releases it). Idle animations wait while you're moving the camera.
 * **Quests:** 4 rotating dailies; weekly **Artist Spotlights** (collect N songs by an artist → unlock an exclusive Epic/Legendary card of their biggest hit); **Album completion** (own every track on an album → Legendary card); milestones.
 * **Discography browser:** artist pages (picture, top tracks, albums/EPs/singles) and album pages in official track order, showing which tracks you own.
 * **Currencies:** **coins** (earned by catching, quests and selling; spent on the player market) and **bits** (bought with real money; spent on packs).
@@ -73,8 +77,8 @@ Without the secrets, CI falls back to the debug key and prints a warning. Keep t
 * **Scrapyard:** scrap unwanted songs for coins. Payouts grow with the song's streams, rarity and shininess, and one tap selects all your duplicates (keeping your best copy).
 * **Playlists:** build them from owned cards, reorder, and play them back (30-second Deezer previews, auto-advance, mini player).
 * **Character:** a stylised stick figure. Colour is free to change. Hats, shirts, backpacks and pets are sold in the store.
-* **Map themes** (store): Obsidian (default: black, graphite and a soft violet accent), Midnight, Synthwave, Vaporwave, Noir (rain), Vintage Vinyl, Digital Rain, Arctic (snow), Magma (embers), Aurora, Sakura (petals).
-* **Filters:** the collection and the market each have a large *Filters* dropdown with Rarity, Variant (Shiny / Standard) and Genre sections (plus Favourites, or Open to trades).
+* **Map themes** (store): Obsidian (default: black, graphite and a soft violet accent), Midnight, Synthwave, Vaporwave (low-poly 3D marble bust and columns rising out of the distant ground), Noir (rain), Vintage Vinyl, Digital Rain, Arctic (snow on deep glacial blues), Magma (embers), Aurora, Sakura (petals, plus low-poly pink sakura trees that fade out as you approach and back in as you leave). Idle headphones and notes recolour to contrast with each theme.
+* **Filters:** the collection and the market each have a large *Filters* dropdown with Rarity, Variant (Shiny / Not shiny / Standard / Movie / Sample) and Genre sections (plus Favourites, or Open to trades).
 
 ## Developer debug menu
 
@@ -84,7 +88,8 @@ Profile → ⚙ Settings → **Debug menu** switch, then *Open debug menu*:
 * **Free real-money purchases** (bits bundles, themes and cosmetics granted with no charge), or unlock everything at once
 * **Joystick movement** with a speed multiplier (×1–×50); on Windows/Linux, **WASD / arrow keys** move relative to the camera and **Q/E** turn it
 * **Teleport:** search any real-world place (OpenStreetMap Nominatim) or pick a preset, then jump there (also on the map's 🔍 button)
-* **Spawn a song:** search any song or artist on Deezer and drop it next to you (optionally shiny)
+* **Spawn a song:** search any song or artist on Deezer and drop it next to you (optionally shiny, in any edition), or one-tap the **Sample edition of I Wonder**
+* **Sample sync tuner** (on a Sample card's detail page): nudge where the passage starts in each preview and the speed change, audition it, and save
 * Unlimited catch range, respawn nearby songs
 * Stress test: add 1k / 10k / 100k random cards, clear the collection, crawl more of the catalog
 
@@ -95,6 +100,7 @@ Profile → ⚙ Settings → **Debug menu** switch, then *Open debug menu*:
 | Songs, artists, albums, track order, discographies, cover art, artist photos, 30 s previews | [Deezer public API](https://developers.deezer.com/api) |
 | Map data (vector tiles, Shortbread schema) | © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, served by [VersaTiles](https://versatiles.org) |
 | Place search (teleport) | OpenStreetMap Nominatim |
+| Music-video clips (Movie editions) | [iTunes Search API](https://performance-partners.apple.com/search-api) (`entity=musicVideo` previews) |
 
 The catalog is built progressively: genre charts first (instantly playable),
 then each genre's most popular artists' top tracks, then related artists
