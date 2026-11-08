@@ -9,6 +9,7 @@ import '../widgets/cards.dart';
 import '../widgets/net_image.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
+import 'favorite_artists_screen.dart';
 import 'listing_composer.dart';
 
 class MarketScreen extends StatelessWidget {
@@ -712,7 +713,11 @@ class ShowcaseView extends StatelessWidget {
         ),
       ]),
       body: ListView(padding: const EdgeInsets.all(12), children: [
-        Text('by ${s.playerName}', style: const TextStyle(color: Colors.white60)),
+        Text('by ${s.playerName}', style: const TextStyle(color: kTextSecondary)),
+        if (s.favoriteArtists.isNotEmpty) ...[
+          const SectionLabel('Favourite artists'),
+          FavoriteArtistsRow(artists: s.favoriteArtists),
+        ],
         const SizedBox(height: 10),
         GridView.builder(
           shrinkWrap: true,

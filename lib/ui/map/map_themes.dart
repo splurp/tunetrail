@@ -1,15 +1,18 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../../map3d/palette.dart';
+import '../../map3d/sky_painter.dart';
 
 enum MapEffect { none, grid, rain, snow, embers, petals, digitalRain, aurora, dust, stars }
 
 /// A visual style for the 3D world: palette + an animated screen overlay.
 class MapThemeDef {
-  const MapThemeDef({required this.id, required this.palette, this.effect = MapEffect.none, this.vignette = const Color(0x55000000)});
+  const MapThemeDef({required this.id, required this.palette, this.effect = MapEffect.none, this.vignette = const Color(0x55000000), this.sky = SkyDecor.none});
   final String id;
+  final SkyDecor sky;
   final MapPalette palette;
   final MapEffect effect;
   final Color vignette;
@@ -18,15 +21,15 @@ class MapThemeDef {
 
 const Map<String, MapThemeDef> kMapThemes = {
   'theme_classic': MapThemeDef(id: 'theme_classic', palette: kObsidian, vignette: Color(0x66000000)),
-  'theme_midnight': MapThemeDef(id: 'theme_midnight', palette: kMidnight, effect: MapEffect.stars),
-  'theme_synthwave': MapThemeDef(id: 'theme_synthwave', palette: kSynthwave, effect: MapEffect.grid, vignette: Color(0x66200030)),
-  'theme_vaporwave': MapThemeDef(id: 'theme_vaporwave', palette: kVaporwave, effect: MapEffect.dust, vignette: Color(0x2200D2D3)),
+  'theme_midnight': MapThemeDef(id: 'theme_midnight', palette: kMidnight, sky: SkyDecor.stars),
+  'theme_synthwave': MapThemeDef(id: 'theme_synthwave', palette: kSynthwave, sky: SkyDecor.synthSun, vignette: Color(0x66200030)),
+  'theme_vaporwave': MapThemeDef(id: 'theme_vaporwave', palette: kVaporwave, sky: SkyDecor.vaporBust, vignette: Color(0x2200D2D3)),
   'theme_noir': MapThemeDef(id: 'theme_noir', palette: kNoir, effect: MapEffect.rain, vignette: Color(0x99000000)),
   'theme_vinyl': MapThemeDef(id: 'theme_vinyl', palette: kVinyl, effect: MapEffect.dust, vignette: Color(0x884E342E)),
   'theme_matrix': MapThemeDef(id: 'theme_matrix', palette: kMatrix, effect: MapEffect.digitalRain, vignette: Color(0x99000000)),
   'theme_arctic': MapThemeDef(id: 'theme_arctic', palette: kArctic, effect: MapEffect.snow, vignette: Color(0x22004466)),
   'theme_lava': MapThemeDef(id: 'theme_lava', palette: kMagma, effect: MapEffect.embers, vignette: Color(0x88300000)),
-  'theme_aurora': MapThemeDef(id: 'theme_aurora', palette: kAurora, effect: MapEffect.aurora),
+  'theme_aurora': MapThemeDef(id: 'theme_aurora', palette: kAurora, sky: SkyDecor.aurora),
   'theme_sakura': MapThemeDef(id: 'theme_sakura', palette: kSakura, effect: MapEffect.petals, vignette: Color(0x22F06292)),
 };
 
@@ -140,9 +143,33 @@ class MapEffectPainter extends CustomPainter {
     }
   }
 
+  // Digital rain: glyphs are rendered once into a small atlas image, then the
+  // whole rain is drawn with a single drawAtlas call per frame (instead of
+  // laying out hundreds of TextPainters every frame).
+  static ui.Image? _glyphAtlas;
+  static const _gw = 14.0, _gh = 18.0;
+
+  static ui.Image _atlas() {
+    final cached = _glyphAtlas;
+    if (cached != null) return cached;
+    final rec = ui.PictureRecorder();
+    final c = Canvas(rec);
+    for (var i = 0; i < 10; i++) {
+      final tp = TextPainter(
+        text: TextSpan(text: String.fromCharCode(0x30 + i), style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'monospace')),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(c, Offset(i * _gw + (_gw - tp.width) / 2, (_gh - tp.height) / 2));
+    }
+    return _glyphAtlas = rec.endRecording().toImageSync((_gw * 10).toInt(), _gh.toInt());
+  }
+
   void _digital(Canvas canvas, Size size) {
     const col = 18.0;
     final cols = (size.width / col).ceil();
+    final transforms = <RSTransform>[];
+    final rects = <Rect>[];
+    final colors = <Color>[];
     for (var c = 0; c < cols; c++) {
       final speed = 80 + _rand(c, 16) * 160;
       final len = 6 + (_rand(c, 17) * 12).floor();
@@ -151,16 +178,14 @@ class MapEffectPainter extends CustomPainter {
         final y = head - k * col;
         if (y < 0 || y > size.height) continue;
         final a = (1 - k / len) * (k == 0 ? 0.7 : 0.3);
-        final glyph = (_rand(c * 31 + k, (t * 6).floor()) * 10).floor();
-        final tp = TextPainter(
-          text: TextSpan(
-              text: String.fromCharCode(0x30 + glyph),
-              style: TextStyle(color: (k == 0 ? const Color(0xFFCCFFDD) : const Color(0xFF00FF66)).withValues(alpha: a), fontSize: 13, fontFamily: 'monospace')),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tp.paint(canvas, Offset(c * col, y));
+        final glyph = (_rand(c * 31 + k, (t * 6).floor()) * 10).floor().clamp(0, 9);
+        transforms.add(RSTransform.fromComponents(rotation: 0, scale: 1, anchorX: 0, anchorY: 0, translateX: c * col, translateY: y));
+        rects.add(Rect.fromLTWH(glyph * _gw, 0, _gw, _gh));
+        colors.add((k == 0 ? const Color(0xFFCCFFDD) : const Color(0xFF00FF66)).withValues(alpha: a));
       }
     }
+    if (transforms.isEmpty) return;
+    canvas.drawAtlas(_atlas(), transforms, rects, colors, BlendMode.modulate, null, Paint());
   }
 
   void _aurora(Canvas canvas, Size size) {

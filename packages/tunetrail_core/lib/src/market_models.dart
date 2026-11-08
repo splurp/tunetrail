@@ -163,7 +163,22 @@ class TradeOffer {
   }
 }
 
-/// A public display of a player's favourite cards and playlists.
+/// An artist a player has marked as a favourite (shown on their profile).
+class FavoriteArtist {
+  const FavoriteArtist({required this.id, required this.name, this.picMd5 = ''});
+  final int id;
+  final String name;
+  final String picMd5;
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'pic': picMd5};
+  factory FavoriteArtist.fromJson(Map<String, dynamic> j) =>
+      FavoriteArtist(id: (j['id'] as num).toInt(), name: j['name'] as String? ?? '', picMd5: j['pic'] as String? ?? '');
+}
+
+/// Maximum favourite artists per player.
+const int kMaxFavoriteArtists = 10;
+
+/// A public display of a player's favourite cards, playlists and artists.
 class Showcase {
   Showcase({
     required this.playerId,
@@ -173,7 +188,10 @@ class Showcase {
     required this.playlists,
     required this.updatedAt,
     this.likes = 0,
+    this.favoriteArtists = const [],
   });
+
+  final List<FavoriteArtist> favoriteArtists;
 
   final String playerId;
   final String playerName;
@@ -191,6 +209,7 @@ class Showcase {
         'playlists': [for (final p in playlists) p.toJson()],
         'updatedAt': updatedAt,
         'likes': likes,
+        'favArtists': [for (final a in favoriteArtists) a.toJson()],
       };
 
   factory Showcase.fromJson(Map<String, dynamic> j) => Showcase(
@@ -207,6 +226,9 @@ class Showcase {
         ],
         updatedAt: (j['updatedAt'] as num?)?.toInt() ?? 0,
         likes: (j['likes'] as num?)?.toInt() ?? 0,
+        favoriteArtists: [
+          for (final a in (j['favArtists'] as List? ?? const [])) FavoriteArtist.fromJson(a as Map<String, dynamic>)
+        ],
       );
 }
 

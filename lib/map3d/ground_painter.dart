@@ -47,14 +47,9 @@ class GroundPainter extends CustomPainter {
       ..update();
     final horizon = cam.horizonY;
 
-    // Ground base colour everywhere below the horizon, sky above.
-    canvas.drawRect(Offset.zero & size, Paint()..color = palette.ground);
-    final skyRect = Rect.fromLTWH(0, 0, size.width, math.max(0, horizon + 2));
-    canvas.drawRect(
-        skyRect,
-        Paint()
-          ..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [palette.skyTop, palette.skyBottom])
-              .createShader(skyRect));
+    // Ground base colour below the horizon (the sky is a separate layer).
+    canvas.drawRect(Rect.fromLTRB(0, math.max(0, horizon), size.width, size.height), Paint()..color = palette.ground);
+    if (palette.checker != null) _checkerboard(canvas, cam, palette.checker!);
 
     for (final b in _bufs.values) {
       b.reset();
@@ -178,6 +173,47 @@ class GroundPainter extends CustomPainter {
       d[o++] = py(k + 1);
       out.length = o;
     }
+  }
+
+  static final _Buf _checkBuf = _Buf();
+
+  /// World-anchored checkerboard ground (light contrast), projected in
+  /// perspective like everything else.
+  void _checkerboard(Canvas canvas, Camera3D cam, Color color) {
+    const cell = 26.0;
+    final reach = math.min(cam.yFar, 950.0);
+    final b = _checkBuf..reset();
+    final cx0 = ((cam.px - reach) / cell).floor(), cx1 = ((cam.px + reach) / cell).ceil();
+    final cy0 = ((cam.py - reach) / cell).floor(), cy1 = ((cam.py + reach) / cell).ceil();
+    for (var gy = cy0; gy <= cy1; gy++) {
+      for (var gx = cx0 + ((cx0 + gy) & 1); gx <= cx1; gx += 2) {
+        final x0 = gx * cell, y0 = gy * cell, x1 = x0 + cell, y1 = y0 + cell;
+        final mya = cam.alignY(x0 + cell / 2, y0 + cell / 2);
+        if (mya < cam.yNear - cell || mya > reach) continue;
+        final mxa = cam.alignX(x0 + cell / 2, y0 + cell / 2);
+        if (mxa.abs() > cam.halfWidthAt(math.max(mya, cam.yNear)) + cell) continue;
+        final xa = [cam.alignX(x0, y0), cam.alignX(x1, y0), cam.alignX(x1, y1), cam.alignX(x0, y1)];
+        final ya = [cam.alignY(x0, y0), cam.alignY(x1, y0), cam.alignY(x1, y1), cam.alignY(x0, y1)];
+        for (final (i, j, k) in const [(0, 1, 2), (0, 2, 3)]) {
+          if (ya[i] >= cam.yNear && ya[j] >= cam.yNear && ya[k] >= cam.yNear) {
+            b.ensure(6);
+            var o = b.length;
+            for (final v in [i, j, k]) {
+              final zc = cam.depth(ya[v], 0);
+              b.data[o++] = cam.sx(xa[v], zc);
+              b.data[o++] = cam.sy(ya[v], 0, zc);
+            }
+            b.length = o;
+          } else {
+            _clipTriangle(cam, b, xa[i], ya[i], xa[j], ya[j], xa[k], ya[k]);
+          }
+        }
+      }
+    }
+    if (b.length == 0) return;
+    final v = ui.Vertices.raw(VertexMode.triangles, Float32List.sublistView(b.data, 0, b.length));
+    canvas.drawVertices(v, BlendMode.srcOver, Paint()..color = color);
+    v.dispose();
   }
 
   void _catchRing(Canvas canvas, Camera3D cam) {

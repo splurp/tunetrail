@@ -64,7 +64,14 @@ class _ArtistScreenState extends State<ArtistScreen> {
       groups.putIfAbsent(k, () => []).add(a);
     }
     return Scaffold(
-      appBar: AppBar(title: Text(widget.name)),
+      appBar: AppBar(title: Text(widget.name), actions: [
+        IconButton(
+          tooltip: g.isFavoriteArtist(widget.artistId) ? 'Remove from favourites' : 'Add to favourites',
+          icon: Icon(g.isFavoriteArtist(widget.artistId) ? Icons.favorite : Icons.favorite_border,
+              color: g.isFavoriteArtist(widget.artistId) ? kAccent : null),
+          onPressed: () => g.toggleFavoriteArtist(widget.artistId, widget.name, _info?.picMd5 ?? ''),
+        ),
+      ]),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/collection.dart';
+import '../../game/game.dart';
 import '../../game/spawns.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
@@ -37,6 +38,12 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   bool _perfect = false;
   int? _accuracy;
 
+  /// Precise beat clock: taps are judged against real elapsed time rather
+  /// than the last rendered frame, so the 100% window can be very tight.
+  final Stopwatch _beat = Stopwatch();
+  Game? _game;
+  int _periodUs = 1;
+
   static const _baseCatch = [0.92, 0.78, 0.62, 0.48, 0.34];
   static const _fleeChance = [0.03, 0.06, 0.1, 0.15, 0.2];
   static const _maxAttempts = 5;
@@ -51,8 +58,11 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
       vsync: this,
       duration: Duration(milliseconds: ms),
     )..repeat();
+    _periodUs = ms * 1000;
+    _beat.start();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final g = GameScope.read(context);
+      _game = g;
       if (g.profile.playOnEncounter) {
         _playing = true;
         g.audio.playOne(widget.spawn.song.id);
@@ -62,27 +72,34 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
 
   @override
   void dispose() {
+    // However the screen is dismissed (close button, back gesture…), make
+    // sure a preview that's still loading or playing doesn't outlive it.
+    final g = _game;
+    if (g != null && _playing && (!_caught || !g.profile.keepPlayingAfterCatch)) g.audio.stop();
     _ring.dispose();
     _fx.dispose();
     super.dispose();
   }
 
-  /// Ring radius fraction: 1.0 (outer) → 0.0; target sits at 0.72 (just
-  /// outside the card so it is always visible).
-  double get _ringFrac => 1.0 - _ring.value;
+  /// Target ring sits at 0.72 of the outer radius (just outside the card so
+  /// it is always visible).
   static const _target = 0.72;
 
   /// Timing accuracy for a tap, 0–100. Exactly 100 only when the ring is
-  /// dead-on the target (within ~1% of a beat); everything else tops out
-  /// at 99.
+  /// dead-on the target — within ±0.25% of a beat (≈ ±2–4 ms) — so perfect
+  /// (shiny) catches are rare. Everything else tops out at 99.
+  static const perfectWindow = 0.0025;
   static int accuracyFor(double diff) {
-    if (diff <= 0.012) return 100;
-    return (99 * (1 - (diff - 0.012) / 0.29)).floor().clamp(0, 99);
+    if (diff <= perfectWindow) return 100;
+    return (99 * (1 - (diff - perfectWindow) / 0.29)).floor().clamp(0, 99);
   }
+
+  /// Ring position at this exact moment (0 = outer, matches the painter).
+  double get _ringFracNow => 1.0 - (_beat.elapsedMicroseconds % _periodUs) / _periodUs;
 
   void _tap() {
     if (_busy || _caught || _fled) return;
-    final diff = (_ringFrac - _target).abs();
+    final diff = (_ringFracNow - _target).abs();
     final acc = accuracyFor(diff);
     final hit = acc == 100
         ? _Hit.perfect
@@ -198,7 +215,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                             animation: _ring,
                             builder: (context, _) => CustomPaint(
                               size: Size.square(math.min(size.width, size.height * 0.6) * 1.05),
-                              painter: _BeatRingPainter(_ringFrac, _target, c),
+                              painter: _BeatRingPainter(_ringFracNow, _target, c),
                             ),
                           ),
                         ),
@@ -282,7 +299,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Catch chance ${(_baseCatch[r.index] * 100).round()}% · hit 100% timing for a guaranteed shiny',
+                            'Catch chance ${(_baseCatch[r.index] * 100).round()}% · a flawless 100% beat makes it shiny',
                             style: const TextStyle(color: Colors.white54, fontSize: 12),
                           ),
                         ],

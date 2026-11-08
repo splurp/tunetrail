@@ -74,6 +74,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }
           },
         ),
+        ListTile(
+          title: const Text('Last.fm API key (song popularity)'),
+          subtitle: Text(
+            p.effectiveLastFmKey.isEmpty
+                ? 'Not set: rarity uses Deezer popularity. Add a free key from last.fm/api for play-count based rarity.'
+                : p.lastFmKey.isEmpty
+                    ? 'Using the key built into this version'
+                    : 'Custom key set',
+          ),
+          trailing: const Icon(Icons.edit),
+          onTap: () async {
+            final v = await promptText(context, 'Last.fm API key', 'Paste your API key', initial: p.lastFmKey);
+            if (v != null) {
+              g.setLastFmKey(v);
+              g.toast(v.trim().isEmpty ? 'Last.fm key cleared' : 'Fetching play counts in the background…');
+            }
+          },
+        ),
         const _Header('Market'),
         ListTile(
           title: const Text('Quick-list presets'),

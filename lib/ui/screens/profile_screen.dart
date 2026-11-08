@@ -6,6 +6,7 @@ import '../app.dart';
 import '../widgets/cards.dart';
 import '../widgets/stick_figure.dart';
 import 'card_detail_screen.dart';
+import 'favorite_artists_screen.dart';
 import 'playlists_screen.dart';
 import 'quests_screen.dart';
 import 'scrapyard_screen.dart';
@@ -104,6 +105,13 @@ class ProfileScreen extends StatelessWidget {
           ),
         ]),
         const SizedBox(height: 16),
+        const Text('Favourite artists', style: TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        FavoriteArtistsRow(
+          artists: p.favoriteArtists,
+          onAdd: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FavoriteArtistsScreen())),
+        ),
+        const SizedBox(height: 12),
         _Stats(p: p, cards: g.collection.length, unique: g.collection.uniqueSongCount),
         const SizedBox(height: 12),
         _NavTile(icon: Icons.assignment, title: 'Quests', subtitle: 'Daily tasks, artist spotlights & milestones', page: const QuestsScreen()),

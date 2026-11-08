@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import 'deezer_api.dart';
@@ -50,6 +52,7 @@ class Catalog extends ChangeNotifier {
         artists[a.id] = a;
       }
       _crawledArtists.addAll(parsed.crawled);
+      _playsDone.addAll(parsed.playsDone);
       _rebuildPools();
     }
     _sink = _file.openWrite(mode: FileMode.append);
@@ -133,52 +136,160 @@ class Catalog extends ChangeNotifier {
 
   // --------------------------------------------------------------- rarity
   int _rarityVersion = -1;
-  final Map<int, int> _artistMaxRank = {};
   final Map<int, Rarity> _rarityCache = {};
 
   /// genre → rarity index → song ids (sorted, deterministic).
   final Map<int, List<List<int>>> _rarityPools = {};
 
+  /// Popularity of a song for ranking: Last.fm plays when the artist has
+  /// play data, otherwise Deezer rank.
+  static double _pop(Song s, bool usePlays) => usePlays ? s.plays.toDouble() : s.rank.toDouble();
+
   void _ensureRarity() {
     if (_rarityVersion == version) return;
-    _artistMaxRank.clear();
+    final byArtist = <int, List<Song>>{};
     for (final s in songs.values) {
-      if (s.rank > (_artistMaxRank[s.artistId] ?? 0)) _artistMaxRank[s.artistId] = s.rank;
+      byArtist.putIfAbsent(s.artistId, () => []).add(s);
     }
     _rarityCache.clear();
+    for (final list in byArtist.values) {
+      final usePlays = list.any((s) => s.plays > 0);
+      list.sort((a, b) => _pop(a, usePlays).compareTo(_pop(b, usePlays)));
+      final tier = artistTier(
+        maxPlays: usePlays ? list.last.plays : 0,
+        maxRank: list.fold<int>(0, (m, s) => s.rank > m ? s.rank : m),
+        fans: artists[list.first.artistId]?.fans ?? 0,
+      );
+      final n = list.length;
+      final top = _pop(list.last, usePlays);
+      for (var i = 0; i < n; i++) {
+        final s = list[i];
+        // Position among the artist's songs (0 = least played, 1 = most),
+        // blended with share of the top song so near-ties stay together.
+        final position = n == 1 ? 0.5 : i / (n - 1);
+        final share = top <= 0 ? position : math.sqrt((_pop(s, usePlays) / top).clamp(0.0, 1.0));
+        _rarityCache[s.id] = rarityFor(tier, 0.65 * position + 0.35 * share);
+      }
+    }
     _rarityPools.clear();
     final ids = songs.keys.toList()..sort();
     for (final id in ids) {
       final s = songs[id]!;
-      final r = computeRarity(s.rank, _artistMaxRank[s.artistId] ?? s.rank);
-      _rarityCache[id] = r;
-      _rarityPools.putIfAbsent(s.genreId, () => List.generate(5, (_) => <int>[]))[r.index].add(id);
+      _rarityPools.putIfAbsent(s.genreId, () => List.generate(5, (_) => <int>[]))[_rarityCache[id]!.index].add(id);
     }
     _rarityVersion = version;
   }
 
-  /// A song's rarity, from how many streams it has overall and how it
-  /// compares with the artist's other songs. A superstar's deep cuts can be
-  /// Uncommon while their biggest hits are Legendary; a small artist's best
-  /// song tops out around Rare.
+  /// How big an artist is, 0 (tiny) … 1 (superstar).
   ///
-  /// Deezer's public API exposes a popularity `rank` (≈ stream volume,
-  /// 0–1,000,000) rather than raw stream counts, so that is the signal used.
-  static Rarity computeRarity(int rank, int artistMaxRank) {
-    final global = ((rank - 150000) / 800000).clamp(0.0, 1.0);
-    final rel = artistMaxRank <= 0 ? 1.0 : (rank / artistMaxRank).clamp(0.0, 1.0);
-    final fame = ((artistMaxRank - 350000) / 550000).clamp(0.0, 1.0);
-    final score = 0.5 * global + 0.3 * rel * rel * rel + 0.2 * fame;
-    if (score >= 0.9) return Rarity.legendary;
-    if (score >= 0.75) return Rarity.epic;
-    if (score >= 0.55) return Rarity.rare;
-    if (score >= 0.36) return Rarity.uncommon;
+  /// Uses Last.fm play counts of their biggest song when available
+  /// (≈50k plays → 0, ≈30M plays → 1), otherwise Deezer fans and track
+  /// popularity rank.
+  static double artistTier({int maxPlays = 0, int maxRank = 0, int fans = 0}) {
+    if (maxPlays > 0) return ((math.log(maxPlays) / math.ln10 - 4.7) / 2.8).clamp(0.0, 1.0);
+    final byRank = ((maxRank - 350000) / 550000).clamp(0.0, 1.0);
+    final byFans = fans > 0 ? ((math.log(fans) / math.ln10 - 4.0) / 2.7).clamp(0.0, 1.0) : 0.0;
+    return math.max(byRank, byFans);
+  }
+
+  /// Rarity from artist tier and the song's standing within the artist's
+  /// catalogue (0 = least played … 1 = most played).
+  ///
+  ///  * Tiny artists span Common → Rare (their best songs are Rare).
+  ///  * Superstars are mostly Epic/Legendary; only their least-played songs
+  ///    (deep cuts, remixes, edits) drop to Rare.
+  static Rarity rarityFor(double tier, double standing) {
+    final score = 0.5 * tier + 0.5 * standing.clamp(0.0, 1.0);
+    if (score >= 0.75) return Rarity.legendary;
+    if (score >= 0.56) return Rarity.epic;
+    if (score >= 0.37) return Rarity.rare;
+    if (score >= 0.2) return Rarity.uncommon;
     return Rarity.common;
   }
 
   Rarity rarityOf(Song s) {
     _ensureRarity();
-    return _rarityCache[s.id] ?? computeRarity(s.rank, _artistMaxRank[s.artistId] ?? s.rank);
+    return _rarityCache[s.id] ?? rarityFor(artistTier(maxRank: s.rank), 0.5);
+  }
+
+  // ------------------------------------------------------ favourites
+  /// Artist ids whose songs spawn 10× more often for this player.
+  Set<int> favoriteArtists = {};
+  static const favoriteBoost = 10.0;
+  int _favVersion = -1;
+  Set<int> _favKey = {};
+
+  /// genre → rarity → favourite-artist song ids within that pool.
+  final Map<int, List<List<int>>> _favPools = {};
+
+  void _ensureFavorites() {
+    _ensureRarity();
+    if (_favVersion == version && _favKey.length == favoriteArtists.length && _favKey.containsAll(favoriteArtists)) return;
+    _favPools.clear();
+    for (final e in _rarityPools.entries) {
+      _favPools[e.key] = [
+        for (final pool in e.value) [for (final id in pool) if (favoriteArtists.contains(songs[id]!.artistId)) id]
+      ];
+    }
+    _favVersion = version;
+    _favKey = {...favoriteArtists};
+  }
+
+  /// Makes every favourite-artist song [favoriteBoost]× as likely to spawn
+  /// as it normally would. A spawn normally picks a genre (weighted by
+  /// [bias]: zones, time of day) and then a song from that genre's pool of
+  /// the rolled rarity, so each song's normal chance is computed exactly and
+  /// the favourites' combined share is scaled up accordingly. Returns a
+  /// favourite song, or null to fall back to the normal pick.
+  Song? maybeFavorite(Rng rng, Rarity rarity, {Map<int, double> bias = const {}}) {
+    if (favoriteArtists.isEmpty) return null;
+    _ensureFavorites();
+    final r = rarity.index;
+    final available = [for (final g in kGenres) if (poolFor(g.id).isNotEmpty) g];
+    final totalW = available.fold<double>(0, (a, g) => a + g.weight * (bias[g.id] ?? 1.0));
+    if (totalW <= 0) return null;
+    final contrib = <(int, double)>[];
+    var f = 0.0; // normal probability that this spawn is a favourite song
+    final chosen = <int, int>{}; // genre → rarity pool actually used
+    for (final g in available) {
+      // Same nearest-rarity fallback as [pickSong] when a pool is empty.
+      final k = _nearestPool(g.id, r);
+      if (k == null) continue;
+      final pool = _rarityPools[g.id]![k];
+      final favs = _favPools[g.id]?[k] ?? const [];
+      if (favs.isEmpty) continue;
+      final c = g.weight * (bias[g.id] ?? 1.0) / totalW * favs.length / pool.length;
+      chosen[g.id] = k;
+      contrib.add((g.id, c));
+      f += c;
+    }
+    if (f <= 0 || f >= 1) return null;
+    final target = favoriteBoost * f / (1 + (favoriteBoost - 1) * f);
+    // The normal pick can still land on a favourite (probability f), so only
+    // the difference needs to be forced here.
+    final q = ((target - f) / (1 - f)).clamp(0.0, 1.0);
+    if (rng.nextDouble() >= q) return null;
+    var roll = rng.nextDouble() * f;
+    for (final (gid, c) in contrib) {
+      roll -= c;
+      if (roll <= 0 || gid == contrib.last.$1) {
+        final favs = _favPools[gid]![chosen[gid]!];
+        return songs[favs[rng.nextInt(favs.length)]];
+      }
+    }
+    return null;
+  }
+
+  /// Index of the pool [pickSong] would use for rarity [r] in a genre.
+  int? _nearestPool(int genre, int r) {
+    final pools = _rarityPools[genre];
+    if (pools == null) return null;
+    for (var d = 0; d < 5; d++) {
+      for (final k in d == 0 ? [r] : [r - d, r + d]) {
+        if (k >= 0 && k < 5 && pools[k].isNotEmpty) return k;
+      }
+    }
+    return null;
   }
 
   /// Number of known songs per rarity in a genre (for UI/odds).
@@ -308,6 +419,7 @@ class Catalog extends ChangeNotifier {
         } catch (_) {}
       }
       crawlStatus = '';
+      unawaited(backfillPlays());
     } finally {
       crawling = false;
       await _sink?.flush();
@@ -334,6 +446,91 @@ class Catalog extends ChangeNotifier {
       _write({'c': a.id});
     } catch (e) {
       debugPrint('artist ${a.id} failed: $e');
+    }
+  }
+
+  // ------------------------------------------------------ Last.fm plays
+  /// Optional Last.fm API key. When set, songs get all-time play counts
+  /// (a much better stream-count signal than Deezer rank) for rarity.
+  String lastFmKey = '';
+  final Set<int> _playsDone = {};
+  final http.Client _lfClient = http.Client();
+  bool _backfilling = false;
+
+  static String normalizeTitle(String t) {
+    var x = t.toLowerCase();
+    x = x.replaceAll(RegExp(r'\(.*?\)|\[.*?\]'), ' ');
+    x = x.split(' - ').first;
+    x = x.replaceAll(RegExp(r'\b(feat|ft|featuring)\b.*'), ' ');
+    return x.replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  }
+
+  /// Fetches Last.fm play counts for one artist's songs. Songs Last.fm
+  /// doesn't know (often remixes/edits) keep 0 plays and rank lowest.
+  Future<bool> fetchPlays(int artistId) async {
+    if (lastFmKey.isEmpty || _playsDone.contains(artistId)) return false;
+    final list = songs.values.where((s) => s.artistId == artistId).toList();
+    if (list.isEmpty) return false;
+    final uri = Uri.https('ws.audioscrobbler.com', '/2.0/', {
+      'method': 'artist.gettoptracks',
+      'artist': list.first.artistName,
+      'api_key': lastFmKey,
+      'format': 'json',
+      'limit': '1000',
+      'autocorrect': '1',
+    });
+    final res = await _lfClient.get(uri, headers: {'User-Agent': 'Tunetrail/0.3'}).timeout(const Duration(seconds: 20));
+    if (res.statusCode != 200) throw StateError('Last.fm HTTP ${res.statusCode}');
+    final j = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    if (j['error'] != null) throw StateError('Last.fm: ${j['message']}');
+    final plays = <String, int>{};
+    for (final t in ((j['toptracks'] as Map?)?['track'] as List? ?? const [])) {
+      final m = t as Map<String, dynamic>;
+      final k = normalizeTitle(m['name'] as String? ?? '');
+      final pc = int.tryParse('${m['playcount']}') ?? 0;
+      if (k.isNotEmpty && pc > (plays[k] ?? 0)) plays[k] = pc;
+    }
+    var changed = false;
+    for (final s in list) {
+      final pc = plays[normalizeTitle(s.title)] ?? 0;
+      if (pc > 0 && pc != s.plays) {
+        final u = s.withPlays(pc);
+        songs[s.id] = u;
+        _write({'s': u.toJson()});
+        changed = true;
+      }
+    }
+    _playsDone.add(artistId);
+    _write({'lf': artistId});
+    if (changed) {
+      version++;
+      notifyListeners();
+    }
+    return changed;
+  }
+
+  /// Fills in play counts for every artist in the catalogue (≈4 req/s).
+  Future<void> backfillPlays() async {
+    if (lastFmKey.isEmpty || _backfilling) return;
+    _backfilling = true;
+    try {
+      final counts = <int, int>{};
+      for (final s in songs.values) {
+        counts[s.artistId] = (counts[s.artistId] ?? 0) + 1;
+      }
+      final order = counts.keys.where((a) => !_playsDone.contains(a)).toList()..sort((a, b) => counts[b]!.compareTo(counts[a]!));
+      for (final a in order) {
+        if (lastFmKey.isEmpty) break;
+        try {
+          await fetchPlays(a);
+        } catch (e) {
+          debugPrint('last.fm $a: $e');
+          if ('$e'.contains('Invalid API key')) break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 260));
+      }
+    } finally {
+      _backfilling = false;
     }
   }
 
@@ -420,7 +617,8 @@ class Catalog extends ChangeNotifier {
 }
 
 class _ParsedCatalog {
-  _ParsedCatalog(this.songs, this.artists, this.crawled);
+  _ParsedCatalog(this.songs, this.artists, this.crawled, this.playsDone);
+  final List<int> playsDone;
   final List<Song> songs;
   final List<ArtistInfo> artists;
   final List<int> crawled;
@@ -430,6 +628,7 @@ _ParsedCatalog _parseCatalog(String text) {
   final songs = <int, Song>{};
   final artists = <int, ArtistInfo>{};
   final crawled = <int>[];
+  final playsDone = <int>[];
   for (final line in const LineSplitter().convert(text)) {
     if (line.isEmpty) continue;
     try {
@@ -442,10 +641,12 @@ _ParsedCatalog _parseCatalog(String text) {
         artists[a.id] = a;
       } else if (j['c'] != null) {
         crawled.add((j['c'] as num).toInt());
+      } else if (j['lf'] != null) {
+        playsDone.add((j['lf'] as num).toInt());
       }
     } catch (_) {
       // Ignore a torn final line from an interrupted write.
     }
   }
-  return _ParsedCatalog(songs.values.toList(), artists.values.toList(), crawled);
+  return _ParsedCatalog(songs.values.toList(), artists.values.toList(), crawled, playsDone);
 }

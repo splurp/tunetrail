@@ -120,11 +120,70 @@ void main() {
     }
   });
 
-  test('popularity rarity: superstar hits are rarer than deep cuts; small artists stay low', () {
-    expect(Catalog.computeRarity(990000, 1000000), Rarity.legendary);
-    expect(Catalog.computeRarity(500000, 1000000).index, inInclusiveRange(1, 2));
-    expect(Catalog.computeRarity(150000, 160000), Rarity.common);
-    expect(Catalog.computeRarity(480000, 480000).index, lessThanOrEqualTo(Rarity.rare.index));
+  test('rarity spread: tiny artists Common–Rare, superstars mostly Epic/Legendary', () {
+    List<Rarity> spread(double tier) => [for (var i = 0; i < 20; i++) Catalog.rarityFor(tier, i / 19)];
+    final tiny = spread(0);
+    expect(tiny.toSet(), {Rarity.common, Rarity.uncommon, Rarity.rare});
+    final star = spread(1);
+    expect(star.where((r) => r.index >= Rarity.epic.index).length, greaterThanOrEqualTo(16));
+    expect(star.first, Rarity.rare);
+    expect(star.last, Rarity.legendary);
+  });
+
+  test('play counts decide a superstar\'s rarities (Stronger beats Bound 2)', () async {
+    final c = Catalog(DeezerApi(), dir);
+    await c.load();
+    Song k(int id, String t, int rank, int plays) =>
+        Song(id: id, title: t, artistId: 230, artistName: 'Kanye West', albumId: 1, albumTitle: 'A', coverMd5: '', genreId: 116, rank: rank, plays: plays);
+    c.addSongs([
+      k(1, 'Stronger', 649848, 31000000),
+      k(2, 'Runaway', 870128, 21000000),
+      k(3, 'Bound 2', 777130, 22000000),
+      for (var i = 0; i < 17; i++) k(10 + i, 'Song $i', 500000 + i * 1000, 3000000 + i * 500000),
+      k(40, 'Stronger (Radio Edit)', 300000, 150000),
+    ]);
+    expect(c.rarityOf(c.songs[1]!), Rarity.legendary);
+    expect(c.rarityOf(c.songs[3]!), Rarity.legendary);
+    expect(c.rarityOf(c.songs[40]!), Rarity.rare);
+  });
+
+  test('favourite artists spawn ~10x more often per song', () async {
+    // Realistically sized pools: 24k songs, 600 artists × 40 songs.
+    final cat = Catalog(DeezerApi(), dir);
+    await cat.load();
+    final genres = [for (final g in kGenres) g.id];
+    cat.addSongs([
+      for (var i = 1; i <= 24000; i++)
+        Song(
+          id: i,
+          title: 'S$i',
+          artistId: i % 600,
+          artistName: 'A${i % 600}',
+          albumId: 1,
+          albumTitle: '',
+          coverMd5: '',
+          genreId: genres[i % genres.length],
+          rank: (i * 104729) % 1000000,
+        )
+    ]);
+    final e = SpawnEngine(cat);
+    (int, int) sample() {
+      var fav = 0, total = 0;
+      for (var w = 0; w < 300; w++) {
+        for (final s in e.around(const LatLng(40.758, -73.9855), now: DateTime(2026, 1, 1).add(Duration(minutes: 15 * w)))) {
+          total++;
+          if (s.song.artistId == 7) fav++;
+        }
+      }
+      return (fav, total);
+    }
+
+    final (before, n1) = sample();
+    cat.favoriteArtists = {7};
+    final (after, n2) = sample();
+    final ratio = (after / n2) / (before / n1);
+    expect(ratio, greaterThan(6));
+    expect(ratio, lessThan(14));
   });
 
   test('song json round trip and cdn urls', () {

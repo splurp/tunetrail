@@ -160,6 +160,10 @@ Router buildRouter(MarketEngine m) {
             [
               for (final p in (b['playlists'] as List? ?? const []))
                 ShowcasePlaylist.fromJson(p as Map<String, dynamic>)
+            ],
+            favoriteArtists: [
+              for (final a in (b['favArtists'] as List? ?? const []))
+                FavoriteArtist.fromJson(a as Map<String, dynamic>)
             ]);
         return ok(s.toJson());
       }));

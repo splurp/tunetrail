@@ -64,13 +64,13 @@ jobs:
           TUNETRAIL_KEYSTORE_PASSWORD: ${{ secrets.TUNETRAIL_KEYSTORE_PASSWORD }}
           TUNETRAIL_KEY_ALIAS: ${{ secrets.TUNETRAIL_KEY_ALIAS }}
           TUNETRAIL_KEY_PASSWORD: ${{ secrets.TUNETRAIL_KEY_PASSWORD }}
-        run: flutter build apk --release --no-tree-shake-icons
+        run: flutter build apk --release --no-tree-shake-icons --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
       - name: Build per-ABI APKs (smaller downloads)
         env:
           TUNETRAIL_KEYSTORE_PASSWORD: ${{ secrets.TUNETRAIL_KEYSTORE_PASSWORD }}
           TUNETRAIL_KEY_ALIAS: ${{ secrets.TUNETRAIL_KEY_ALIAS }}
           TUNETRAIL_KEY_PASSWORD: ${{ secrets.TUNETRAIL_KEY_PASSWORD }}
-        run: flutter build apk --release --split-per-abi --no-tree-shake-icons
+        run: flutter build apk --release --split-per-abi --no-tree-shake-icons --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
       - name: Collect APKs
         run: |
           mkdir -p dist
@@ -94,7 +94,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build windows --release --no-tree-shake-icons
+      - run: flutter build windows --release --no-tree-shake-icons --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
       - name: Package portable zip
         shell: pwsh
         run: |
@@ -110,8 +110,33 @@ jobs:
           name: tunetrail-windows
           path: dist/*
 
+  linux:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build linux --release --no-tree-shake-icons --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
+      - name: Package tarball
+        run: |
+          mkdir -p dist
+          tar -C build/linux/x64/release/bundle -czf dist/Tunetrail-linux-x64.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunetrail-linux
+          path: dist/*
+
   release:
-    needs: [android, windows]
+    needs: [android, windows, linux]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -130,6 +155,7 @@ jobs:
             Developer build of Tunetrail from `${{ github.ref_name }}` @ ${{ github.sha }}.
 
             **Windows:** download `Tunetrail-windows-x64-setup.exe` (installer) or the portable `Tunetrail-windows-x64.zip` (extract, then run `Tunetrail.exe`).
+            **Linux:** download `Tunetrail-linux-x64.tar.gz`, extract it and run `./tunetrail` (needs GTK 3 and GStreamer with the "good" plugins for audio).
             **Android:** download `Tunetrail-android-universal.apk` (or the smaller `arm64` APK for most modern phones) and allow installs from unknown sources.
 
             The debug menu is in Profile → Settings → Debug menu.

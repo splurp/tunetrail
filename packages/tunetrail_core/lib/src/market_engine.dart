@@ -298,7 +298,8 @@ class MarketEngine {
 
   // -------------------------------------------------------------- showcases
   Showcase setShowcase(String playerId, String title, List<CardPayload> cards,
-      List<ShowcasePlaylist> playlists) {
+      List<ShowcasePlaylist> playlists, {List<FavoriteArtist> favoriteArtists = const []}) {
+    if (favoriteArtists.length > kMaxFavoriteArtists) throw MarketException('Up to $kMaxFavoriteArtists favourite artists');
     if (cards.length > 24) throw MarketException('Showcase holds up to 24 cards');
     final s = Showcase(
       playerId: playerId,
@@ -308,6 +309,7 @@ class MarketEngine {
       playlists: playlists,
       updatedAt: now(),
       likes: showcases[playerId]?.likes ?? 0,
+      favoriteArtists: favoriteArtists,
     );
     showcases[playerId] = s;
     _changed();

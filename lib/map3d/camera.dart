@@ -40,8 +40,9 @@ class Camera3D {
     cx = size.width / 2;
     cy = size.height * 0.64;
     // Focal length chosen so that at the standard pitch the horizon sits
-    // ~6% from the top; steeper (overhead) pitches push it off-screen.
-    focal = (cy - size.height * 0.06) / math.tan(basePitch * math.pi / 180);
+    // ~20% from the top (leaving a band of sky); steeper (overhead) pitches
+    // push it off-screen.
+    focal = (cy - size.height * 0.2) / math.tan(basePitch * math.pi / 180);
     // Clip comfortably in front of the camera, but far enough back to cover
     // everything visible below the player.
     yNear = -0.6 * distance * distance / math.max(1.0, _b);

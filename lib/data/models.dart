@@ -32,6 +32,7 @@ class Song {
     this.genreId = 0,
     this.rank = 0,
     this.duration = 0,
+    this.plays = 0,
   });
 
   final int id;
@@ -45,6 +46,25 @@ class Song {
   final int genreId;
   final int rank;
   final int duration;
+
+  /// All-time play count from Last.fm (0 = unknown). Used for rarity when
+  /// available; Deezer's [rank] is the fallback popularity signal.
+  final int plays;
+
+  Song withPlays(int p) => Song(
+        id: id,
+        title: title,
+        artistId: artistId,
+        artistName: artistName,
+        albumId: albumId,
+        albumTitle: albumTitle,
+        coverMd5: coverMd5,
+        artistPicMd5: artistPicMd5,
+        genreId: genreId,
+        rank: rank,
+        duration: duration,
+        plays: p,
+      );
 
   String cover([int size = 250]) => coverUrl(coverMd5, size: size);
 
@@ -60,6 +80,7 @@ class Song {
         if (genreId != 0) 'g': genreId,
         if (rank != 0) 'r': rank,
         if (duration != 0) 'd': duration,
+        if (plays != 0) 'pl': plays,
       };
 
   factory Song.fromJson(Map<String, dynamic> j) => Song(
@@ -74,6 +95,7 @@ class Song {
         genreId: (j['g'] as num?)?.toInt() ?? 0,
         rank: (j['r'] as num?)?.toInt() ?? 0,
         duration: (j['d'] as num?)?.toInt() ?? 0,
+        plays: (j['pl'] as num?)?.toInt() ?? 0,
       );
 
   /// Parses a Deezer track object (from charts, top tracks, albums...).

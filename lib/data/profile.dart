@@ -73,6 +73,9 @@ class PlayerProfile extends ChangeNotifier {
   /// Spawn ids caught/fled recently → expiry (ms epoch).
   Map<String, int> spentSpawns = {};
 
+  /// Favourite artists (shown on the profile/showcase; 10× spawn weight).
+  List<FavoriteArtist> favoriteArtists = [];
+
   // Showcase.
   String showcaseTitle = '';
   List<int> showcaseCards = [];
@@ -91,6 +94,12 @@ class PlayerProfile extends ChangeNotifier {
   MarketMode marketMode = MarketMode.local;
   String serverUrl = 'http://localhost:8080';
   String tileUrl = '';
+
+  /// Last.fm API key (optional) for play-count based rarity. Defaults to the
+  /// key baked in at build time with --dart-define=LASTFM_API_KEY=...
+  String lastFmKey = '';
+  static const builtInLastFmKey = String.fromEnvironment('LASTFM_API_KEY');
+  String get effectiveLastFmKey => lastFmKey.isNotEmpty ? lastFmKey : builtInLastFmKey;
   double volume = 0.8;
   bool playOnEncounter = true;
 
@@ -166,6 +175,7 @@ class PlayerProfile extends ChangeNotifier {
         'questsClaimed': questsClaimed.toList(),
         'questDay': questDay,
         'spent': spentSpawns,
+        'favArtists': [for (final a in favoriteArtists) a.toJson()],
         'showcaseTitle': showcaseTitle,
         'showcaseCards': showcaseCards,
         'showcasePlaylists': showcasePlaylists,
@@ -179,6 +189,7 @@ class PlayerProfile extends ChangeNotifier {
         'marketMode': marketMode.index,
         'server': serverUrl,
         'tileUrl': tileUrl,
+        'lastFmKey': lastFmKey,
         'volume': volume,
         'playOnEncounter': playOnEncounter,
         'reduceEffects': reduceEffects,
@@ -224,6 +235,7 @@ class PlayerProfile extends ChangeNotifier {
       for (final e in (j['spent'] as Map<String, dynamic>? ?? const {}).entries)
         if ((e.value as num).toInt() > now) e.key: (e.value as num).toInt()
     };
+    favoriteArtists = [for (final a in (j['favArtists'] as List? ?? const [])) FavoriteArtist.fromJson(a as Map<String, dynamic>)];
     showcaseTitle = j['showcaseTitle'] as String? ?? '';
     showcaseCards = [for (final x in (j['showcaseCards'] as List? ?? const [])) (x as num).toInt()];
     showcasePlaylists = [for (final x in (j['showcasePlaylists'] as List? ?? const [])) x as String];
@@ -237,6 +249,7 @@ class PlayerProfile extends ChangeNotifier {
     marketMode = MarketMode.values[((j['marketMode'] as num?)?.toInt() ?? 0).clamp(0, 1)];
     serverUrl = j['server'] as String? ?? serverUrl;
     tileUrl = j['tileUrl'] as String? ?? '';
+    lastFmKey = j['lastFmKey'] as String? ?? '';
     volume = (j['volume'] as num?)?.toDouble() ?? volume;
     playOnEncounter = j['playOnEncounter'] as bool? ?? true;
     reduceEffects = j['reduceEffects'] as bool? ?? false;

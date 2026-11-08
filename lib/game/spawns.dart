@@ -87,8 +87,9 @@ class SpawnEngine {
       final rolled = rng.rollRarity();
       final shiny = rng.chance(kShinyOdds);
       final zb = zoneBias?.call(lat, lng);
-      final genre = catalog.pickGenre(rng, bias: zb == null || zb.isEmpty ? bias : _combine(bias, zb));
-      final song = catalog.pickSong(rng, genreId: genre, rarity: rolled);
+      final weights = zb == null || zb.isEmpty ? bias : _combine(bias, zb);
+      final genre = catalog.pickGenre(rng, bias: weights);
+      final song = catalog.maybeFavorite(rng, rolled, bias: weights) ?? catalog.pickSong(rng, genreId: genre, rarity: rolled);
       if (song == null || exclude.contains(id)) continue;
       final rarity = catalog.rarityOf(song);
       out.add(Spawn(

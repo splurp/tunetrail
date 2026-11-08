@@ -38,7 +38,7 @@ class SpawnMarker extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Opacity(
-        opacity: inRange ? 1 : 0.8,
+        opacity: inRange ? 1 : 0.42,
         child: Stack(alignment: Alignment.bottomCenter, clipBehavior: Clip.none, children: [
           // Ground shadow.
           Positioned(

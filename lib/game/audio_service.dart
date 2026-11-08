@@ -52,7 +52,13 @@ class AudioService extends ChangeNotifier {
 
   Future<void> playOne(int songId) => playQueue([songId]);
 
+  /// Incremented by every play/stop request; a slow preview lookup that
+  /// finishes after a newer request (or a stop) is discarded instead of
+  /// starting to play late.
+  int _request = 0;
+
   Future<void> _playCurrent() async {
+    final req = ++_request;
     final id = queue[index];
     loading = true;
     error = null;
@@ -60,6 +66,7 @@ class AudioService extends ChangeNotifier {
     notifyListeners();
     try {
       final url = await _url(id);
+      if (req != _request) return;
       if (url == null) {
         error = 'No preview available';
         loading = false;
@@ -68,7 +75,12 @@ class AudioService extends ChangeNotifier {
         return;
       }
       await _player.stop();
+      if (req != _request) return;
       await _player.play(UrlSource(url));
+      if (req != _request) {
+        await _player.stop();
+        return;
+      }
       playing = true;
     } catch (e) {
       error = 'Playback failed';
@@ -110,6 +122,8 @@ class AudioService extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _request++;
+    loading = false;
     await _player.stop();
     playing = false;
     queue = [];

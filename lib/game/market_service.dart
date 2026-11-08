@@ -26,7 +26,7 @@ abstract class MarketBackend {
   Future<void> declineOffer(String offerId);
   Future<List<InboxItem>> claimInbox();
   Future<List<Showcase>> showcases();
-  Future<Showcase> setShowcase(String title, List<CardPayload> cards, List<ShowcasePlaylist> playlists);
+  Future<Showcase> setShowcase(String title, List<CardPayload> cards, List<ShowcasePlaylist> playlists, {List<FavoriteArtist> favoriteArtists = const []});
   Future<int> likeShowcase(String ownerId);
   void dispose() {}
 }
@@ -202,8 +202,8 @@ class LocalMarket extends MarketBackend {
   @override
   Future<List<Showcase>> showcases() async => engine.browseShowcases();
   @override
-  Future<Showcase> setShowcase(String title, List<CardPayload> cards, List<ShowcasePlaylist> playlists) async =>
-      engine.setShowcase(playerId, title, cards, playlists);
+  Future<Showcase> setShowcase(String title, List<CardPayload> cards, List<ShowcasePlaylist> playlists, {List<FavoriteArtist> favoriteArtists = const []}) async =>
+      engine.setShowcase(playerId, title, cards, playlists, favoriteArtists: favoriteArtists);
   @override
   Future<int> likeShowcase(String ownerId) async => engine.likeShowcase(playerId, ownerId);
 
@@ -298,11 +298,12 @@ class RemoteMarket extends MarketBackend {
   @override
   Future<List<Showcase>> showcases() async => _list(await _send('GET', '/showcases'), Showcase.fromJson);
   @override
-  Future<Showcase> setShowcase(String title, List<CardPayload> cards, List<ShowcasePlaylist> playlists) async =>
+  Future<Showcase> setShowcase(String title, List<CardPayload> cards, List<ShowcasePlaylist> playlists, {List<FavoriteArtist> favoriteArtists = const []}) async =>
       Showcase.fromJson(await _send('PUT', '/showcases/me', body: {
         'title': title,
         'cards': [for (final c in cards) c.toJson()],
         'playlists': [for (final p in playlists) p.toJson()],
+        'favArtists': [for (final a in favoriteArtists) a.toJson()],
       }) as Map<String, dynamic>);
   @override
   Future<int> likeShowcase(String ownerId) async =>

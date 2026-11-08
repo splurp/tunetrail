@@ -93,7 +93,10 @@ class Game extends ChangeNotifier {
     await _connectMarket();
     _resetDailyIfNeeded();
     unawaited(location.start());
+    catalog.lastFmKey = profile.effectiveLastFmKey;
+    catalog.favoriteArtists = {for (final a in profile.favoriteArtists) a.id};
     unawaited(catalog.crawl());
+    unawaited(catalog.backfillPlays());
     _tick = Timer.periodic(const Duration(seconds: 5), (_) => _refreshSpawns());
     _inboxTimer = Timer.periodic(const Duration(seconds: 15), (_) => syncInbox());
     _refreshSpawns(force: true);
@@ -259,7 +262,7 @@ class Game extends ChangeNotifier {
           for (final u in p.cardUids.take(50)) ?collection.byUid(u)?.toPayload()
         ])
     ];
-    await market.setShowcase(profile.showcaseTitle, cards, pls);
+    await market.setShowcase(profile.showcaseTitle, cards, pls, favoriteArtists: profile.favoriteArtists);
   }
 
   // ---------------------------------------------------------------- spawns
@@ -537,6 +540,40 @@ class Game extends ChangeNotifier {
   Future<void> playPlaylist(Playlist p, {int start = 0}) {
     final ids = [for (final u in p.cardUids) ?collection.byUid(u)?.song.id];
     return audio.playQueue(ids, start: start, name: p.name);
+  }
+
+  bool isFavoriteArtist(int id) => profile.favoriteArtists.any((a) => a.id == id);
+
+  /// Adds/removes a favourite artist. Their songs then spawn 10× as often
+  /// for this player, and the list is shown on the player's public showcase.
+  Future<void> toggleFavoriteArtist(int id, String name, String picMd5) async {
+    if (isFavoriteArtist(id)) {
+      profile.favoriteArtists.removeWhere((a) => a.id == id);
+    } else {
+      if (profile.favoriteArtists.length >= kMaxFavoriteArtists) {
+        toast('You can pick up to $kMaxFavoriteArtists favourite artists');
+        return;
+      }
+      profile.favoriteArtists.add(FavoriteArtist(id: id, name: name, picMd5: picMd5));
+      // Make sure their songs are in the catalogue so they can spawn.
+      try {
+        await catalog.topTracks(id);
+        unawaited(catalog.fetchPlays(id).catchError((_) => false));
+      } catch (_) {}
+    }
+    catalog.favoriteArtists = {for (final a in profile.favoriteArtists) a.id};
+    profile.changed();
+    _refreshSpawns(force: true);
+    // Keep the public profile in sync.
+    unawaited(publishShowcase().catchError((_) {}));
+  }
+
+  void setLastFmKey(String key) {
+    profile.lastFmKey = key.trim();
+    profile.changed();
+    catalog.lastFmKey = profile.effectiveLastFmKey;
+    catalog.favoriteArtists = {for (final a in profile.favoriteArtists) a.id};
+    unawaited(catalog.backfillPlays());
   }
 
   // ----------------------------------------------------------------- debug

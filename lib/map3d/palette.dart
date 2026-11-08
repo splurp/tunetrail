@@ -23,12 +23,17 @@ class MapPalette {
     required this.skyTop,
     required this.skyBottom,
     required this.accent,
+    this.checker,
   });
 
   final Color ground, field, forest, park, sand, campus, parking, plaza, water;
   final Color roadMinor, roadMajor, roadHighway;
   final Color buildingWall, buildingRoof, buildingEdge;
   final Color skyTop, skyBottom, accent;
+
+  /// When set, the ground is a world-anchored checkerboard of [ground] and
+  /// this colour (used by Vaporwave).
+  final Color? checker;
 
   Color layer(GroundLayer l) => switch (l) {
         GroundLayer.field => field,
@@ -125,9 +130,10 @@ const kVaporwave = MapPalette(
   buildingWall: Color(0xFFB7A2E8),
   buildingRoof: Color(0xFFD9CCF7),
   buildingEdge: Color(0x88FFFFFF),
-  skyTop: Color(0xFFFFB4E1),
-  skyBottom: Color(0xFFF5E6FF),
+  skyTop: Color(0xFFFF9ED8),
+  skyBottom: Color(0xFFB9F2F0),
   accent: Color(0xFF48DBFB),
+  checker: Color(0xFFDFC6EC),
 );
 
 const kNoir = MapPalette(

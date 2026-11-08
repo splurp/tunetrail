@@ -201,6 +201,9 @@ class HomeShell extends StatefulWidget {
 
   static void goTo(BuildContext context, int tab) => context.findAncestorStateOfType<_HomeShellState>()?.setTab(tab);
 
+  /// The currently visible tab (0 = map).
+  static final ValueNotifier<int> currentTab = ValueNotifier(0);
+
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
@@ -214,6 +217,7 @@ class _HomeShellState extends State<HomeShell> with SingleTickerProviderStateMix
   void setTab(int t) => setState(() {
         _tab = t;
         _built.add(t);
+        HomeShell.currentTab.value = t;
       });
 
   @override
