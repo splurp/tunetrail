@@ -335,3 +335,54 @@ class _Panel extends StatelessWidget {
     );
   }
 }
+
+/// True for landscape layouts with room for side-by-side panes (PC windows,
+/// tablets in landscape).
+bool isWideLayout(BuildContext context) {
+  final s = MediaQuery.sizeOf(context);
+  return s.width >= 900 && s.width > s.height;
+}
+
+/// Lays sections out as independently scrolling panes side by side on wide
+/// screens, or as one scrolling column on phones — so wide windows use the
+/// space instead of stretching a phone layout.
+class AdaptivePanes extends StatelessWidget {
+  const AdaptivePanes({super.key, required this.panes, this.padding = const EdgeInsets.all(16), this.flex});
+  final List<List<Widget>> panes;
+  final EdgeInsets padding;
+
+  /// Relative widths of the panes on wide screens.
+  final List<int>? flex;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isWideLayout(context)) {
+      return ListView(padding: padding, children: [for (final p in panes) ...p]);
+    }
+    final w = MediaQuery.sizeOf(context).width;
+    // Two panes on smaller landscape windows: merge the extras into the last.
+    final maxPanes = w >= 1300 ? 3 : 2;
+    final shown = <List<Widget>>[
+      ...panes.take(maxPanes - 1),
+      [for (final p in panes.skip(maxPanes - 1)) ...p],
+    ].where((p) => p.isNotEmpty).toList();
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      for (var i = 0; i < shown.length; i++) ...[
+        if (i > 0) const VerticalDivider(width: 1, color: kOutline),
+        Expanded(
+          flex: flex != null && i < flex!.length ? flex![i] : 1,
+          child: ListView(padding: padding, children: shown[i]),
+        ),
+      ],
+    ]);
+  }
+}
+
+/// Centres content at a readable width on wide screens.
+class ContentWidth extends StatelessWidget {
+  const ContentWidth({super.key, required this.child, this.maxWidth = 820});
+  final Widget child;
+  final double maxWidth;
+  @override
+  Widget build(BuildContext context) => Center(child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: child));
+}

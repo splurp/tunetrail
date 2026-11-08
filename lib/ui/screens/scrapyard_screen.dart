@@ -48,7 +48,7 @@ class _ScrapyardScreenState extends State<ScrapyardScreen> {
     final total = cards.fold<int>(0, (a, c) => a + g.scrapValueOf(c));
     return Scaffold(
       appBar: AppBar(title: const Text('Scrapyard')),
-      body: Column(children: [
+      body: ContentWidth(maxWidth: 900, child: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Container(
@@ -142,7 +142,7 @@ class _ScrapyardScreenState extends State<ScrapyardScreen> {
             ),
           ),
         ),
-      ]),
+      ])),
     );
   }
 }

@@ -21,7 +21,7 @@ class QuestsScreen extends StatelessWidget {
           title: const Text('Quests'),
           bottom: const TabBar(tabs: [Tab(text: 'Daily'), Tab(text: 'Unlocks'), Tab(text: 'Milestones')]),
         ),
-        body: TabBarView(children: [
+        body: ContentWidth(maxWidth: 900, child: TabBarView(children: [
           _QuestList(quests: g.dailyQuests, header: 'Resets every day at midnight'),
           _QuestList(
             quests: g.unlockQuests,
@@ -29,7 +29,7 @@ class QuestsScreen extends StatelessWidget {
                 'Album completion quests live on each album page.',
           ),
           _QuestList(quests: g.milestoneQuests),
-        ]),
+        ])),
       ),
     );
   }

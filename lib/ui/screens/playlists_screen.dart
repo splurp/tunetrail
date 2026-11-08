@@ -24,7 +24,7 @@ class PlaylistsScreen extends StatelessWidget {
           if (n != null && n.isNotEmpty) g.createPlaylist(n);
         },
       ),
-      body: lists.isEmpty
+      body: ContentWidth(maxWidth: 900, child: lists.isEmpty
           ? const Center(child: Text('No playlists yet.\nBuild one from songs you own!', textAlign: TextAlign.center))
           : ListView.builder(
               itemCount: lists.length,
@@ -39,7 +39,7 @@ class PlaylistsScreen extends StatelessWidget {
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PlaylistScreen(playlist: p))),
                 );
               },
-            ),
+            )),
     );
   }
 }
@@ -84,7 +84,7 @@ class PlaylistScreen extends StatelessWidget {
           }
         },
       ),
-      body: Column(children: [
+      body: ContentWidth(maxWidth: 900, child: Column(children: [
         Padding(
           padding: const EdgeInsets.all(12),
           child: Row(children: [
@@ -119,7 +119,7 @@ class PlaylistScreen extends StatelessWidget {
             },
           ),
         ),
-      ]),
+      ])),
     );
   }
 }

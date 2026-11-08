@@ -30,7 +30,7 @@ class ShopScreen extends StatelessWidget {
           ],
           bottom: const TabBar(tabs: [Tab(text: 'Packs'), Tab(text: 'Bits'), Tab(text: 'Map themes'), Tab(text: 'Style')]),
         ),
-        body: Column(children: [
+        body: ContentWidth(maxWidth: 1100, child: Column(children: [
           if (free)
             Container(
               width: double.infinity,
@@ -39,7 +39,7 @@ class ShopScreen extends StatelessWidget {
               child: const Text('DEBUG: real-money purchases are free (no charge)', textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
             ),
           const Expanded(child: TabBarView(children: [_Packs(), _Bits(), _Themes(), _Style()])),
-        ]),
+        ])),
       ),
     );
   }

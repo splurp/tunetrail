@@ -30,7 +30,7 @@ class _DebugScreenState extends State<DebugScreen> {
     final p = g.profile;
     return Scaffold(
       appBar: AppBar(title: const Text('Debug menu')),
-      body: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
+      body: ContentWidth(maxWidth: 900, child: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
         const _H('Balances'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -183,7 +183,7 @@ class _DebugScreenState extends State<DebugScreen> {
         ),
         if (_generating) const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator()),
         const SizedBox(height: 24),
-      ]),
+      ])),
     );
   }
 }
@@ -258,7 +258,7 @@ class _TeleportScreenState extends State<TeleportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Teleport')),
-      body: ListView(padding: const EdgeInsets.all(12), children: [
+      body: ContentWidth(maxWidth: 900, child: ListView(padding: const EdgeInsets.all(12), children: [
         TextField(
           controller: _q,
           autofocus: true,
@@ -281,7 +281,7 @@ class _TeleportScreenState extends State<TeleportScreen> {
           padding: EdgeInsets.all(8),
           child: Text('Search by OpenStreetMap Nominatim', style: TextStyle(fontSize: 11, color: Colors.white38)),
         ),
-      ]),
+      ])),
     );
   }
 }
@@ -335,7 +335,7 @@ class _SpawnSongScreenState extends State<SpawnSongScreen> {
     final g = GameScope.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Spawn a song')),
-      body: Column(children: [
+      body: ContentWidth(maxWidth: 900, child: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
           child: TextField(
@@ -393,7 +393,7 @@ class _SpawnSongScreenState extends State<SpawnSongScreen> {
             },
           ),
         ),
-      ]),
+      ])),
     );
   }
 }

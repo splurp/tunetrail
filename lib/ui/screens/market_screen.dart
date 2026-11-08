@@ -33,7 +33,7 @@ class MarketScreen extends StatelessWidget {
             Tab(text: 'Showcases'),
           ]),
         ),
-        body: Column(children: [
+        body: ContentWidth(maxWidth: 1000, child: Column(children: [
           Container(
             width: double.infinity,
             color: kBg,
@@ -41,7 +41,7 @@ class MarketScreen extends StatelessWidget {
             child: Text(g.market.label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
           ),
           const Expanded(child: TabBarView(children: [_Browse(), _MyListings(), _Offers(), _Showcases()])),
-        ]),
+        ])),
       ),
     );
   }

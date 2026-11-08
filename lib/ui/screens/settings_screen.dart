@@ -22,7 +22,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final p = g.profile;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: ListView(children: [
+      body: AdaptivePanes(padding: const EdgeInsets.symmetric(vertical: 8), panes: [
+       [
         const _Header('Audio'),
         ListTile(
           title: const Text('Preview volume'),
@@ -67,6 +68,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           trailing: const Tooltip(message: 'If the ring lands before the beat you hear, move this right (later).', child: Icon(Icons.info_outline, size: 18)),
         ),
+       ],
+       [
         const _Header('Graphics'),
         SwitchListTile(
           title: const Text('Reduce map effects'),
@@ -107,6 +110,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }
           },
         ),
+       ],
+       [
         const _Header('Market'),
         ListTile(
           title: const Text('Quick-list presets'),
@@ -157,6 +162,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         ListTile(title: const Text('Player ID'), subtitle: SelectableText(p.playerId)),
         const SizedBox(height: 24),
+       ],
       ]),
     );
   }

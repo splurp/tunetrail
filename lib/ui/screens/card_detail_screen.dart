@@ -34,8 +34,17 @@ class CardDetailScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        Center(child: SongCardView(song: s, rarity: card.rarity, shiny: card.shiny, edition: card.edition, serial: card.serial, width: w.clamp(200, 340) * 0.85)),
+      body: AdaptivePanes(flex: const [4, 5], panes: [
+       [
+        Center(
+            child: SongCardView(
+                song: s,
+                rarity: card.rarity,
+                shiny: card.shiny,
+                edition: card.edition,
+                serial: card.serial,
+                // On wide screens the card gets its own pane, sized by height.
+                width: isWideLayout(context) ? ((MediaQuery.sizeOf(context).height - 200) / 1.5).clamp(260.0, 460.0) : w.clamp(200, 340) * 0.85)),
         const SizedBox(height: 18),
         Wrap(alignment: WrapAlignment.center, spacing: 10, runSpacing: 10, children: [
           if (card.edition == Edition.sample && SampleLibrary.of(s.id) != null)
@@ -58,7 +67,9 @@ class CardDetailScreen extends StatelessWidget {
             label: const Text('Playlist'),
           ),
         ]),
-        const SizedBox(height: 18),
+       ],
+       [
+        if (!isWideLayout(context)) const SizedBox(height: 18),
         _InfoRow('Collected', '${card.acquiredAt.toLocal()}'.split('.').first),
         _InfoRow('Source', switch (card.source) {
           CardSource.wild => 'Caught in the wild',
@@ -153,6 +164,7 @@ class CardDetailScreen extends StatelessWidget {
           icon: const Icon(Icons.recycling_rounded, size: 18),
           label: const Text('Scrap for coins'),
         ),
+       ],
       ]),
     );
   }

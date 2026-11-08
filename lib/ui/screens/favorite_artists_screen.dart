@@ -49,7 +49,7 @@ class _FavoriteArtistsScreenState extends State<FavoriteArtistsScreen> {
     final favs = g.profile.favoriteArtists;
     return Scaffold(
       appBar: AppBar(title: const Text('Favourite artists')),
-      body: ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
+      body: ContentWidth(maxWidth: 820, child: ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
         const Text('Shown on your profile for other players. Songs by your favourites spawn 10× more often for you.',
             style: TextStyle(color: kTextSecondary, fontSize: 13)),
         SectionLabel('Your favourites  ${favs.length}'),
@@ -92,7 +92,7 @@ class _FavoriteArtistsScreenState extends State<FavoriteArtistsScreen> {
               onPressed: () => _toggle(a.id, a.name, a.picMd5),
             ),
           ),
-      ]),
+      ])),
     );
   }
 }

@@ -77,6 +77,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _onTick(Duration d) {
+    _pollMouseLook();
     _clock.value = d.inMicroseconds / 1e6;
     if (!mounted) return;
     final g = GameScope.read(context);
@@ -136,39 +137,53 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// Desktop: Alt toggles a captured, hidden cursor; moving the mouse turns
   /// the camera like a PC game (no click-and-drag needed).
   bool _mouseLook = false;
-  bool _skipHover = false;
   static bool get _isDesktop => !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
   void _setMouseLook(bool on) {
     if (on == _mouseLook) return;
     setState(() => _mouseLook = on);
-    if (on) _recenterCursor(null);
+    _lookCenter = null;
+    if (on) _initLookCenter();
   }
 
-  void _recenterCursor(Offset? local) {
+  /// Screen-pixel centre the cursor is held at while mouse-look is on.
+  (int, int)? _lookCenter;
+  Offset _lastHover = Offset.zero;
+
+  void _initLookCenter() {
     final ctl = CursorControl.instance;
     final pos = ctl?.position();
-    if (ctl == null || pos == null || !mounted) return;
-    final size = MediaQuery.sizeOf(context);
+    final box = context.findRenderObject() as RenderBox?;
+    if (ctl == null || pos == null || box == null || !mounted) return;
     final dpr = MediaQuery.devicePixelRatioOf(context);
-    final center = Offset(size.width / 2, size.height / 2);
-    final cur = local ?? center;
-    ctl.warp((pos.$1 - (cur.dx - center.dx) * dpr).round(), (pos.$2 - (cur.dy - center.dy) * dpr).round());
-    _skipHover = local != null;
+    final center = box.size.center(Offset.zero);
+    // OS position of the widget centre, from where the pointer is now.
+    final c = ((pos.$1 + (center.dx - _lastHover.dx) * dpr).round(), (pos.$2 + (center.dy - _lastHover.dy) * dpr).round());
+    ctl.warp(c.$1, c.$2);
+    _lookCenter = c;
+  }
+
+  /// Polled once per frame: how far the OS cursor moved from the held
+  /// centre turns the camera, then it is put back. Using the OS position
+  /// (not Flutter's hover deltas, which include the warp's own jump and
+  /// arrive late) keeps turning smooth.
+  void _pollMouseLook() {
+    final c = _lookCenter;
+    final ctl = CursorControl.instance;
+    if (!_mouseLook || c == null || ctl == null) return;
+    final p = ctl.position();
+    if (p == null) return;
+    final dx = (p.$1 - c.$1).toDouble(), dy = (p.$2 - c.$2).toDouble();
+    if (dx == 0 && dy == 0) return;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    _cam.bearing = (_cam.bearing + dx / dpr * 0.22) % 360;
+    _cam.pitch = (_cam.pitch - dy / dpr * 0.08).clamp(28.0, 58.0);
+    _cameraTouched();
+    ctl.warp(c.$1, c.$2);
   }
 
   void _onHover(PointerHoverEvent e) {
-    if (!_mouseLook) return;
-    if (_skipHover) {
-      // The synthetic move produced by our own warp.
-      _skipHover = false;
-      return;
-    }
-    _cam.bearing = (_cam.bearing + e.delta.dx * 0.22) % 360;
-    _cam.pitch = (_cam.pitch - e.delta.dy * 0.08).clamp(28.0, 58.0);
-    _cameraTouched();
-    final size = MediaQuery.sizeOf(context);
-    if ((e.localPosition - Offset(size.width / 2, size.height / 2)).distance > 90) _recenterCursor(e.localPosition);
+    _lastHover = e.localPosition;
   }
 
   void _cameraTouched() => _lastCameraInput = DateTime.now();
