@@ -20,7 +20,7 @@ Every push builds through GitHub Actions (`.github/workflows/build.yml`) and
 publishes a **GitHub Release** with:
 
 * `Tunetrail-windows-x64-setup.exe` (installer) and `Tunetrail-windows-x64.zip` (portable: extract, run `Tunetrail.exe`)
-* `Tunetrail-linux-x64.tar.gz` (extract and run `./tunetrail`; needs GTK 3 and GStreamer with the "good" plugins)
+* `Tunetrail-linux-x64.tar.gz` (extract and run `./tunetrail`; needs GTK 3 and ALSA or PulseAudio)
 * `Tunetrail-android-universal.apk` (any device) and per-ABI APKs (`arm64` suits most phones)
 
 ### Android signing

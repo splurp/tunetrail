@@ -155,7 +155,7 @@ jobs:
             Developer build of Tunetrail from `${{ github.ref_name }}` @ ${{ github.sha }}.
 
             **Windows:** download `Tunetrail-windows-x64-setup.exe` (installer) or the portable `Tunetrail-windows-x64.zip` (extract, then run `Tunetrail.exe`).
-            **Linux:** download `Tunetrail-linux-x64.tar.gz`, extract it and run `./tunetrail` (needs GTK 3 and GStreamer with the "good" plugins for audio).
+            **Linux:** download `Tunetrail-linux-x64.tar.gz`, extract it and run `./tunetrail` (needs GTK 3 and ALSA or PulseAudio for sound).
             **Android:** download `Tunetrail-android-universal.apk` (or the smaller `arm64` APK for most modern phones) and allow installs from unknown sources.
 
             The debug menu is in Profile → Settings → Debug menu.
