@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/collection.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
 import 'artist_screen.dart';
 import 'album_screen.dart';
+import 'listing_composer.dart';
 
 class CardDetailScreen extends StatelessWidget {
   const CardDetailScreen({super.key, required this.uid});
@@ -59,7 +59,8 @@ class CardDetailScreen extends StatelessWidget {
         }),
         _InfoRow('Copies owned', '${g.collection.copiesOf(s.id)}'),
         _InfoRow('Est. market value', '${formatNumber(payload.fair)} coins'),
-        _InfoRow('Quick-sell value', '${quickSellValue(card.rarity, card.shiny)} coins'),
+        _InfoRow('Popularity', '${formatNumber(s.rank)} Deezer rank'),
+        _InfoRow('Scrap value', '${g.scrapValueOf(card)} coins'),
         const Divider(height: 28),
         ListTile(
           leading: const Icon(Icons.person),
@@ -91,34 +92,50 @@ class CardDetailScreen extends StatelessWidget {
           },
         ),
         const Divider(height: 28),
-        FilledButton.tonalIcon(
-          onPressed: () => showListDialog(context, uid),
-          icon: const Icon(Icons.sell),
-          label: const Text('Sell on player market'),
-        ),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                if (await showQuickListSheet(context, uid) && context.mounted) Navigator.pop(context);
+              },
+              icon: const Icon(Icons.bolt_outlined, size: 18),
+              label: const Text('Quick list'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: () async {
+                if (await openComposer(context, [uid]) && context.mounted) Navigator.pop(context);
+              },
+              icon: const Icon(Icons.sell_outlined, size: 18),
+              label: const Text('List on market'),
+            ),
+          ),
+        ]),
         const SizedBox(height: 8),
         TextButton.icon(
           onPressed: () async {
-            final v = quickSellValue(card.rarity, card.shiny);
+            final v = g.scrapValueOf(card);
             final ok = await showDialog<bool>(
               context: context,
               builder: (ctx) => AlertDialog(
-                title: const Text('Quick sell?'),
-                content: Text('Sell "${s.title}" (${card.rarity.label}${card.shiny ? ', Shiny' : ''}) to the game for $v coins?'),
+                title: const Text('Scrap this song?'),
+                content: Text('Scrap "${s.title}" (${card.rarity.label}${card.shiny ? ', Shiny' : ''}) for $v coins? This can\'t be undone.'),
                 actions: [
                   TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sell')),
+                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Scrap')),
                 ],
               ),
             );
             if (ok == true && context.mounted) {
-              g.quickSell(uid);
-              g.toast('Sold for $v coins');
+              g.scrap([uid]);
+              g.toast('Scrapped for $v coins');
               Navigator.pop(context);
             }
           },
-          icon: const Icon(Icons.monetization_on_outlined),
-          label: const Text('Quick sell to the game'),
+          icon: const Icon(Icons.recycling_rounded, size: 18),
+          label: const Text('Scrap for coins'),
         ),
       ]),
     );
@@ -159,60 +176,6 @@ class CardDetailScreen extends StatelessWidget {
         ]),
       ),
     );
-  }
-}
-
-/// Dialog for listing a card on the market.
-Future<void> showListDialog(BuildContext context, int uid) async {
-  final g = GameScope.read(context);
-  final card = g.collection.byUid(uid);
-  if (card == null) return;
-  final payload = card.toPayload();
-  final price = TextEditingController(text: '${suggestedPrice(payload)}');
-  var trades = false;
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, set) => AlertDialog(
-        title: const Text('List on market'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${card.song.title} — ${card.song.artistName}'),
-          RarityLabel(card.rarity, shiny: card.shiny),
-          const SizedBox(height: 12),
-          TextField(
-            controller: price,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Price (coins)', prefixIcon: Icon(kCoinIcon, color: kCoinColor)),
-          ),
-          const SizedBox(height: 4),
-          Text('Suggested: ${suggestedPrice(payload)}  •  Est. value ${payload.fair}', style: const TextStyle(fontSize: 12, color: Colors.white54)),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: trades,
-            onChanged: (v) => set(() => trades = v),
-            title: const Text('Accept trade offers'),
-          ),
-          const Text('The card is held by the market until it sells or you cancel.', style: TextStyle(fontSize: 12, color: Colors.white54)),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('List it')),
-        ],
-      ),
-    ),
-  );
-  if (ok != true) return;
-  final p = int.tryParse(price.text.trim());
-  if (p == null || p < 1) {
-    g.toast('Enter a valid price');
-    return;
-  }
-  try {
-    await g.listCard(uid, p, trades: trades);
-    g.toast('Listed for $p coins');
-    if (context.mounted && Navigator.canPop(context)) Navigator.pop(context);
-  } catch (e) {
-    g.toast('$e');
   }
 }
 

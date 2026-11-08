@@ -15,11 +15,13 @@ abstract class MarketBackend {
   Future<void> register(String id, String name);
   Future<List<Listing>> browse(ListingQuery q);
   Future<List<Listing>> myListings();
-  Future<Listing> createListing(CardPayload card, int price, {bool acceptsTrades = false});
-  Future<CardPayload> cancelListing(String listingId);
-  Future<CardPayload> buy(String listingId, int price);
+  Future<Listing> createListing(List<ListingItem> items, {int? folderPrice, String note = '', bool acceptsTrades = false});
+  Future<List<CardPayload>> cancelListing(String listingId);
+  Future<CardPayload> withdrawItem(String listingId, int cardUid);
+  Future<List<CardPayload>> buy(String listingId, int price);
+  Future<CardPayload> buyItem(String listingId, int cardUid, int price);
   Future<List<TradeOffer>> offers();
-  Future<TradeOffer> createOffer(String listingId, List<CardPayload> cards, int coins);
+  Future<TradeOffer> createOffer(String listingId, List<CardPayload> cards, int coins, {String note = ''});
   Future<void> acceptOffer(String offerId);
   Future<void> declineOffer(String offerId);
   Future<List<InboxItem>> claimInbox();
@@ -75,12 +77,11 @@ class LocalMarket extends MarketBackend {
 
   CardPayload? _randomCard() {
     final rng = Rng(_r.nextInt(1 << 31) ^ DateTime.now().microsecondsSinceEpoch);
-    final song = catalog.pickSong(rng);
+    final song = catalog.pickSong(rng, rarity: rng.rollRarity(luck: 1.6));
     if (song == null) return null;
-    final rarity = rng.rollRarity(luck: 1.6);
     return song.toPayload(
       uid: DateTime.now().microsecondsSinceEpoch * 1000 + _r.nextInt(1000),
-      rarity: rarity,
+      rarity: catalog.rarityOf(song),
       shiny: rng.chance(40),
       acquiredAt: DateTime.now().millisecondsSinceEpoch,
     );
@@ -92,12 +93,24 @@ class LocalMarket extends MarketBackend {
     // Bots keep the market stocked.
     final botListings = engine.listings.values.where((l) => l.sellerId.startsWith('bot')).length;
     final want = initial ? 80 : 60;
+    const notes = [
+      '', '', '', 'Clearing out my crate', 'Bundle deal!', 'Open to offers', 'Taking shinies in trade',
+      'Price is firm', 'Looking for Legendaries', 'Quick sale', 'Fresh from the trail',
+    ];
     for (var i = botListings; i < want; i++) {
-      final c = _randomCard();
-      if (c == null) break;
       final bot = bots[_r.nextInt(bots.length)];
-      final price = (suggestedPrice(c) * (0.7 + _r.nextDouble() * 0.9)).round().clamp(1, 1 << 30);
-      engine.createListing(bot.id, c, price, acceptsTrades: _r.nextInt(3) == 0);
+      final n = _r.nextInt(10) < 6 ? 1 : 2 + _r.nextInt(_r.nextInt(5) == 0 ? 10 : 4);
+      final items = <ListingItem>[];
+      for (var k = 0; k < n; k++) {
+        final c = _randomCard();
+        if (c == null) break;
+        items.add(ListingItem(card: c, price: (suggestedPrice(c) * (0.7 + _r.nextDouble() * 0.9)).round().clamp(1, 1 << 30)));
+      }
+      if (items.isEmpty) break;
+      final total = items.fold<int>(0, (a, x) => a + x.price);
+      final discounted = items.length > 1 && _r.nextBool() ? (total * (0.75 + _r.nextDouble() * 0.2)).round() : null;
+      engine.createListing(bot.id, items,
+          folderPrice: discounted, note: notes[_r.nextInt(notes.length)], acceptsTrades: _r.nextInt(3) == 0);
       if (!initial && i > botListings + 3) break;
     }
     // Bots occasionally retire old listings.
@@ -108,20 +121,28 @@ class LocalMarket extends MarketBackend {
         engine.cancelListing(l.sellerId, l.id);
       }
     }
-    // Bots buy the player's listings when priced reasonably.
+    // Bots buy the player's songs or whole folders when priced reasonably.
+    double chanceFor(int price, int fair) {
+      final ratio = price / math.max(1, fair);
+      return ratio <= 0.8 ? 0.6 : ratio <= 1.1 ? 0.3 : ratio <= 1.5 ? 0.1 : 0.02;
+    }
+
     for (final l in engine.listingsOf(playerId)) {
-      final fair = fairValue(l.card.rarity, l.card.shiny, popularity: l.card.rank);
-      final ratio = l.price / math.max(1, fair);
       final ageMin = (DateTime.now().millisecondsSinceEpoch - l.createdAt) / 60000;
-      final chance = ratio <= 0.8 ? 0.6 : ratio <= 1.1 ? 0.3 : ratio <= 1.5 ? 0.1 : 0.02;
-      if (ageMin > 0.3 && _r.nextDouble() < chance) {
-        engine.buyListing(bots[_r.nextInt(bots.length)].id, l.id);
+      if (ageMin < 0.3) continue;
+      final bot = bots[_r.nextInt(bots.length)].id;
+      final fairTotal = l.cards.fold<int>(0, (a, c) => a + c.fair);
+      if (_r.nextDouble() < chanceFor(l.folderPrice, fairTotal)) {
+        engine.buyListing(bot, l.id);
+        continue;
+      }
+      for (final it in List.of(l.items)) {
+        if (_r.nextDouble() < chanceFor(it.price, it.card.fair) * 0.6) engine.buyItem(bot, l.id, it.card.uid);
       }
     }
     // Bots respond to the player's trade offers on bot listings.
     for (final o in engine.offersFor(playerId).where((o) => o.fromId == playerId).toList()) {
-      final req = fairValue(o.requestedCard.rarity, o.requestedCard.shiny, popularity: o.requestedCard.rank);
-      if (o.offeredValue >= req * (0.9 + _r.nextDouble() * 0.3)) {
+      if (o.offeredValue >= o.requestedValue * (0.9 + _r.nextDouble() * 0.3)) {
         engine.acceptOffer(o.toId, o.id);
       } else if (_r.nextInt(2) == 0) {
         engine.declineOffer(o.toId, o.id);
@@ -133,9 +154,9 @@ class LocalMarket extends MarketBackend {
       if (pending || _r.nextInt(3) != 0) continue;
       final c = _randomCard();
       if (c == null) continue;
-      final need = fairValue(l.card.rarity, l.card.shiny, popularity: l.card.rank);
+      final need = l.cards.fold<int>(0, (a, x) => a + x.fair);
       final coins = math.max(0, (need * (0.8 + _r.nextDouble() * 0.5)).round() - c.fair);
-      engine.createOffer(bots[_r.nextInt(bots.length)].id, l.id, [c], coins);
+      engine.createOffer(bots[_r.nextInt(bots.length)].id, l.id, [c], coins, note: _r.nextBool() ? 'Fair trade?' : '');
     }
     // Bot showcases.
     if (engine.showcases.length < 8) {
@@ -156,18 +177,22 @@ class LocalMarket extends MarketBackend {
   @override
   Future<List<Listing>> myListings() async => engine.listingsOf(playerId);
   @override
-  Future<Listing> createListing(CardPayload card, int price, {bool acceptsTrades = false}) async =>
-      engine.createListing(playerId, card, price, acceptsTrades: acceptsTrades);
+  Future<Listing> createListing(List<ListingItem> items, {int? folderPrice, String note = '', bool acceptsTrades = false}) async =>
+      engine.createListing(playerId, items, folderPrice: folderPrice, note: note, acceptsTrades: acceptsTrades);
   @override
-  Future<CardPayload> cancelListing(String listingId) async => engine.cancelListing(playerId, listingId);
+  Future<List<CardPayload>> cancelListing(String listingId) async => engine.cancelListing(playerId, listingId);
   @override
-  Future<CardPayload> buy(String listingId, int price) async =>
-      engine.buyListing(playerId, listingId, expectedPrice: price);
+  Future<CardPayload> withdrawItem(String listingId, int cardUid) async => engine.withdrawItem(playerId, listingId, cardUid);
+  @override
+  Future<List<CardPayload>> buy(String listingId, int price) async => engine.buyListing(playerId, listingId, expectedPrice: price);
+  @override
+  Future<CardPayload> buyItem(String listingId, int cardUid, int price) async =>
+      engine.buyItem(playerId, listingId, cardUid, expectedPrice: price);
   @override
   Future<List<TradeOffer>> offers() async => engine.offersFor(playerId);
   @override
-  Future<TradeOffer> createOffer(String listingId, List<CardPayload> cards, int coins) async =>
-      engine.createOffer(playerId, listingId, cards, coins);
+  Future<TradeOffer> createOffer(String listingId, List<CardPayload> cards, int coins, {String note = ''}) async =>
+      engine.createOffer(playerId, listingId, cards, coins, note: note);
   @override
   Future<void> acceptOffer(String offerId) async => engine.acceptOffer(playerId, offerId);
   @override
@@ -235,23 +260,34 @@ class RemoteMarket extends MarketBackend {
   @override
   Future<List<Listing>> myListings() async => _list(await _send('GET', '/listings/mine'), Listing.fromJson);
   @override
-  Future<Listing> createListing(CardPayload card, int price, {bool acceptsTrades = false}) async =>
-      Listing.fromJson(await _send('POST', '/listings',
-          body: {'card': card.toJson(), 'price': price, 'trades': acceptsTrades}) as Map<String, dynamic>);
+  Future<Listing> createListing(List<ListingItem> items, {int? folderPrice, String note = '', bool acceptsTrades = false}) async =>
+      Listing.fromJson(await _send('POST', '/listings', body: {
+        'items': [for (final i in items) i.toJson()],
+        'folderPrice': folderPrice,
+        'note': note,
+        'trades': acceptsTrades,
+      }) as Map<String, dynamic>);
   @override
-  Future<CardPayload> cancelListing(String listingId) async =>
-      CardPayload.fromJson(await _send('POST', '/listings/$listingId/cancel') as Map<String, dynamic>);
+  Future<List<CardPayload>> cancelListing(String listingId) async =>
+      _list(await _send('POST', '/listings/$listingId/cancel'), CardPayload.fromJson);
   @override
-  Future<CardPayload> buy(String listingId, int price) async =>
-      CardPayload.fromJson(await _send('POST', '/listings/$listingId/buy', body: {'price': price}) as Map<String, dynamic>);
+  Future<CardPayload> withdrawItem(String listingId, int cardUid) async =>
+      CardPayload.fromJson(await _send('POST', '/listings/$listingId/items/$cardUid/withdraw') as Map<String, dynamic>);
+  @override
+  Future<List<CardPayload>> buy(String listingId, int price) async =>
+      _list(await _send('POST', '/listings/$listingId/buy', body: {'price': price}), CardPayload.fromJson);
+  @override
+  Future<CardPayload> buyItem(String listingId, int cardUid, int price) async =>
+      CardPayload.fromJson(await _send('POST', '/listings/$listingId/items/$cardUid/buy', body: {'price': price}) as Map<String, dynamic>);
   @override
   Future<List<TradeOffer>> offers() async => _list(await _send('GET', '/offers'), TradeOffer.fromJson);
   @override
-  Future<TradeOffer> createOffer(String listingId, List<CardPayload> cards, int coins) async =>
+  Future<TradeOffer> createOffer(String listingId, List<CardPayload> cards, int coins, {String note = ''}) async =>
       TradeOffer.fromJson(await _send('POST', '/offers', body: {
         'listingId': listingId,
         'cards': [for (final c in cards) c.toJson()],
         'coins': coins,
+        'note': note,
       }) as Map<String, dynamic>);
   @override
   Future<void> acceptOffer(String offerId) async => _send('POST', '/offers/$offerId/accept');

@@ -131,25 +131,101 @@ class Catalog extends ChangeNotifier {
   Iterable<int> get genresWithSongs =>
       _genrePools.entries.where((e) => e.value.isNotEmpty).map((e) => e.key);
 
-  /// Deterministically picks a song for a spawn/pack.
-  Song? pickSong(Rng rng, {int? genreId}) {
+  // --------------------------------------------------------------- rarity
+  int _rarityVersion = -1;
+  final Map<int, int> _artistMaxRank = {};
+  final Map<int, Rarity> _rarityCache = {};
+
+  /// genre → rarity index → song ids (sorted, deterministic).
+  final Map<int, List<List<int>>> _rarityPools = {};
+
+  void _ensureRarity() {
+    if (_rarityVersion == version) return;
+    _artistMaxRank.clear();
+    for (final s in songs.values) {
+      if (s.rank > (_artistMaxRank[s.artistId] ?? 0)) _artistMaxRank[s.artistId] = s.rank;
+    }
+    _rarityCache.clear();
+    _rarityPools.clear();
+    final ids = songs.keys.toList()..sort();
+    for (final id in ids) {
+      final s = songs[id]!;
+      final r = computeRarity(s.rank, _artistMaxRank[s.artistId] ?? s.rank);
+      _rarityCache[id] = r;
+      _rarityPools.putIfAbsent(s.genreId, () => List.generate(5, (_) => <int>[]))[r.index].add(id);
+    }
+    _rarityVersion = version;
+  }
+
+  /// A song's rarity, from how many streams it has overall and how it
+  /// compares with the artist's other songs. A superstar's deep cuts can be
+  /// Uncommon while their biggest hits are Legendary; a small artist's best
+  /// song tops out around Rare.
+  ///
+  /// Deezer's public API exposes a popularity `rank` (≈ stream volume,
+  /// 0–1,000,000) rather than raw stream counts, so that is the signal used.
+  static Rarity computeRarity(int rank, int artistMaxRank) {
+    final global = ((rank - 150000) / 800000).clamp(0.0, 1.0);
+    final rel = artistMaxRank <= 0 ? 1.0 : (rank / artistMaxRank).clamp(0.0, 1.0);
+    final fame = ((artistMaxRank - 350000) / 550000).clamp(0.0, 1.0);
+    final score = 0.5 * global + 0.3 * rel * rel * rel + 0.2 * fame;
+    if (score >= 0.9) return Rarity.legendary;
+    if (score >= 0.75) return Rarity.epic;
+    if (score >= 0.55) return Rarity.rare;
+    if (score >= 0.36) return Rarity.uncommon;
+    return Rarity.common;
+  }
+
+  Rarity rarityOf(Song s) {
+    _ensureRarity();
+    return _rarityCache[s.id] ?? computeRarity(s.rank, _artistMaxRank[s.artistId] ?? s.rank);
+  }
+
+  /// Number of known songs per rarity in a genre (for UI/odds).
+  int countAt(int genreId, Rarity r) {
+    _ensureRarity();
+    return _rarityPools[genreId]?[r.index].length ?? 0;
+  }
+
+  /// Deterministically picks a song for a spawn/pack. With [rarity], picks
+  /// a song whose own rarity matches (or the closest available rarity).
+  Song? pickSong(Rng rng, {int? genreId, Rarity? rarity}) {
     if (songs.isEmpty) return null;
     var g = genreId ?? _pickGenre(rng);
+    if (rarity != null) {
+      _ensureRarity();
+      List<int>? pickFrom(int genre) {
+        final pools = _rarityPools[genre];
+        if (pools == null) return null;
+        final r = rarity.index;
+        for (var d = 0; d < 5; d++) {
+          for (final k in d == 0 ? [r] : [r - d, r + d]) {
+            if (k >= 0 && k < 5 && pools[k].isNotEmpty) return pools[k];
+          }
+        }
+        return null;
+      }
+
+      var pool = pickFrom(g) ?? pickFrom(_pickGenre(rng));
+      if (pool == null) {
+        final any = genresWithSongs.toList()..sort();
+        if (any.isEmpty) return null;
+        pool = pickFrom(any[rng.nextInt(any.length)]);
+      }
+      if (pool == null || pool.isEmpty) return null;
+      return songs[pool[rng.nextInt(pool.length)]];
+    }
     var pool = poolFor(g);
     if (pool.isEmpty) {
       g = _pickGenre(rng);
       pool = poolFor(g);
     }
     if (pool.isEmpty) {
-      // Fallback: any genre with songs.
       final any = genresWithSongs.toList()..sort();
       if (any.isEmpty) return null;
       pool = poolFor(any[rng.nextInt(any.length)]);
     }
-    // Favour popular songs a little: best of two rolls by rank.
-    final a = songs[pool[rng.nextInt(pool.length)]]!;
-    final b = songs[pool[rng.nextInt(pool.length)]]!;
-    return rng.nextInt(3) == 0 ? (a.rank >= b.rank ? b : a) : (a.rank >= b.rank ? a : b);
+    return songs[pool[rng.nextInt(pool.length)]];
   }
 
   int _pickGenre(Rng rng) {

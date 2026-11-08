@@ -9,6 +9,7 @@ import '../../game/spawns.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
 import 'card_detail_screen.dart';
+import 'listing_composer.dart';
 
 enum _Hit { perfect, great, good, miss }
 
@@ -33,6 +34,8 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   OwnedCard? _card;
   bool _busy = false;
   bool _playing = false;
+  bool _perfect = false;
+  int? _accuracy;
 
   static const _baseCatch = [0.92, 0.78, 0.62, 0.48, 0.34];
   static const _fleeChance = [0.03, 0.06, 0.1, 0.15, 0.2];
@@ -69,46 +72,58 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   double get _ringFrac => 1.0 - _ring.value;
   static const _target = 0.72;
 
+  /// Timing accuracy for a tap, 0–100. Exactly 100 only when the ring is
+  /// dead-on the target (within ~1% of a beat); everything else tops out
+  /// at 99.
+  static int accuracyFor(double diff) {
+    if (diff <= 0.012) return 100;
+    return (99 * (1 - (diff - 0.012) / 0.29)).floor().clamp(0, 99);
+  }
+
   void _tap() {
     if (_busy || _caught || _fled) return;
     final diff = (_ringFrac - _target).abs();
-    final hit = diff < 0.05
+    final acc = accuracyFor(diff);
+    final hit = acc == 100
         ? _Hit.perfect
-        : diff < 0.11
+        : acc >= 80
         ? _Hit.great
-        : diff < 0.2
+        : acc >= 50
         ? _Hit.good
         : _Hit.miss;
     final mult = switch (hit) {
-      _Hit.perfect => 1.6,
-      _Hit.great => 1.25,
+      _Hit.perfect => 1.0,
+      _Hit.great => 1.3,
       _Hit.good => 1.0,
       _Hit.miss => 0.0,
     };
     HapticFeedback.mediumImpact();
     _attempts++;
-    final p = (_baseCatch[r.index] * mult).clamp(0.0, 0.99);
-    final success = _rand.nextDouble() < p;
+    // A 100% perfect beat always catches — and turns the song shiny.
+    final success = hit == _Hit.perfect || _rand.nextDouble() < (_baseCatch[r.index] * mult).clamp(0.0, 0.99);
     setState(() {
+      _accuracy = acc;
+      _perfect = hit == _Hit.perfect;
       _feedback = switch (hit) {
-        _Hit.perfect => 'PERFECT!',
-        _Hit.great => 'GREAT!',
-        _Hit.good => 'Good',
-        _Hit.miss => 'Off beat…',
+        _Hit.perfect => '100% · PERFECT! It turned shiny!',
+        _Hit.great => '$acc% · Great',
+        _Hit.good => '$acc% · Good',
+        _Hit.miss => '$acc% · Off beat',
       };
       _feedbackColor = switch (hit) {
         _Hit.perfect => kAccent,
         _Hit.great => const Color(0xFFE6E6EB),
-        _Hit.good => Colors.white,
-        _Hit.miss => Colors.redAccent,
+        _Hit.good => Colors.white70,
+        _Hit.miss => const Color(0xFFE5737A),
       };
       _busy = true;
     });
-    Future<void>.delayed(const Duration(milliseconds: 650), () {
+    Future<void>.delayed(Duration(milliseconds: hit == _Hit.perfect ? 900 : 650), () {
       if (!mounted) return;
       final g = GameScope.read(context);
       if (success) {
-        _card = g.catchSpawn(widget.spawn);
+        _card = g.catchSpawn(widget.spawn, perfect: _perfect);
+        if (!g.profile.keepPlayingAfterCatch && _playing) g.audio.stop();
         HapticFeedback.heavyImpact();
         _fx.forward(from: 0);
         setState(() {
@@ -123,7 +138,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
         });
       } else {
         setState(() {
-          _feedback = hit == _Hit.miss ? 'Missed — try again' : 'It slipped away! Try again';
+          _feedback = hit == _Hit.miss ? '$acc% · Missed — try again' : '$acc% · It slipped away! Try again';
           _busy = false;
         });
       }
@@ -174,7 +189,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                         child: AnimatedOpacity(
                           opacity: _fled ? 0 : 1,
                           duration: const Duration(milliseconds: 600),
-                          child: SongCardView(song: s.song, rarity: s.rarity, shiny: s.shiny, width: cardW),
+                          child: SongCardView(song: s.song, rarity: s.rarity, shiny: s.shiny || _perfect, width: cardW),
                         ),
                       ),
                       if (!_caught && !_fled)
@@ -205,18 +220,30 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            s.shiny ? '✦ SHINY CATCH! ✦' : 'CAUGHT!',
-                            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: c),
+                            s.shiny || _perfect ? (_perfect ? '✦ PERFECT SHINY CATCH ✦' : '✦ SHINY CATCH ✦') : 'Caught',
+                            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: c),
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            '+${s.rarity.catchCoins * (s.shiny ? 3 : 1)} coins  •  +${s.rarity.catchXp * (s.shiny ? 3 : 1)} XP',
-                            style: const TextStyle(color: kCoinColor, fontWeight: FontWeight.w700),
+                            '${_accuracy == null ? '' : '$_accuracy% timing  ·  '}+${s.rarity.catchCoins * (s.shiny || _perfect ? 3 : 1)} coins  ·  +${s.rarity.catchXp * (s.shiny || _perfect ? 3 : 1)} XP',
+                            style: const TextStyle(color: kTextSecondary, fontWeight: FontWeight.w500),
                           ),
                           const SizedBox(height: 14),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 10,
+                            runSpacing: 10,
                             children: [
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.sell_outlined, size: 18),
+                                label: const Text('Quick list'),
+                                onPressed: _card == null
+                                    ? null
+                                    : () async {
+                                        final listed = await showQuickListSheet(context, _card!.uid);
+                                        if (listed && context.mounted) Navigator.of(context).pop();
+                                      },
+                              ),
                               OutlinedButton(
                                 onPressed: () {
                                   final card = _card;
@@ -255,7 +282,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Catch chance ${(_baseCatch[r.index] * 100).round()}% base • timing boosts it',
+                            'Catch chance ${(_baseCatch[r.index] * 100).round()}% · hit 100% timing for a guaranteed shiny',
                             style: const TextStyle(color: Colors.white54, fontSize: 12),
                           ),
                         ],

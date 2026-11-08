@@ -7,8 +7,11 @@ class Camera3D {
   /// Heading the camera looks towards, degrees clockwise from north.
   double bearing = 0;
 
-  /// Angle above the horizon, degrees.
-  double pitch = 40;
+  /// Standard viewing angle above the horizon, degrees.
+  static const double basePitch = 40;
+
+  /// Current angle above the horizon, degrees (raised for overhead views).
+  double pitch = basePitch;
 
   /// Distance from the camera to the player, metres.
   double distance = 230;
@@ -36,9 +39,13 @@ class Camera3D {
     _h = distance * math.sin(pr);
     cx = size.width / 2;
     cy = size.height * 0.64;
-    // Put the horizon ~6% from the top of the screen.
-    focal = (cy - size.height * 0.06) / math.tan(pr);
-    yNear = -0.75 * distance;
+    // Focal length chosen so that at the standard pitch the horizon sits
+    // ~6% from the top; steeper (overhead) pitches push it off-screen.
+    focal = (cy - size.height * 0.06) / math.tan(basePitch * math.pi / 180);
+    // Clip comfortably in front of the camera, but far enough back to cover
+    // everything visible below the player.
+    yNear = -0.6 * distance * distance / math.max(1.0, _b);
+    yFar = math.max(1150, distance * 1.8);
   }
 
   /// World (x,y) → camera-aligned ground coords (xa right, ya forward).
@@ -73,6 +80,9 @@ class Camera3D {
     final zc = depth(ya, z);
     return zc <= 1 ? 0 : focal / zc;
   }
+
+  /// Bearing (degrees from north) from the player to a world point.
+  double bearingTo(double x, double y) => (math.atan2(x - px, y - py) * 180 / math.pi + 360) % 360;
 
   /// Screen y of the horizon.
   double get horizonY => cy - focal * (_h / _b);

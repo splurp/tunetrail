@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Song rarities, ordered from most to least common.
 enum Rarity {
   common('Common', 0xFFA3A3AB, 5500, 10, 5, 10),
@@ -46,4 +48,13 @@ int fairValue(Rarity r, bool shiny, {int popularity = 500000}) {
   final popFactor = 0.75 + (popularity.clamp(0, 1000000) / 1000000) * 0.75;
   return (r.baseValue * (shiny ? kShinyValueMultiplier : 1) * popFactor)
       .round();
+}
+
+/// Coins for scrapping a card in the Scrapyard. Songs with more streams
+/// (higher Deezer rank, 0..1,000,000) are worth more scrap.
+int scrapValue(Rarity r, bool shiny, int rank) {
+  final streams = rank.clamp(0, 1000000) / 1000000;
+  final base = r.baseValue * 0.2 * (0.35 + 1.65 * streams * streams);
+  final v = math.max(1, base.round());
+  return shiny ? v * 3 : v;
 }

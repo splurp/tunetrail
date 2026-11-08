@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -144,40 +145,82 @@ class Game extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> listCard(int uid, int price, {bool trades = false}) async {
-    final card = collection.byUid(uid);
-    if (card == null) throw MarketException('You no longer own that card');
-    _removeFromPlaylists(uid);
-    collection.remove(uid);
+  /// Lists a folder of owned cards: uid → price. Cards move into escrow.
+  Future<void> listCards(Map<int, int> prices, {int? folderPrice, String note = '', bool trades = false}) async {
+    final cards = <OwnedCard>[];
+    for (final uid in prices.keys) {
+      final c = collection.byUid(uid);
+      if (c == null) throw MarketException('You no longer own one of those songs');
+      cards.add(c);
+    }
+    for (final c in cards) {
+      _removeFromPlaylists(c.uid);
+      collection.remove(c.uid);
+    }
     try {
-      await market.createListing(card.toPayload(), price, acceptsTrades: trades);
+      await market.createListing([for (final c in cards) ListingItem(card: c.toPayload(), price: prices[c.uid]!)],
+          folderPrice: folderPrice, note: note, acceptsTrades: trades);
       questEvent(QuestKind.listOnMarket);
     } catch (e) {
-      collection.addPayload(card.toPayload(), card.source);
+      for (final c in cards) {
+        collection.addPayload(c.toPayload(), c.source);
+      }
       rethrow;
     }
   }
 
-  Future<void> cancelListing(Listing l) async {
-    final c = await market.cancelListing(l.id);
-    collection.addPayload(c, CardSource.market);
+  /// Quick list: one card with the player's preset price/note for its rarity.
+  Future<void> quickList(int uid) async {
+    final c = collection.byUid(uid);
+    if (c == null) throw MarketException('You no longer own that card');
+    final preset = profile.quickListPreset(c.rarity);
+    final price = preset.price * (c.shiny ? kShinyValueMultiplier : 1);
+    await listCards({uid: price}, note: preset.note, trades: preset.trades);
   }
 
+  Future<void> cancelListing(Listing l) async {
+    for (final c in await market.cancelListing(l.id)) {
+      collection.addPayload(c, CardSource.market);
+    }
+  }
+
+  Future<void> withdrawFromListing(Listing l, int cardUid) async {
+    collection.addPayload(await market.withdrawItem(l.id, cardUid), CardSource.market);
+  }
+
+  /// Buys a whole folder at its folder price.
   Future<void> buyListing(Listing l) async {
-    if (profile.coins < l.price) throw MarketException('Not enough coins');
-    profile.coins -= l.price;
+    final price = l.folderPrice;
+    if (profile.coins < price) throw MarketException('Not enough coins');
+    profile.coins -= price;
     profile.changed();
     try {
-      final c = await market.buy(l.id, l.price);
-      collection.addPayload(c.withUid(collection.newUid()), CardSource.market);
+      for (final c in await market.buy(l.id, price)) {
+        collection.addPayload(c.withUid(collection.newUid()), CardSource.market);
+      }
     } catch (e) {
-      profile.coins += l.price;
+      profile.coins += price;
       profile.changed();
       rethrow;
     }
   }
 
-  Future<void> makeOffer(Listing l, List<int> uids, int coins) async {
+  /// Buys a single song from a folder at its own price.
+  Future<void> buyListingItem(Listing l, ListingItem item) async {
+    if (profile.coins < item.price) throw MarketException('Not enough coins');
+    profile.coins -= item.price;
+    profile.changed();
+    try {
+      final c = await market.buyItem(l.id, item.card.uid, item.price);
+      collection.addPayload(c.withUid(collection.newUid()), CardSource.market);
+    } catch (e) {
+      profile.coins += item.price;
+      profile.changed();
+      rethrow;
+    }
+  }
+
+  Future<void> makeOffer(Listing l, List<int> uids, int coins, {String note = ''}) async {
     if (profile.coins < coins) throw MarketException('Not enough coins');
     final cards = [for (final u in uids) ?collection.byUid(u)];
     for (final c in cards) {
@@ -187,7 +230,7 @@ class Game extends ChangeNotifier {
     profile.coins -= coins;
     profile.changed();
     try {
-      await market.createOffer(l.id, [for (final c in cards) c.toPayload()], coins);
+      await market.createOffer(l.id, [for (final c in cards) c.toPayload()], coins, note: note);
     } catch (e) {
       for (final c in cards) {
         collection.addPayload(c.toPayload(), c.source);
@@ -248,7 +291,8 @@ class Game extends ChangeNotifier {
     _spawnCatalogVersion = catalog.version;
     final nowMs = now.millisecondsSinceEpoch;
     profile.spentSpawns.removeWhere((_, exp) => exp < nowMs);
-    spawns = spawnEngine.around(location.position, exclude: profile.spentSpawns.keys.toSet());
+    debugSpawns.removeWhere((d) => d.expiresAt.isBefore(now) || profile.spentSpawns.containsKey(d.id));
+    spawns = [...spawnEngine.around(location.position, exclude: profile.spentSpawns.keys.toSet()), ...debugSpawns];
     zoneHere = zones.sample(location.position.latitude, location.position.longitude);
     notifyListeners();
   }
@@ -264,13 +308,15 @@ class Game extends ChangeNotifier {
     notifyListeners();
   }
 
-  OwnedCard catchSpawn(Spawn s) {
+  /// Catches a spawn. A 100% perfect catch makes any song shiny.
+  OwnedCard catchSpawn(Spawn s, {bool perfect = false}) {
     catalog.addSongs([s.song]);
-    final uid = collection.add(s.song.id, s.rarity, s.shiny, CardSource.wild);
-    profile.coins += s.rarity.catchCoins * (s.shiny ? 3 : 1);
-    profile.xp += s.rarity.catchXp * (s.shiny ? 3 : 1);
+    final shiny = s.shiny || perfect;
+    final uid = collection.add(s.song.id, s.rarity, shiny, CardSource.wild);
+    profile.coins += s.rarity.catchCoins * (shiny ? 3 : 1);
+    profile.xp += s.rarity.catchXp * (shiny ? 3 : 1);
     profile.totalCaught++;
-    if (s.shiny) profile.shinyCaught++;
+    if (shiny) profile.shinyCaught++;
     questEvent(QuestKind.catchAny);
     questEvent(QuestKind.catchGenre, genreId: s.song.genreId);
     if (s.rarity.index >= Rarity.rare.index) questEvent(QuestKind.catchRarePlus);
@@ -294,14 +340,23 @@ class Game extends ChangeNotifier {
     final rng = Rng(DateTime.now().microsecondsSinceEpoch ^ profile.packsOpened * 7919);
     final rolls = <(Song, Rarity, bool)>[];
     for (var i = 0; i < p.cards; i++) {
-      final song = catalog.pickSong(rng, genreId: genreId)!;
-      var r = rng.rollRarity(minIndex: p.allMin.index, luck: p.luck);
-      rolls.add((song, r, rng.chance(p.shinyOdds)));
+      final song = catalog.pickSong(rng, genreId: genreId, rarity: rng.rollRarity(minIndex: p.allMin.index, luck: p.luck))!;
+      rolls.add((song, catalog.rarityOf(song), rng.chance(p.shinyOdds)));
     }
-    // Enforce guarantees on the last card (classic "pity slot").
+    // Enforce guarantees on the last card (classic "pity slot"). Rarity is a
+    // property of the song, so the slot draws a song of that rarity.
     if (p.guaranteedMin != null && !rolls.any((x) => x.$2.index >= p.guaranteedMin!.index)) {
       final last = rolls.removeLast();
-      rolls.add((last.$1, rng.rollRarity(minIndex: p.guaranteedMin!.index, luck: p.luck), last.$3));
+      Song? pick;
+      for (var tries = 0; tries < 12; tries++) {
+        final cand = catalog.pickSong(rng, genreId: genreId, rarity: rng.rollRarity(minIndex: p.guaranteedMin!.index, luck: p.luck));
+        if (cand != null && catalog.rarityOf(cand).index >= p.guaranteedMin!.index) {
+          pick = cand;
+          break;
+        }
+      }
+      pick ??= catalog.pickSong(rng, rarity: p.guaranteedMin);
+      rolls.add(pick == null ? last : (pick, catalog.rarityOf(pick), last.$3));
     }
     if (p.guaranteedShiny && !rolls.any((x) => x.$3)) {
       final i = rng.nextInt(rolls.length);
@@ -361,16 +416,25 @@ class Game extends ChangeNotifier {
     notifyListeners();
   }
 
-  int quickSell(int uid) {
-    final c = collection.byUid(uid);
-    if (c == null) return 0;
-    final v = quickSellValue(c.rarity, c.shiny);
-    _removeFromPlaylists(uid);
-    collection.remove(uid);
-    profile.coins += v;
-    profile.cardsSold++;
+  /// Scrapyard value of a card: rarer and more-streamed songs pay more.
+  int scrapValueOf(OwnedCard c) => scrapValue(c.rarity, c.shiny, c.song.rank);
+
+  /// Scraps cards for coins. Returns the coins earned.
+  int scrap(Iterable<int> uids) {
+    var total = 0;
+    var n = 0;
+    for (final uid in uids.toList()) {
+      final c = collection.byUid(uid);
+      if (c == null) continue;
+      total += scrapValueOf(c);
+      _removeFromPlaylists(uid);
+      collection.remove(uid);
+      n++;
+    }
+    profile.coins += total;
+    profile.cardsScrapped += n;
     profile.changed();
-    return v;
+    return total;
   }
 
   // ---------------------------------------------------------------- quests
@@ -424,7 +488,8 @@ class Game extends ChangeNotifier {
     profile.xp += q.reward.xp;
     OwnedCard? card;
     if (q.reward.songId != null && catalog.songs.containsKey(q.reward.songId)) {
-      final uid = collection.add(q.reward.songId!, q.reward.rarity ?? Rarity.epic,
+      final song = catalog.songs[q.reward.songId]!;
+      final uid = collection.add(song.id, catalog.rarityOf(song),
           q.reward.shiny || Rng(DateTime.now().microsecondsSinceEpoch).chance(8), CardSource.quest);
       card = collection.byUid(uid);
     }
@@ -507,6 +572,32 @@ class Game extends ChangeNotifier {
     _refreshSpawns(force: true);
   }
 
+  /// Songs spawned from the debug menu.
+  final List<Spawn> debugSpawns = [];
+
+  /// Debug: spawns [song] a few metres in front of the player.
+  Spawn debugSpawnSong(Song song, {bool shiny = false, Rarity? rarity}) {
+    catalog.addSongs([song]);
+    final known = catalog.songs[song.id] ?? song;
+    final rng = math.Random();
+    final heading = (location.heading + (rng.nextDouble() - 0.5) * 60) * math.pi / 180;
+    final dist = 18 + rng.nextDouble() * 12;
+    final p = location.position;
+    final lat = p.latitude + math.cos(heading) * dist / 111132.95;
+    final lng = p.longitude + math.sin(heading) * dist / (111319.49 * math.cos(p.latitude * math.pi / 180));
+    final s = Spawn(
+      id: 'debug:${known.id}:${DateTime.now().microsecondsSinceEpoch}',
+      point: LatLng(lat, lng),
+      song: known,
+      rarity: rarity ?? catalog.rarityOf(known),
+      shiny: shiny,
+      expiresAt: DateTime.now().add(const Duration(minutes: 30)),
+    );
+    debugSpawns.add(s);
+    _refreshSpawns(force: true);
+    return s;
+  }
+
   /// Stress-test helper: adds [n] random cards using the current catalog.
   Future<int> debugGenerateCards(int n) async {
     if (catalog.size == 0) return 0;
@@ -514,10 +605,10 @@ class Game extends ChangeNotifier {
     final now = DateTime.now().millisecondsSinceEpoch;
     final batch = <(int, Rarity, bool, CardSource, DateTime)>[];
     for (var i = 0; i < n; i++) {
-      final s = catalog.pickSong(rng)!;
+      final s = catalog.pickSong(rng, rarity: rng.rollRarity())!;
       batch.add((
         s.id,
-        rng.rollRarity(),
+        catalog.rarityOf(s),
         rng.chance(kShinyOdds),
         CardSource.debug,
         DateTime.fromMillisecondsSinceEpoch(now - rng.nextInt(365 * 24 * 3600) * 1000),

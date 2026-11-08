@@ -98,14 +98,17 @@ class StickFigurePainter extends CustomPainter {
     canvas.drawLine(hip, leg(0.32 + swing), line);
     canvas.drawLine(hip, leg(-0.32 - swing), line);
 
-    // Torso + shirt.
+    // Torso and arms, then the shirt on top with sleeves over the upper
+    // arms (so arms come out of the sleeves instead of lying on the shirt).
     canvas.drawLine(neck, hip, line);
+    const shoulder = Offset(0, 42);
+    Offset arm(double a) => shoulder + Offset(math.sin(a) * 30, math.cos(a) * 30);
+    final handL = arm(0.75 - swing * 0.8), handR = arm(-0.75 + swing * 0.8);
+    canvas.drawLine(shoulder, handL, line);
+    canvas.drawLine(shoulder, handR, line);
     drawShirt(canvas, look.shirt, neck, hip);
-
-    // Arms.
-    Offset arm(double a) => neck + const Offset(0, 6) + Offset(math.sin(a) * 30, math.cos(a) * 30);
-    canvas.drawLine(neck + const Offset(0, 6), arm(0.75 - swing * 0.8), line);
-    canvas.drawLine(neck + const Offset(0, 6), arm(-0.75 + swing * 0.8), line);
+    drawSleeve(canvas, look.shirt, shoulder + const Offset(4, 0), Offset.lerp(shoulder, handL, 0.5)!, 10);
+    drawSleeve(canvas, look.shirt, shoulder + const Offset(-4, 0), Offset.lerp(shoulder, handR, 0.5)!, 10);
 
     // Head.
     const head = Offset(0, 22);
@@ -135,17 +138,41 @@ class StickFigurePainter extends CustomPainter {
   }
 
   // ------------------------------------------------------------- shirts
+  static Color shirtColor(String id) => switch (id) {
+        'shirt_tee_red' => const Color(0xFFE53935),
+        'shirt_tee_black' => const Color(0xFF212121),
+        'shirt_striped' => const Color(0xFFFAFAFA),
+        'shirt_hoodie' => const Color(0xFF7E57C2),
+        'shirt_hawaiian' => const Color(0xFF26A69A),
+        'shirt_tux' => const Color(0xFF111111),
+        'shirt_lightning' => const Color(0xFF1A237E),
+        'shirt_rainbow' => const Color(0xFFFF4081),
+        _ => Colors.grey,
+      };
+
+  /// Sleeve over the upper arm, from [shoulder] towards [elbow] (screen or
+  /// design space). Drawn after the arms so arms come out of the sleeves.
+  static void drawSleeve(Canvas canvas, String? id, Offset shoulder, Offset elbow, double width) {
+    if (id == null) return;
+    final end = Offset.lerp(shoulder, elbow, id == 'shirt_hoodie' || id == 'shirt_tux' ? 0.95 : 0.6)!;
+    canvas.drawLine(
+        shoulder,
+        end,
+        Paint()
+          ..color = id == 'shirt_striped' ? const Color(0xFF1E88E5) : shirtColor(id)
+          ..strokeWidth = width
+          ..strokeCap = StrokeCap.round);
+  }
+
   static void drawShirt(Canvas canvas, String? id, Offset neck, Offset hip) {
     if (id == null) return;
     final body = Path()
       ..moveTo(-12, neck.dy + 2)
       ..lineTo(12, neck.dy + 2)
-      ..lineTo(19, neck.dy + 14)
-      ..lineTo(13, neck.dy + 18)
+      ..lineTo(14, neck.dy + 10)
       ..lineTo(11, hip.dy + 2)
       ..lineTo(-11, hip.dy + 2)
-      ..lineTo(-13, neck.dy + 18)
-      ..lineTo(-19, neck.dy + 14)
+      ..lineTo(-14, neck.dy + 10)
       ..close();
     final colors = <String, Color>{
       'shirt_tee_red': const Color(0xFFE53935),
@@ -226,14 +253,16 @@ class StickFigurePainter extends CustomPainter {
     switch (id) {
       case 'hat_cap':
         final p = Paint()..color = const Color(0xFFE53935);
-        canvas.drawArc(Rect.fromCircle(center: head + const Offset(0, -2), radius: 15), math.pi, math.pi, true, p);
-        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(head.dx - 2, head.dy - 4, 24, 5), const Radius.circular(3)), p);
-        canvas.drawCircle(head + const Offset(0, -17), 2, Paint()..color = Colors.white);
+        // Crown covers the whole top of the head (incl. outline); brim out front.
+        canvas.drawArc(Rect.fromCircle(center: head + const Offset(0, -3), radius: 18.5), math.pi, math.pi, true, p);
+        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(head.dx - 4, head.dy - 6, 30, 6), const Radius.circular(3)), p);
+        canvas.drawRect(Rect.fromLTWH(head.dx - 18.5, head.dy - 6, 37, 3), Paint()..color = const Color(0xFFB71C1C));
+        canvas.drawCircle(head + const Offset(0, -21.5), 2.4, Paint()..color = Colors.white);
       case 'hat_beanie':
         final p = Paint()..color = const Color(0xFF43A047);
-        canvas.drawArc(Rect.fromCircle(center: head + const Offset(0, -1), radius: 16), math.pi, math.pi, true, p);
-        canvas.drawRect(Rect.fromLTWH(head.dx - 16, head.dy - 4, 32, 6), Paint()..color = const Color(0xFF2E7D32));
-        canvas.drawCircle(head + const Offset(0, -19), 4.5, Paint()..color = Colors.white);
+        canvas.drawArc(Rect.fromCircle(center: head + const Offset(0, -2), radius: 18.5), math.pi, math.pi, true, p);
+        canvas.drawRect(Rect.fromLTWH(head.dx - 18.5, head.dy - 6, 37, 7), Paint()..color = const Color(0xFF2E7D32));
+        canvas.drawCircle(head + const Offset(0, -22), 4.8, Paint()..color = Colors.white);
       case 'hat_headphones':
         final band = Paint()
           ..color = const Color(0xFF212121)
@@ -245,32 +274,33 @@ class StickFigurePainter extends CustomPainter {
         canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: head + const Offset(16, 2), width: 8, height: 14), const Radius.circular(4)), cup);
       case 'hat_tophat':
         final p = Paint()..color = const Color(0xFF263238);
-        canvas.drawRect(Rect.fromLTWH(head.dx - 19, head.dy - 13, 38, 4), p);
-        canvas.drawRect(Rect.fromLTWH(head.dx - 11, head.dy - 36, 22, 24), p);
-        canvas.drawRect(Rect.fromLTWH(head.dx - 11, head.dy - 18, 22, 4), Paint()..color = const Color(0xFFD32F2F));
+        canvas.drawRect(Rect.fromLTWH(head.dx - 20, head.dy - 16, 40, 4), p);
+        canvas.drawRect(Rect.fromLTWH(head.dx - 12, head.dy - 40, 24, 25), p);
+        canvas.drawRect(Rect.fromLTWH(head.dx - 12, head.dy - 21, 24, 4), Paint()..color = const Color(0xFFD32F2F));
       case 'hat_cowboy':
         final p = Paint()..color = const Color(0xFF8D6E63);
-        canvas.drawOval(Rect.fromCenter(center: head + const Offset(0, -10), width: 48, height: 9), p);
-        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(head.dx - 11, head.dy - 28, 22, 18), const Radius.circular(6)), p);
-        canvas.drawRect(Rect.fromLTWH(head.dx - 11, head.dy - 14, 22, 3), Paint()..color = const Color(0xFF4E342E));
+        canvas.drawOval(Rect.fromCenter(center: head + const Offset(0, -13), width: 50, height: 9), p);
+        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(head.dx - 12, head.dy - 32, 24, 19), const Radius.circular(6)), p);
+        canvas.drawRect(Rect.fromLTWH(head.dx - 12, head.dy - 17, 24, 3), Paint()..color = const Color(0xFF4E342E));
       case 'hat_party':
         canvas.drawPath(
             Path()
-              ..moveTo(head.dx - 11, head.dy - 10)
-              ..lineTo(head.dx + 11, head.dy - 10)
-              ..lineTo(head.dx, head.dy - 40)
+              // Base rests on top of the head (outline edge is at −16.5).
+              ..moveTo(head.dx - 12, head.dy - 14)
+              ..lineTo(head.dx + 12, head.dy - 14)
+              ..lineTo(head.dx, head.dy - 47)
               ..close(),
             Paint()
               ..shader = const LinearGradient(colors: [Color(0xFFFFEB3B), Color(0xFFFF4081)])
-                  .createShader(Rect.fromLTWH(head.dx - 11, head.dy - 40, 22, 30)));
-        canvas.drawCircle(head + const Offset(0, -41), 3.5, Paint()..color = const Color(0xFF00E5FF));
+                  .createShader(Rect.fromLTWH(head.dx - 12, head.dy - 47, 24, 33)));
+        canvas.drawCircle(head + const Offset(0, -48), 3.8, Paint()..color = const Color(0xFF00E5FF));
       case 'hat_wizard':
         canvas.drawPath(
             Path()
-              ..moveTo(head.dx - 18, head.dy - 9)
-              ..lineTo(head.dx + 18, head.dy - 9)
+              ..moveTo(head.dx - 19, head.dy - 13)
+              ..lineTo(head.dx + 19, head.dy - 13)
               ..quadraticBezierTo(head.dx + 4, head.dy - 30, head.dx + 14, head.dy - 46)
-              ..quadraticBezierTo(head.dx - 6, head.dy - 30, head.dx - 18, head.dy - 9)
+              ..quadraticBezierTo(head.dx - 6, head.dy - 30, head.dx - 19, head.dy - 13)
               ..close(),
             Paint()..color = const Color(0xFF5E35B1));
         final star = Paint()..color = const Color(0xFFFFEB3B);
@@ -280,17 +310,17 @@ class StickFigurePainter extends CustomPainter {
         final p = Paint()..color = const Color(0xFFFFC107);
         canvas.drawPath(
             Path()
-              ..moveTo(head.dx - 14, head.dy - 9)
-              ..lineTo(head.dx - 15, head.dy - 28)
-              ..lineTo(head.dx - 7, head.dy - 19)
-              ..lineTo(head.dx, head.dy - 32)
-              ..lineTo(head.dx + 7, head.dy - 19)
-              ..lineTo(head.dx + 15, head.dy - 28)
-              ..lineTo(head.dx + 14, head.dy - 9)
+              ..moveTo(head.dx - 14, head.dy - 13)
+              ..lineTo(head.dx - 15, head.dy - 32)
+              ..lineTo(head.dx - 7, head.dy - 23)
+              ..lineTo(head.dx, head.dy - 36)
+              ..lineTo(head.dx + 7, head.dy - 23)
+              ..lineTo(head.dx + 15, head.dy - 32)
+              ..lineTo(head.dx + 14, head.dy - 13)
               ..close(),
             p);
-        canvas.drawCircle(head + const Offset(0, -15), 2.6, Paint()..color = const Color(0xFFE91E63));
-        canvas.drawCircle(head + Offset(0, -32 + math.sin(phase * 2) * 0.5), 2.2, Paint()..color = Colors.white);
+        canvas.drawCircle(head + const Offset(0, -19), 2.6, Paint()..color = const Color(0xFFE91E63));
+        canvas.drawCircle(head + Offset(0, -36 + math.sin(phase * 2) * 0.5), 2.2, Paint()..color = Colors.white);
       case 'hat_halo':
         canvas.drawOval(
             Rect.fromCenter(center: head + Offset(0, -22 + math.sin(phase) * 2), width: 30, height: 8),

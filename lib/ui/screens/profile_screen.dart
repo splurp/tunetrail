@@ -8,6 +8,7 @@ import '../widgets/stick_figure.dart';
 import 'card_detail_screen.dart';
 import 'playlists_screen.dart';
 import 'quests_screen.dart';
+import 'scrapyard_screen.dart';
 import 'settings_screen.dart';
 
 const _palette = [
@@ -106,6 +107,7 @@ class ProfileScreen extends StatelessWidget {
         _Stats(p: p, cards: g.collection.length, unique: g.collection.uniqueSongCount),
         const SizedBox(height: 12),
         _NavTile(icon: Icons.assignment, title: 'Quests', subtitle: 'Daily tasks, artist spotlights & milestones', page: const QuestsScreen()),
+        _NavTile(icon: Icons.recycling_rounded, title: 'Scrapyard', subtitle: '${p.cardsScrapped} songs scrapped', page: const ScrapyardScreen()),
         _NavTile(icon: Icons.queue_music, title: 'Playlists', subtitle: '${p.playlists.length} playlists', page: const PlaylistsScreen()),
         _NavTile(icon: Icons.settings, title: 'Settings', subtitle: p.debugEnabled ? 'Debug menu enabled' : 'Audio, market server, debug', page: const SettingsScreen()),
       ]),
@@ -129,13 +131,14 @@ class _Stats extends StatelessWidget {
       ('Distance', '${(p.metersWalked / 1000).toStringAsFixed(1)} km'),
       ('Packs opened', formatNumber(p.packsOpened)),
       ('Sold', formatNumber(p.cardsSold)),
+      ('Scrapped', formatNumber(p.cardsScrapped)),
       ('Trades', formatNumber(p.tradesCompleted)),
     ];
     return GridView.count(
-      crossAxisCount: 4,
+      crossAxisCount: 3,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 1.1,
+      childAspectRatio: 1.6,
       mainAxisSpacing: 6,
       crossAxisSpacing: 6,
       children: [

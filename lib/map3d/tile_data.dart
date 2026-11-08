@@ -65,6 +65,7 @@ class WorldTile {
     required this.layers,
     required this.buckets,
     required this.buildings,
+    required this.roads,
     required this.flags,
     required this.counts,
     required this.minX,
@@ -83,6 +84,9 @@ class WorldTile {
   final Map<GroundLayer, Float32List> buckets;
 
   final List<MegaBuilding> buildings;
+
+  /// Walkable road centre-lines [x0,y0,x1,y1,...] in metres (for routing).
+  final List<Float32List> roads;
 
   /// Zone grid (kZoneGrid²): flags and counters, row-major from the tile's
   /// north-west corner.
@@ -142,6 +146,7 @@ WorldTile processTile(TileJob j) {
 
   final out = <GroundLayer, List<double>>{for (final l in GroundLayer.values) l: <double>[]};
   final buildings = <MegaBuilding>[];
+  final roads = <Float32List>[];
   final flags = Uint32List(kZoneGrid * kZoneGrid);
   final counts = {for (final c in ZoneCount.values) c: Uint16List(kZoneGrid * kZoneGrid)};
 
@@ -271,6 +276,7 @@ WorldTile processTile(TileJob j) {
   // --------------------------------------------------------------- roads
   void addRoad(GroundLayer layer, Float32List line, double width) {
     final m = toMeters(line);
+    if (layer != GroundLayer.water) roads.add(m);
     final o = out[layer]!;
     final hw = width / 2;
     var px = m[0], py = m[1];
@@ -508,6 +514,7 @@ WorldTile processTile(TileJob j) {
     layers: layerArrays,
     buckets: bucketArrays,
     buildings: buildings,
+    roads: roads,
     flags: flags,
     counts: counts,
     minX: minX,

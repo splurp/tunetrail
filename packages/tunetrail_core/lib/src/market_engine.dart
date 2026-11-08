@@ -71,19 +71,34 @@ class MarketEngine {
   }
 
   // --------------------------------------------------------------- listings
-  Listing createListing(String sellerId, CardPayload card, int price,
-      {bool acceptsTrades = false}) {
-    if (price < 1) throw MarketException('Price must be at least 1 coin');
-    if (price > 100000000) throw MarketException('Price too high');
-    if (listings.values.any((l) => l.sellerId == sellerId && l.card.uid == card.uid)) {
-      throw MarketException('That card is already listed');
+  /// Lists a folder of 1–20 songs. [folderPrice] (optional) is a bundle
+  /// price; when null the folder costs the sum of the item prices.
+  Listing createListing(String sellerId, List<ListingItem> items,
+      {int? folderPrice, String note = '', bool acceptsTrades = false}) {
+    if (items.isEmpty) throw MarketException('Add at least one song');
+    if (items.length > kMaxListingItems) throw MarketException('A listing holds up to $kMaxListingItems songs');
+    if (note.length > kMaxListingNote) throw MarketException('Notes are limited to $kMaxListingNote characters');
+    final uids = <int>{};
+    for (final i in items) {
+      if (i.price < 1) throw MarketException('Every song needs a price of at least 1 coin');
+      if (i.price > 100000000) throw MarketException('Price too high');
+      if (!uids.add(i.card.uid)) throw MarketException('A song appears twice');
+    }
+    final listed = {for (final l in listings.values.where((l) => l.sellerId == sellerId)) ...l.cards.map((c) => c.uid)};
+    if (uids.any(listed.contains)) throw MarketException('One of those songs is already listed');
+    final total = items.fold<int>(0, (a, i) => a + i.price);
+    if (folderPrice != null) {
+      if (folderPrice < 1) throw MarketException('Folder price must be at least 1 coin');
+      if (folderPrice > total) throw MarketException('Folder price can\'t be more than the songs\' total ($total)');
+      if (folderPrice == total || items.length == 1) folderPrice = null;
     }
     final l = Listing(
       id: _id('l'),
       sellerId: sellerId,
       sellerName: nameOf(sellerId),
-      card: card,
-      price: price,
+      items: List.of(items),
+      manualFolderPrice: folderPrice,
+      note: note.trim(),
       acceptsTrades: acceptsTrades,
       createdAt: now(),
     );
@@ -92,90 +107,123 @@ class MarketEngine {
     return l;
   }
 
-  /// Removes a listing and returns the escrowed card to the seller.
-  CardPayload cancelListing(String sellerId, String listingId) {
+  /// Removes a whole listing and returns every escrowed card to the seller.
+  List<CardPayload> cancelListing(String sellerId, String listingId) {
     final l = listings[listingId];
     if (l == null) throw MarketException('Listing not found');
     if (l.sellerId != sellerId) throw MarketException('Not your listing');
     listings.remove(listingId);
     _declineOffersFor(listingId, 'The listing was cancelled');
     _changed();
-    return l.card;
+    return l.cards.toList();
   }
 
-  /// Buys a listing. The buyer must have already debited [price] coins.
-  CardPayload buyListing(String buyerId, String listingId, {int? expectedPrice}) {
+  /// Removes one song from a seller's folder (returned to the seller).
+  CardPayload withdrawItem(String sellerId, String listingId, int cardUid) {
+    final l = listings[listingId];
+    if (l == null) throw MarketException('Listing not found');
+    if (l.sellerId != sellerId) throw MarketException('Not your listing');
+    final item = l.items.where((i) => i.card.uid == cardUid).firstOrNull;
+    if (item == null) throw MarketException('That song is no longer in the listing');
+    _removeItem(l, item, 'The seller changed the listing');
+    _changed();
+    return item.card;
+  }
+
+  /// Buys a whole folder. The buyer must already have debited the price.
+  List<CardPayload> buyListing(String buyerId, String listingId, {int? expectedPrice}) {
     final l = listings[listingId];
     if (l == null) throw MarketException('Listing no longer available');
     if (l.sellerId == buyerId) throw MarketException("You can't buy your own listing");
-    if (expectedPrice != null && expectedPrice != l.price) {
-      throw MarketException('Price changed');
-    }
+    final price = l.folderPrice;
+    if (expectedPrice != null && expectedPrice != price) throw MarketException('Price changed');
     listings.remove(listingId);
-    _declineOffersFor(listingId, 'The card was sold to another player');
-    _deliver(l.sellerId,
-        '${nameOf(buyerId)} bought your ${l.card.title} for ${l.price} coins',
-        coins: l.price);
+    _declineOffersFor(listingId, 'The listing was sold to another player');
+    final what = l.items.length == 1 ? l.card.title : 'folder of ${l.items.length} songs';
+    _deliver(l.sellerId, '${nameOf(buyerId)} bought your $what for $price coins', coins: price);
     _changed();
-    return l.card;
+    return l.cards.toList();
+  }
+
+  /// Buys a single song out of a folder at its own price.
+  CardPayload buyItem(String buyerId, String listingId, int cardUid, {int? expectedPrice}) {
+    final l = listings[listingId];
+    if (l == null) throw MarketException('Listing no longer available');
+    if (l.sellerId == buyerId) throw MarketException("You can't buy your own listing");
+    final item = l.items.where((i) => i.card.uid == cardUid).firstOrNull;
+    if (item == null) throw MarketException('That song was already sold');
+    if (expectedPrice != null && expectedPrice != item.price) throw MarketException('Price changed');
+    _removeItem(l, item, 'A song in the folder was sold');
+    _deliver(l.sellerId, '${nameOf(buyerId)} bought ${item.card.title} for ${item.price} coins', coins: item.price);
+    _changed();
+    return item.card;
+  }
+
+  /// Removes one item; a manual folder price shrinks proportionally, and
+  /// pending trade offers (which were for the whole folder) are returned.
+  void _removeItem(Listing l, ListingItem item, String why) {
+    final before = l.itemsTotal;
+    l.items.remove(item);
+    if (l.items.isEmpty) {
+      listings.remove(l.id);
+    } else if (l.manualFolderPrice != null) {
+      final scaled = (l.manualFolderPrice! * l.itemsTotal / before).round();
+      l.manualFolderPrice = l.items.length == 1 || scaled >= l.itemsTotal ? null : scaled.clamp(1, l.itemsTotal);
+    }
+    _declineOffersFor(l.id, why);
+  }
+
+  bool _matches(CardPayload c, ListingQuery q, String text) {
+    if (q.rarities.isNotEmpty && !q.rarities.contains(c.rarity.index)) return false;
+    if (q.shinyOnly && !c.shiny) return false;
+    if (q.normalOnly && c.shiny) return false;
+    if (q.genres.isNotEmpty && !q.genres.contains(c.genreId)) return false;
+    if (text.isNotEmpty &&
+        !c.title.toLowerCase().contains(text) &&
+        !c.artistName.toLowerCase().contains(text) &&
+        !c.albumTitle.toLowerCase().contains(text)) {
+      return false;
+    }
+    return true;
   }
 
   List<Listing> browse(ListingQuery q) {
     final text = q.text.trim().toLowerCase();
     final results = listings.values.where((l) {
-      if (q.excludeSellerId != null && l.sellerId == q.excludeSellerId) {
-        return false;
-      }
-      if (q.rarities.isNotEmpty && !q.rarities.contains(l.card.rarity.index)) {
-        return false;
-      }
-      if (q.shinyOnly && !l.card.shiny) return false;
-      if (q.normalOnly && l.card.shiny) return false;
-      if (q.genres.isNotEmpty && !q.genres.contains(l.card.genreId)) return false;
+      if (q.excludeSellerId != null && l.sellerId == q.excludeSellerId) return false;
       if (q.tradesOnly && !l.acceptsTrades) return false;
-      if (text.isNotEmpty &&
-          !l.card.title.toLowerCase().contains(text) &&
-          !l.card.artistName.toLowerCase().contains(text) &&
-          !l.card.albumTitle.toLowerCase().contains(text) &&
-          !l.sellerName.toLowerCase().contains(text)) {
-        return false;
-      }
-      return true;
+      final sellerHit = text.isNotEmpty && (l.sellerName.toLowerCase().contains(text) || l.note.toLowerCase().contains(text));
+      final cardText = sellerHit ? '' : text;
+      return l.cards.any((c) => _matches(c, q, cardText));
     }).toList();
+    int best(Listing l) => l.cards.map((c) => c.rarity.index * 2 + (c.shiny ? 1 : 0)).reduce(math.max);
     switch (q.sort) {
       case ListingSort.newest:
         results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       case ListingSort.priceLow:
-        results.sort((a, b) => a.price.compareTo(b.price));
+        results.sort((a, b) => a.folderPrice.compareTo(b.folderPrice));
       case ListingSort.priceHigh:
-        results.sort((a, b) => b.price.compareTo(a.price));
+        results.sort((a, b) => b.folderPrice.compareTo(a.folderPrice));
       case ListingSort.rarity:
-        results.sort((a, b) {
-          final c = b.card.rarity.index.compareTo(a.card.rarity.index);
-          if (c != 0) return c;
-          return (b.card.shiny ? 1 : 0).compareTo(a.card.shiny ? 1 : 0);
-        });
+        results.sort((a, b) => best(b).compareTo(best(a)));
     }
     if (q.offset >= results.length) return const [];
-    return results.sublist(
-        q.offset, math.min(results.length, q.offset + q.limit));
+    return results.sublist(q.offset, math.min(results.length, q.offset + q.limit));
   }
 
   List<Listing> listingsOf(String sellerId) =>
-      listings.values.where((l) => l.sellerId == sellerId).toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      listings.values.where((l) => l.sellerId == sellerId).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
   // ----------------------------------------------------------------- trades
-  TradeOffer createOffer(String fromId, String listingId,
-      List<CardPayload> offeredCards, int offeredCoins) {
+  /// Offers cards and/or coins for a whole trade-enabled folder.
+  TradeOffer createOffer(String fromId, String listingId, List<CardPayload> offeredCards, int offeredCoins, {String note = ''}) {
     final l = listings[listingId];
     if (l == null) throw MarketException('Listing not found');
     if (!l.acceptsTrades) throw MarketException('This listing does not accept trades');
     if (l.sellerId == fromId) throw MarketException("You can't trade with yourself");
-    if (offeredCards.isEmpty && offeredCoins <= 0) {
-      throw MarketException('Offer at least one card or some coins');
-    }
-    if (offeredCards.length > 10) throw MarketException('Max 10 cards per offer');
+    if (offeredCards.isEmpty && offeredCoins <= 0) throw MarketException('Offer at least one card or some coins');
+    if (offeredCards.length > kMaxListingItems) throw MarketException('Max $kMaxListingItems cards per offer');
+    if (note.length > kMaxListingNote) throw MarketException('Notes are limited to $kMaxListingNote characters');
     final o = TradeOffer(
       id: _id('t'),
       listingId: listingId,
@@ -184,7 +232,8 @@ class MarketEngine {
       toId: l.sellerId,
       offeredCards: offeredCards,
       offeredCoins: offeredCoins,
-      requestedCard: l.card,
+      requestedCards: l.cards.toList(),
+      note: note.trim(),
       createdAt: now(),
     );
     offers[o.id] = o;
@@ -210,10 +259,9 @@ class MarketEngine {
     o.status = TradeStatus.accepted;
     _deliver(o.toId, 'Trade with ${o.fromName} complete',
         coins: o.offeredCoins, cards: o.offeredCards);
-    _deliver(o.fromId, '${nameOf(o.toId)} accepted your trade for ${l.card.title}',
-        cards: [l.card]);
+    _deliver(o.fromId, '${nameOf(o.toId)} accepted your trade for ${o.requestedLabel}', cards: l.cards.toList());
     offers.remove(offerId);
-    _declineOffersFor(o.listingId, 'The card was traded to another player');
+    _declineOffersFor(o.listingId, 'The listing was traded to another player');
     _changed();
   }
 
@@ -233,7 +281,7 @@ class MarketEngine {
   }
 
   void _returnOffer(TradeOffer o, String why) {
-    _deliver(o.fromId, '$why for ${o.requestedCard.title}; items returned',
+    _deliver(o.fromId, '$why (${o.requestedLabel}); your offer was returned',
         coins: o.offeredCoins, cards: o.offeredCards);
   }
 

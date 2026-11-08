@@ -6,8 +6,10 @@ import 'package:tunetrail_core/tunetrail_core.dart';
 import '../../data/models.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
+import '../widgets/net_image.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
+import 'listing_composer.dart';
 
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
@@ -234,21 +236,7 @@ class _BrowseState extends State<_Browse> {
                           return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
                         }
                         final l = _items[i];
-                        final s = Song.fromPayload(l.card);
-                        return CardRow(
-                          song: s,
-                          rarity: l.card.rarity,
-                          shiny: l.card.shiny,
-                          subtitle: '${s.artistName} • by ${l.sellerName}${l.acceptsTrades ? ' • trades ok' : ''}',
-                          trailing: Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: Text(formatNumber(l.price), style: const TextStyle(color: kCoinColor, fontWeight: FontWeight.w800)),
-                          ),
-                          onTap: () async {
-                            final changed = await showListingSheet(context, l);
-                            if (changed == true) _reload();
-                          },
-                        );
+                        return ListingTile(key: ValueKey(l.id), listing: l, onChanged: _reload);
                       },
                     ),
         ),
@@ -257,81 +245,218 @@ class _BrowseState extends State<_Browse> {
   }
 }
 
-/// Listing details with buy / offer-trade actions. Returns true if the
-/// market changed.
-Future<bool?> showListingSheet(BuildContext context, Listing l) {
-  final g = GameScope.read(context);
-  return showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-        builder: (ctx) => SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          SongCardView(song: Song.fromPayload(l.card), rarity: l.card.rarity, shiny: l.card.shiny, width: 220),
-          const SizedBox(height: 12),
-          Text('Sold by ${l.sellerName}', style: const TextStyle(color: Colors.white60)),
-          Text('Est. value ${formatNumber(l.card.fair)} coins', style: const TextStyle(fontSize: 12, color: Colors.white38)),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              icon: const Icon(kCoinIcon),
-              label: Text('Buy for ${formatNumber(l.price)} coins'),
-              onPressed: g.profile.coins < l.price
-                  ? null
-                  : () async {
-                      try {
-                        await g.buyListing(l);
-                        g.toast('You bought ${l.card.title}!');
-                        if (ctx.mounted) Navigator.pop(ctx, true);
-                      } catch (e) {
-                        g.toast('$e');
-                        if (ctx.mounted) Navigator.pop(ctx, true);
-                      }
-                    },
-            ),
-          ),
-          if (g.profile.coins < l.price) const Padding(padding: EdgeInsets.only(top: 4), child: Text('Not enough coins', style: TextStyle(color: Colors.redAccent))),
-          if (l.acceptsTrades) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.swap_horiz),
-                label: const Text('Offer a trade'),
-                onPressed: () async {
-                  final sent = await _composeOffer(ctx, l);
-                  if (sent == true && ctx.mounted) Navigator.pop(ctx, true);
-                },
-              ),
-            ),
-          ],
-        ]),
-      ),
-    ),
-  );
+/// An expandable market listing. Collapsed it shows a cover mosaic, the
+/// seller, note and folder price; expanded it lists every song with its own
+/// price and buy button, plus "buy all" and "offer trade".
+class ListingTile extends StatefulWidget {
+  const ListingTile({super.key, required this.listing, required this.onChanged, this.mine = false});
+  final Listing listing;
+  final VoidCallback onChanged;
+  final bool mine;
+  @override
+  State<ListingTile> createState() => _ListingTileState();
 }
 
-Future<bool?> _composeOffer(BuildContext context, Listing l) async {
+class _ListingTileState extends State<ListingTile> {
+  bool _open = false;
+  bool _busy = false;
+
+  Future<void> _run(Future<void> Function() f, String ok) async {
+    final g = GameScope.read(context);
+    setState(() => _busy = true);
+    try {
+      await f();
+      g.toast(ok);
+    } catch (e) {
+      g.toast('$e');
+    }
+    if (mounted) setState(() => _busy = false);
+    widget.onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    final l = widget.listing;
+    final single = l.items.length == 1;
+    final first = Song.fromPayload(l.card);
+    final title = single ? first.title : '${l.items.length} songs';
+    final artists = {for (final c in l.cards) c.artistName}.take(3).join(', ');
+    final best = l.cards.reduce((a, b) => (b.rarity.index * 2 + (b.shiny ? 1 : 0)) > (a.rarity.index * 2 + (a.shiny ? 1 : 0)) ? b : a);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(16), border: Border.all(color: _open ? kAccent.withValues(alpha: 0.4) : kOutline)),
+      child: Column(children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(children: [
+              _Mosaic(cards: l.cards.take(4).toList(), folder: !single),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    if (!single) const Padding(padding: EdgeInsets.only(right: 6), child: Icon(Icons.folder_outlined, size: 16, color: kTextSecondary)),
+                    Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
+                  ]),
+                  Text(single ? first.artistName : artists, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+                  const SizedBox(height: 3),
+                  Row(children: [
+                    RarityLabel(best.rarity, shiny: best.shiny, fontSize: 11),
+                    if (!single) const Text('  best', style: TextStyle(fontSize: 11, color: kTextTertiary)),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(widget.mine ? (l.acceptsTrades ? 'trades on' : '') : 'by ${l.sellerName}${l.acceptsTrades ? ' · trades' : ''}',
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: kTextTertiary)),
+                    ),
+                  ]),
+                  if (l.note.isNotEmpty && !_open)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text('“${l.note}”', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: kTextSecondary, fontStyle: FontStyle.italic)),
+                    ),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text(formatNumber(l.folderPrice), style: const TextStyle(fontWeight: FontWeight.w700, color: kTextPrimary)),
+                if (l.discount > 0)
+                  Text(formatNumber(l.itemsTotal), style: const TextStyle(fontSize: 11, color: kTextTertiary, decoration: TextDecoration.lineThrough)),
+                Icon(_open ? Icons.expand_less : Icons.expand_more, size: 18, color: kTextTertiary),
+              ]),
+            ]),
+          ),
+        ),
+        if (_open) ...[
+          const Divider(height: 1),
+          if (l.note.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.sticky_note_2_outlined, size: 16, color: kTextTertiary),
+                const SizedBox(width: 8),
+                Expanded(child: Text(l.note, style: const TextStyle(color: kTextSecondary, fontSize: 13))),
+              ]),
+            ),
+          for (final it in l.items)
+            CardRow(
+              song: Song.fromPayload(it.card),
+              rarity: it.card.rarity,
+              shiny: it.card.shiny,
+              onTap: () => g.audio.playOne(it.card.songId),
+              trailing: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: widget.mine
+                    ? (single
+                        ? Text(formatNumber(it.price), style: const TextStyle(fontWeight: FontWeight.w600))
+                        : TextButton(
+                            onPressed: _busy ? null : () => _run(() => g.withdrawFromListing(l, it.card.uid), 'Removed from listing'),
+                            child: Text('${formatNumber(it.price)} · Remove'),
+                          ))
+                    : (single
+                        ? Text(formatNumber(it.price), style: const TextStyle(fontWeight: FontWeight.w600))
+                        : OutlinedButton(
+                            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10), minimumSize: const Size(0, 34)),
+                            onPressed: _busy || g.profile.coins < it.price ? null : () => _run(() => g.buyListingItem(l, it), 'Bought ${it.card.title}'),
+                            child: Text(formatNumber(it.price)),
+                          )),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+            child: widget.mine
+                ? Row(children: [
+                    Expanded(child: OutlinedButton(onPressed: _busy ? null : () => _run(() => g.cancelListing(l), 'Listing cancelled — songs returned'), child: const Text('Cancel listing'))),
+                  ])
+                : Row(children: [
+                    if (l.acceptsTrades) ...[
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.swap_horiz, size: 18),
+                          label: const Text('Trade'),
+                          onPressed: _busy
+                              ? null
+                              : () async {
+                                  final sent = await composeOffer(context, l);
+                                  if (sent == true) widget.onChanged();
+                                },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                    ],
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton(
+                        onPressed: _busy || g.profile.coins < l.folderPrice
+                            ? null
+                            : () => _run(() => g.buyListing(l), single ? 'You bought ${l.card.title}!' : 'You bought ${l.items.length} songs!'),
+                        child: Text(g.profile.coins < l.folderPrice
+                            ? 'Need ${formatNumber(l.folderPrice)}'
+                            : single
+                                ? 'Buy · ${formatNumber(l.folderPrice)}'
+                                : 'Buy all ${l.items.length} · ${formatNumber(l.folderPrice)}'),
+                      ),
+                    ),
+                  ]),
+          ),
+        ],
+      ]),
+    );
+  }
+}
+
+class _Mosaic extends StatelessWidget {
+  const _Mosaic({required this.cards, required this.folder});
+  final List<CardPayload> cards;
+  final bool folder;
+  @override
+  Widget build(BuildContext context) {
+    const size = 56.0;
+    if (!folder || cards.length < 2) {
+      return Glint(enabled: cards.first.shiny, strength: 0.4, child: Art(Song.fromPayload(cards.first).cover(250), size: size, radius: 10));
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Wrap(children: [
+          for (var i = 0; i < 4; i++)
+            i < cards.length ? Art(Song.fromPayload(cards[i]).cover(56), size: size / 2, radius: 0) : Container(width: size / 2, height: size / 2, color: kSurface2),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Offer cards and/or coins (with a note) for a whole trade-enabled listing.
+Future<bool?> composeOffer(BuildContext context, Listing l) async {
   final g = GameScope.read(context);
-  final uids = await pickCards(context, title: 'Pick up to 10 cards to offer', max: 10);
+  final uids = await pickCards(context, title: 'Pick up to 20 songs to offer', max: kMaxListingItems);
   if (uids == null || !context.mounted) return false;
   final coinsCtl = TextEditingController(text: '0');
+  final noteCtl = TextEditingController();
   final cards = [for (final u in uids) ?g.collection.byUid(u)];
   final value = cards.fold<int>(0, (a, c) => a + c.toPayload().fair);
+  final want = l.cards.fold<int>(0, (a, c) => a + c.fair);
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: const Text('Trade offer'),
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('For: ${l.card.title} (${l.card.rarity.label}${l.card.shiny ? ' Shiny' : ''}) — est. ${l.card.fair}'),
-        const SizedBox(height: 8),
-        Text('You offer ${cards.length} card(s), est. $value coins of value'),
-        TextField(controller: coinsCtl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '+ coins')),
-        const SizedBox(height: 6),
-        const Text('Offered items are held in escrow until the seller responds.', style: TextStyle(fontSize: 12, color: Colors.white54)),
-      ]),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('For ${l.items.length == 1 ? l.card.title : 'all ${l.items.length} songs'} from ${l.sellerName} (est. ${formatNumber(want)})'),
+          const SizedBox(height: 8),
+          Text('You offer ${cards.length} song(s), est. ${formatNumber(value)}', style: const TextStyle(color: kTextSecondary)),
+          const SizedBox(height: 8),
+          TextField(controller: coinsCtl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '+ coins')),
+          const SizedBox(height: 8),
+          TextField(controller: noteCtl, maxLength: kMaxListingNote, maxLines: 2, decoration: const InputDecoration(labelText: 'Note (optional)')),
+          const Text('Offered items are held in escrow until the seller responds.', style: TextStyle(fontSize: 12, color: kTextTertiary)),
+        ]),
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
         FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send offer')),
@@ -340,7 +465,7 @@ Future<bool?> _composeOffer(BuildContext context, Listing l) async {
   );
   if (ok != true) return false;
   try {
-    await g.makeOffer(l, uids, int.tryParse(coinsCtl.text) ?? 0);
+    await g.makeOffer(l, uids, int.tryParse(coinsCtl.text) ?? 0, note: noteCtl.text.trim());
     g.toast('Offer sent to ${l.sellerName}');
     return true;
   } catch (e) {
@@ -376,11 +501,11 @@ class _MyListingsState extends State<_MyListings> {
               padding: const EdgeInsets.all(12),
               child: FilledButton.icon(
                 icon: const Icon(Icons.add),
-                label: const Text('List a card for sale'),
+                label: const Text('List songs (up to 20 per folder)'),
                 onPressed: () async {
-                  final picked = await pickCards(context, title: 'Pick a card to sell');
+                  final picked = await pickCards(context, title: 'Pick up to 20 songs to list', max: kMaxListingItems);
                   if (picked != null && picked.isNotEmpty && context.mounted) {
-                    await showListDialog(context, picked.first);
+                    await openComposer(context, picked);
                     _load();
                   }
                 },
@@ -389,26 +514,8 @@ class _MyListingsState extends State<_MyListings> {
             if (snap.connectionState == ConnectionState.waiting) const Center(child: CircularProgressIndicator()),
             if (snap.hasError) Padding(padding: const EdgeInsets.all(16), child: Text('${snap.error}')),
             if (list.isEmpty && snap.connectionState == ConnectionState.done)
-              const Padding(padding: EdgeInsets.all(24), child: Text('You have no active listings.', textAlign: TextAlign.center)),
-            for (final l in list)
-              CardRow(
-                song: Song.fromPayload(l.card),
-                rarity: l.card.rarity,
-                shiny: l.card.shiny,
-                subtitle: '${formatNumber(l.price)} coins${l.acceptsTrades ? ' • accepting trades' : ''}',
-                trailing: TextButton(
-                  onPressed: () async {
-                    try {
-                      await g.cancelListing(l);
-                      g.toast('Listing cancelled — card returned');
-                    } catch (e) {
-                      g.toast('$e');
-                    }
-                    _load();
-                  },
-                  child: const Text('Cancel'),
-                ),
-              ),
+              const Padding(padding: EdgeInsets.all(24), child: Text('You have no active listings.', textAlign: TextAlign.center, style: TextStyle(color: kTextTertiary))),
+            for (final l in list) ListingTile(key: ValueKey(l.id), listing: l, mine: true, onChanged: _load),
           ]);
         },
       ),
@@ -495,13 +602,14 @@ class _OfferCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(incoming ? '${o.fromName} wants your ${o.requestedCard.title}' : 'Your offer for ${o.requestedCard.title}',
-              style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(incoming ? '${o.fromName} wants your ${o.requestedLabel}' : 'Your offer for ${o.requestedLabel}',
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+          if (o.note.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('“${o.note}”', style: const TextStyle(color: kTextSecondary, fontSize: 13))),
           const SizedBox(height: 6),
           for (final c in o.offeredCards)
             CardRow(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny),
           if (o.offeredCoins > 0) Padding(padding: const EdgeInsets.all(6), child: Text('+ ${formatNumber(o.offeredCoins)} coins', style: const TextStyle(color: kCoinColor))),
-          Text('Offer value ≈ ${formatNumber(o.offeredValue)} • your card ≈ ${formatNumber(o.requestedCard.fair)}', style: const TextStyle(fontSize: 12, color: Colors.white54)),
+          Text('Offer value ≈ ${formatNumber(o.offeredValue)} · requested ≈ ${formatNumber(o.requestedValue)}', style: const TextStyle(fontSize: 12, color: kTextTertiary)),
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [
             TextButton(onPressed: onDecline, child: Text(incoming ? 'Decline' : 'Cancel offer')),
             if (incoming) FilledButton(onPressed: onAccept, child: const Text('Accept')),

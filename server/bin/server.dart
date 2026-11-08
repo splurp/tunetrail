@@ -91,20 +91,26 @@ Router buildRouter(MarketEngine m) {
   r.post('/listings', (Request req) => guard(() async {
         final b = await body(req);
         final l = m.createListing(
-            pid(req),
-            CardPayload.fromJson(b['card'] as Map<String, dynamic>),
-            (b['price'] as num).toInt(),
-            acceptsTrades: b['trades'] as bool? ?? false);
+          pid(req),
+          [for (final i in (b['items'] as List? ?? const [])) ListingItem.fromJson(i as Map<String, dynamic>)],
+          folderPrice: (b['folderPrice'] as num?)?.toInt(),
+          note: b['note'] as String? ?? '',
+          acceptsTrades: b['trades'] as bool? ?? false,
+        );
         return ok(l.toJson());
       }));
   r.post('/listings/<id>/cancel', (Request req, String id) => guard(() async =>
-      ok(m.cancelListing(pid(req), id).toJson())));
+      ok([for (final c in m.cancelListing(pid(req), id)) c.toJson()])));
   r.post('/listings/<id>/buy', (Request req, String id) => guard(() async {
         final b = await body(req);
-        return ok(m.buyListing(pid(req), id,
-                expectedPrice: (b['price'] as num?)?.toInt())
-            .toJson());
+        return ok([for (final c in m.buyListing(pid(req), id, expectedPrice: (b['price'] as num?)?.toInt())) c.toJson()]);
       }));
+  r.post('/listings/<id>/items/<uid>/buy', (Request req, String id, String uid) => guard(() async {
+        final b = await body(req);
+        return ok(m.buyItem(pid(req), id, int.parse(uid), expectedPrice: (b['price'] as num?)?.toInt()).toJson());
+      }));
+  r.post('/listings/<id>/items/<uid>/withdraw', (Request req, String id, String uid) => guard(() async =>
+      ok(m.withdrawItem(pid(req), id, int.parse(uid)).toJson())));
 
   r.get('/offers', (Request req) => guard(() async =>
       ok([for (final o in m.offersFor(pid(req))) o.toJson()])));
@@ -117,7 +123,8 @@ Router buildRouter(MarketEngine m) {
               for (final c in (b['cards'] as List? ?? const []))
                 CardPayload.fromJson(c as Map<String, dynamic>)
             ],
-            (b['coins'] as num?)?.toInt() ?? 0);
+            (b['coins'] as num?)?.toInt() ?? 0,
+            note: b['note'] as String? ?? '');
         return ok(o.toJson());
       }));
   r.post('/offers/<id>/accept', (Request req, String id) => guard(() async {

@@ -13,32 +13,65 @@ class MarketPlayer {
       isBot: j['bot'] as bool? ?? false);
 }
 
-/// A card escrowed on the market for coins (and optionally trade offers).
+/// Maximum songs in one listing folder.
+const int kMaxListingItems = 20;
+
+/// Maximum length of a listing note.
+const int kMaxListingNote = 200;
+
+/// One song inside a listing folder, with its own price.
+class ListingItem {
+  ListingItem({required this.card, required this.price});
+  final CardPayload card;
+  final int price;
+
+  Map<String, dynamic> toJson() => {'card': card.toJson(), 'price': price};
+  factory ListingItem.fromJson(Map<String, dynamic> j) =>
+      ListingItem(card: CardPayload.fromJson(j['card'] as Map<String, dynamic>), price: (j['price'] as num).toInt());
+}
+
+/// A "folder" of 1–20 songs escrowed on the market. Buyers can take the
+/// whole folder for [folderPrice] or individual songs at their own price.
 class Listing {
   Listing({
     required this.id,
     required this.sellerId,
     required this.sellerName,
-    required this.card,
-    required this.price,
+    required this.items,
     required this.acceptsTrades,
     required this.createdAt,
+    this.manualFolderPrice,
+    this.note = '',
   });
 
   final String id;
   final String sellerId;
   final String sellerName;
-  final CardPayload card;
-  final int price;
+  final List<ListingItem> items;
   final bool acceptsTrades;
   final int createdAt;
+  final String note;
+
+  /// Seller-set folder price (a bundle discount); null = sum of items.
+  int? manualFolderPrice;
+
+  int get itemsTotal => items.fold<int>(0, (a, i) => a + i.price);
+  int get folderPrice => manualFolderPrice ?? itemsTotal;
+  bool get isFolder => items.length > 1;
+  int get discount => itemsTotal - folderPrice;
+
+  /// First card (convenience for single-song listings).
+  CardPayload get card => items.first.card;
+
+  Iterable<CardPayload> get cards => items.map((i) => i.card);
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'sellerId': sellerId,
         'sellerName': sellerName,
-        'card': card.toJson(),
-        'price': price,
+        'items': [for (final i in items) i.toJson()],
+        'folderPrice': manualFolderPrice,
+        'note': note,
         'trades': acceptsTrades,
         'createdAt': createdAt,
       };
@@ -47,8 +80,12 @@ class Listing {
         id: j['id'] as String,
         sellerId: j['sellerId'] as String,
         sellerName: j['sellerName'] as String? ?? '',
-        card: CardPayload.fromJson(j['card'] as Map<String, dynamic>),
-        price: (j['price'] as num).toInt(),
+        items: j['items'] != null
+            ? [for (final i in (j['items'] as List)) ListingItem.fromJson(i as Map<String, dynamic>)]
+            // Legacy single-card listings.
+            : [ListingItem(card: CardPayload.fromJson(j['card'] as Map<String, dynamic>), price: (j['price'] as num).toInt())],
+        manualFolderPrice: (j['folderPrice'] as num?)?.toInt(),
+        note: j['note'] as String? ?? '',
         acceptsTrades: j['trades'] as bool? ?? false,
         createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
       );
@@ -56,7 +93,7 @@ class Listing {
 
 enum TradeStatus { pending, accepted, declined, cancelled }
 
-/// An offer of cards (+coins) in exchange for a trade-enabled listing.
+/// An offer of cards (+coins) in exchange for a whole trade-enabled folder.
 class TradeOffer {
   TradeOffer({
     required this.id,
@@ -66,8 +103,9 @@ class TradeOffer {
     required this.toId,
     required this.offeredCards,
     required this.offeredCoins,
-    required this.requestedCard,
+    required this.requestedCards,
     required this.createdAt,
+    this.note = '',
     this.status = TradeStatus.pending,
   });
 
@@ -78,12 +116,18 @@ class TradeOffer {
   final String toId;
   final List<CardPayload> offeredCards;
   final int offeredCoins;
-  final CardPayload requestedCard;
+
+  /// Snapshot of the folder's songs at offer time.
+  final List<CardPayload> requestedCards;
   final int createdAt;
+  final String note;
   TradeStatus status;
 
-  int get offeredValue =>
-      offeredCards.fold<int>(0, (a, c) => a + c.fair) + offeredCoins;
+  CardPayload get requestedCard => requestedCards.first;
+  String get requestedLabel => requestedCards.length == 1 ? requestedCards.first.title : '${requestedCards.length} songs';
+
+  int get offeredValue => offeredCards.fold<int>(0, (a, c) => a + c.fair) + offeredCoins;
+  int get requestedValue => requestedCards.fold<int>(0, (a, c) => a + c.fair);
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -93,27 +137,30 @@ class TradeOffer {
         'toId': toId,
         'cards': [for (final c in offeredCards) c.toJson()],
         'coins': offeredCoins,
-        'requested': requestedCard.toJson(),
+        'requested': [for (final c in requestedCards) c.toJson()],
+        'note': note,
         'createdAt': createdAt,
         'status': status.index,
       };
 
-  factory TradeOffer.fromJson(Map<String, dynamic> j) => TradeOffer(
-        id: j['id'] as String,
-        listingId: j['listingId'] as String,
-        fromId: j['fromId'] as String,
-        fromName: j['fromName'] as String? ?? '',
-        toId: j['toId'] as String,
-        offeredCards: [
-          for (final c in (j['cards'] as List? ?? const []))
-            CardPayload.fromJson(c as Map<String, dynamic>)
-        ],
-        offeredCoins: (j['coins'] as num?)?.toInt() ?? 0,
-        requestedCard:
-            CardPayload.fromJson(j['requested'] as Map<String, dynamic>),
-        createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
-        status: TradeStatus.values[(j['status'] as num?)?.toInt() ?? 0],
-      );
+  factory TradeOffer.fromJson(Map<String, dynamic> j) {
+    final req = j['requested'];
+    return TradeOffer(
+      id: j['id'] as String,
+      listingId: j['listingId'] as String,
+      fromId: j['fromId'] as String,
+      fromName: j['fromName'] as String? ?? '',
+      toId: j['toId'] as String,
+      offeredCards: [for (final c in (j['cards'] as List? ?? const [])) CardPayload.fromJson(c as Map<String, dynamic>)],
+      offeredCoins: (j['coins'] as num?)?.toInt() ?? 0,
+      requestedCards: req is List
+          ? [for (final c in req) CardPayload.fromJson(c as Map<String, dynamic>)]
+          : [CardPayload.fromJson(req as Map<String, dynamic>)],
+      note: j['note'] as String? ?? '',
+      createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
+      status: TradeStatus.values[(j['status'] as num?)?.toInt() ?? 0],
+    );
+  }
 }
 
 /// A public display of a player's favourite cards and playlists.

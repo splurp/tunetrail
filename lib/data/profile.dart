@@ -5,9 +5,31 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import 'package:tunetrail_core/tunetrail_core.dart';
+
 import 'models.dart';
 
 enum MarketMode { local, online }
+
+/// Price + trade note used by "quick list" for one rarity.
+class QuickListPreset {
+  QuickListPreset({required this.price, this.note = '', this.trades = false});
+  int price;
+  String note;
+  bool trades;
+
+  static int defaultPrice(Rarity r) => switch (r) {
+        Rarity.common => 15,
+        Rarity.uncommon => 40,
+        Rarity.rare => 120,
+        Rarity.epic => 450,
+        Rarity.legendary => 1600,
+      };
+
+  Map<String, dynamic> toJson() => {'price': price, 'note': note, 'trades': trades};
+  factory QuickListPreset.fromJson(Map<String, dynamic> j) =>
+      QuickListPreset(price: (j['price'] as num?)?.toInt() ?? 10, note: j['note'] as String? ?? '', trades: j['trades'] as bool? ?? false);
+}
 
 /// Everything about the player except the card collection.
 class PlayerProfile extends ChangeNotifier {
@@ -40,6 +62,7 @@ class PlayerProfile extends ChangeNotifier {
   double metersWalked = 0;
   int packsOpened = 0;
   int cardsSold = 0;
+  int cardsScrapped = 0;
   int tradesCompleted = 0;
 
   // Quests: questId → progress; claimed quest ids.
@@ -70,6 +93,16 @@ class PlayerProfile extends ChangeNotifier {
   String tileUrl = '';
   double volume = 0.8;
   bool playOnEncounter = true;
+
+  /// Keep the preview playing after a song is caught (off by default).
+  bool keepPlayingAfterCatch = false;
+
+  /// Quick-list presets, one per rarity (Common → Legendary).
+  List<QuickListPreset> quickListPresets = [
+    for (final r in Rarity.values) QuickListPreset(price: QuickListPreset.defaultPrice(r)),
+  ];
+
+  QuickListPreset quickListPreset(Rarity r) => quickListPresets[r.index];
   bool reduceEffects = false;
 
   int get level => levelForXp(xp);
@@ -125,6 +158,9 @@ class PlayerProfile extends ChangeNotifier {
         'meters': metersWalked,
         'packs': packsOpened,
         'sold': cardsSold,
+        'scrapped': cardsScrapped,
+        'keepPlaying': keepPlayingAfterCatch,
+        'quickList': [for (final p in quickListPresets) p.toJson()],
         'trades': tradesCompleted,
         'questProgress': questProgress,
         'questsClaimed': questsClaimed.toList(),
@@ -170,6 +206,12 @@ class PlayerProfile extends ChangeNotifier {
     metersWalked = (j['meters'] as num?)?.toDouble() ?? 0;
     packsOpened = (j['packs'] as num?)?.toInt() ?? 0;
     cardsSold = (j['sold'] as num?)?.toInt() ?? 0;
+    cardsScrapped = (j['scrapped'] as num?)?.toInt() ?? 0;
+    keepPlayingAfterCatch = j['keepPlaying'] as bool? ?? false;
+    final ql = j['quickList'] as List?;
+    if (ql != null && ql.length == 5) {
+      quickListPresets = [for (final x in ql) QuickListPreset.fromJson(x as Map<String, dynamic>)];
+    }
     tradesCompleted = (j['trades'] as num?)?.toInt() ?? 0;
     questProgress = {
       for (final e in (j['questProgress'] as Map<String, dynamic>? ?? const {}).entries)

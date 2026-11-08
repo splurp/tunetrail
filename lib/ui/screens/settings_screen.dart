@@ -5,6 +5,7 @@ import '../app.dart';
 import 'card_detail_screen.dart';
 import '../widgets/ui_kit.dart';
 import 'debug_screen.dart';
+import 'listing_composer.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -42,6 +43,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             p.changed();
           },
         ),
+        SwitchListTile(
+          title: const Text('Keep playing after a catch'),
+          subtitle: const Text('Off: the preview stops once the song is caught'),
+          value: p.keepPlayingAfterCatch,
+          onChanged: (v) {
+            p.keepPlayingAfterCatch = v;
+            p.changed();
+          },
+        ),
         const _Header('Graphics'),
         SwitchListTile(
           title: const Text('Reduce map effects'),
@@ -65,6 +75,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
         ),
         const _Header('Market'),
+        ListTile(
+          title: const Text('Quick-list presets'),
+          subtitle: const Text('Price and trade note for each rarity'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const QuickListPresetsScreen())),
+        ),
         RadioGroup<MarketMode>(
           groupValue: p.marketMode,
           onChanged: (m) => g.setMarketMode(m!, _server.text.trim()),

@@ -150,12 +150,12 @@ class Figure3DPainter extends CustomPainter {
     final backVisible = faY > 0;
     if (!backVisible) backpack();
 
-    // Far limbs first.
+    // Limbs first (far ones darker), then torso, then the shirt on top with
+    // sleeves that follow the upper arms, so arms come out of the sleeves.
     final sorted = [...limbs]..sort((a, b) => depthOf(b.last).compareTo(depthOf(a.last)));
     for (final l in sorted) {
-      if (depthOf(l.last) > torsoDepth) drawLimb(l, true);
+      drawLimb(l, depthOf(l.last) > torsoDepth);
     }
-    // Torso.
     canvas.drawLine(
         neckP,
         hipP,
@@ -170,11 +170,12 @@ class Figure3DPainter extends CustomPainter {
       canvas.translate(0, -36);
       StickFigurePainter.drawShirt(canvas, look.shirt, const Offset(0, 36), const Offset(0, 76));
       canvas.restore();
+      for (final a in limbs.sublist(2)) {
+        final sh = proj(a[0]), el = proj(a[1]);
+        if (sh != null && el != null) StickFigurePainter.drawSleeve(canvas, look.shirt, sh, el, lineW * 1.9);
+      }
     }
     if (backVisible) backpack();
-    for (final l in sorted) {
-      if (depthOf(l.last) <= torsoDepth) drawLimb(l, false);
-    }
 
     // Head (a sphere-ish disc with rim light).
     final headR = 1.4 * s * pxPerM;
@@ -200,7 +201,9 @@ class Figure3DPainter extends CustomPainter {
     if (look.hat != null) {
       canvas.save();
       canvas.translate(headP.dx, headP.dy);
-      canvas.scale(kx * widthF.clamp(0.8, 1.0), ky);
+      // Same scale as the drawn head circle so hats fit it exactly.
+      final k = headR / 14;
+      canvas.scale(k, k);
       canvas.translate(0, -22);
       StickFigurePainter.drawHat(canvas, look.hat, const Offset(0, 22), phase);
       canvas.restore();

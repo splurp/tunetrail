@@ -115,7 +115,7 @@ class QuestBoard {
         artistId: e.key,
         title: 'Spotlight: ${top.artistName}',
         description: 'Collect $need different songs by ${top.artistName} to unlock '
-            'an exclusive ${epic ? 'Epic' : 'Legendary'} "${top.title}" card',
+            'an exclusive ${catalog.rarityOf(top).label} "${top.title}" card',
         target: need,
         imageMd5: top.artistPicMd5.isNotEmpty ? top.artistPicMd5 : top.coverMd5,
         imageIsArtist: top.artistPicMd5.isNotEmpty,
@@ -123,7 +123,7 @@ class QuestBoard {
             coins: epic ? 300 : 600,
             xp: 400,
             songId: top.id,
-            rarity: epic ? Rarity.epic : Rarity.legendary),
+            rarity: catalog.rarityOf(top)),
       ));
     }
     return out;
@@ -160,10 +160,10 @@ class QuestBoard {
         kind: QuestKind.albumComplete,
         albumId: a.id,
         title: 'Complete "${a.title}"',
-        description: 'Own every track on this ${a.recordType} to unlock a Legendary card',
+        description: 'Own every track on this ${a.recordType} to unlock a shiny card of its biggest song',
         target: a.trackIds.length,
         imageMd5: a.coverMd5,
-        reward: QuestReward(coins: 250 * a.trackIds.length, xp: 500, songId: topSongId, rarity: Rarity.legendary),
+        reward: QuestReward(coins: 250 * a.trackIds.length, xp: 500, songId: topSongId, shiny: true),
       );
 
   static String _roman(int n) => switch (n) {

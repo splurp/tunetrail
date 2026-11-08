@@ -56,14 +56,18 @@ Without the secrets, CI falls back to the debug key and prints a warning. Keep t
 
   The map shows the zone you're standing in; tap it to see every zone.
 * **Wild spawns.** The world is split into ~200 m cells and 15-minute windows. Each cell/window is hashed into a seed, so **everyone in the same place at the same time sees the same songs**, with no server needed. Time of day biases genres (electronic & R&B at night, folk & pop in the morning…).
-* **Rarities:** Common (grey), Uncommon (green), Rare (blue), Epic (purple), Legendary (gold). Rarer spawns glow brighter, and Legendaries get rotating light rays.
+* **Rarities:** Common (grey), Uncommon (green), Rare (blue), Epic (purple), Legendary (gold). A song's rarity comes from its popularity: how many streams it has overall (Deezer's popularity rank) mixed with how it compares to the artist's other songs. A superstar's deep cuts can be Uncommon while their biggest hits are Legendary; a small artist's best song tops out around Rare. Rarer spawns glow brighter, and Legendaries get rotating light rays.
 * **Shiny variants** (1/128): an animated glint sweeps across the card and across the rarity name everywhere it's shown (collection, market, playlists, showcases).
-* **Catching:** tap a song within 70 m to open the encounter. The 30-second preview plays while a beat ring pulses; tap when it lines up with the target. Rarer songs pulse faster and flee more often.
+* **Catching:** tap a song within 70 m to open the encounter. The 30-second preview plays while a beat ring pulses; tap when it lines up with the target. Every tap shows its timing accuracy. **A 100% perfect tap always catches the song and turns it shiny** (99% doesn't). Rarer songs pulse faster and flee more often. The preview stops once the song is caught (Settings can keep it playing).
+* **Nearby:** tapping a song in the Nearby list turns the camera to face it if it's in range. Otherwise the view pulls up overhead, draws a trail of footsteps along the streets to it (A* routing over the road network), then drops back down facing the song.
+* **Camera:** drag horizontally or vertically to orbit around your character (the view turns the way your finger travels around it), pinch or scroll to zoom.
 * **Quests:** 4 rotating dailies; weekly **Artist Spotlights** (collect N songs by an artist → unlock an exclusive Epic/Legendary card of their biggest hit); **Album completion** (own every track on an album → Legendary card); milestones.
 * **Discography browser:** artist pages (picture, top tracks, albums/EPs/singles) and album pages in official track order, showing which tracks you own.
 * **Currencies:** **coins** (earned by catching, quests and selling; spent on the player market) and **bits** (bought with real money; spent on packs).
 * **Packs** (bits): Street, Genre (pick a genre), Hi-Fi, Platinum (guaranteed Legendary), Prism (guaranteed Shiny). Drop rates are shown in-app.
-* **Player market:** list cards for coins (held in escrow), buy, make **trade offers** (cards + coins) on trade-enabled listings, accept/decline offers, and publish a **showcase** of favourite cards and playlists that others can browse, like and listen to.
+* **Player market:** listings are **folders of 1–20 songs**. The seller prices each song, and the folder price is their sum unless the seller sets a bundle discount. Buyers can take the whole folder or individual songs. Listings carry a **note** (up to 200 characters), can accept **trade offers** (songs + coins, with a note) for the whole folder, and are browsed as expandable folders. Players can also publish a **showcase** of favourite cards and playlists.
+* **Quick list:** after a catch (or from any card), list instantly with your preset price and note for that rarity, or open the composer to set them by hand. Presets live in Settings → Quick-list presets.
+* **Scrapyard:** scrap unwanted songs for coins. Payouts grow with the song's streams, rarity and shininess, and one tap selects all your duplicates (keeping your best copy).
 * **Playlists:** build them from owned cards, reorder, and play them back (30-second Deezer previews, auto-advance, mini player).
 * **Character:** a stylised stick figure. Colour is free to change. Hats, shirts, backpacks and pets are sold in the store.
 * **Map themes** (store): Obsidian (default: black, graphite and a soft violet accent), Midnight, Synthwave, Vaporwave, Noir (rain), Vintage Vinyl, Digital Rain, Arctic (snow), Magma (embers), Aurora, Sakura (petals).
@@ -77,6 +81,7 @@ Profile → ⚙ Settings → **Debug menu** switch, then *Open debug menu*:
 * **Free real-money purchases** (bits bundles, themes and cosmetics granted with no charge), or unlock everything at once
 * **Joystick movement** with a speed multiplier (×1–×50); on PC, **WASD / arrow keys** also work
 * **Teleport:** search any real-world place (OpenStreetMap Nominatim) or pick a preset, then jump there (also on the map's 🔍 button)
+* **Spawn a song:** search any song or artist on Deezer and drop it next to you (optionally shiny)
 * Unlimited catch range, respawn nearby songs
 * Stress test: add 1k / 10k / 100k random cards, clear the collection, crawl more of the catalog
 

@@ -64,13 +64,13 @@ jobs:
           TUNETRAIL_KEYSTORE_PASSWORD: ${{ secrets.TUNETRAIL_KEYSTORE_PASSWORD }}
           TUNETRAIL_KEY_ALIAS: ${{ secrets.TUNETRAIL_KEY_ALIAS }}
           TUNETRAIL_KEY_PASSWORD: ${{ secrets.TUNETRAIL_KEY_PASSWORD }}
-        run: flutter build apk --release
+        run: flutter build apk --release --no-tree-shake-icons
       - name: Build per-ABI APKs (smaller downloads)
         env:
           TUNETRAIL_KEYSTORE_PASSWORD: ${{ secrets.TUNETRAIL_KEYSTORE_PASSWORD }}
           TUNETRAIL_KEY_ALIAS: ${{ secrets.TUNETRAIL_KEY_ALIAS }}
           TUNETRAIL_KEY_PASSWORD: ${{ secrets.TUNETRAIL_KEY_PASSWORD }}
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --no-tree-shake-icons
       - name: Collect APKs
         run: |
           mkdir -p dist
@@ -94,7 +94,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build windows --release
+      - run: flutter build windows --release --no-tree-shake-icons
       - name: Package portable zip
         shell: pwsh
         run: |

@@ -9,6 +9,7 @@ import '../../data/models.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
 import 'card_detail_screen.dart';
+import 'scrapyard_screen.dart';
 
 class CollectionScreen extends StatelessWidget {
   const CollectionScreen({super.key});
@@ -117,6 +118,12 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
       appBar: AppBar(
         title: Text(widget.pickTitle ?? 'Collection'),
         actions: [
+          if (!widget.picking)
+            IconButton(
+              tooltip: 'Scrapyard',
+              icon: const Icon(Icons.recycling_rounded),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ScrapyardScreen())),
+            ),
           IconButton(
             tooltip: _q.uniqueSongs ? 'Showing best copy of each song' : 'Showing every copy',
             icon: Icon(_q.uniqueSongs ? Icons.filter_1 : Icons.filter_none),

@@ -49,16 +49,25 @@ class SpawnEngine {
     now ??= DateTime.now();
     final w = _windowIndex(now);
     final cy = (center.latitude / cellDeg).floor();
-    final lngDeg = cellDeg / math.max(0.2, math.cos(center.latitude * math.pi / 180));
-    final cx = (center.longitude / lngDeg).floor();
     final out = <Spawn>[];
     for (var dy = -radiusCells; dy <= radiusCells; dy++) {
+      // The cell width in longitude depends only on the cell row (never on
+      // where the player is standing), so a spawn's position is fixed for
+      // everyone no matter how they move.
+      final lngDeg = lngDegForRow(cy + dy);
+      final cx = (center.longitude / lngDeg).floor();
       for (var dx = -radiusCells; dx <= radiusCells; dx++) {
         out.addAll(_cell(cx + dx, cy + dy, lngDeg, w, exclude));
-        // Spawns from the previous window linger for their remaining time.
       }
     }
     return out;
+  }
+
+  /// Longitude size of cells in a row, quantised to the row's 1° latitude
+  /// band so it's identical for every player and every position.
+  static double lngDegForRow(int cy) {
+    final bandLat = ((cy + 0.5) * cellDeg).floorToDouble() + 0.5;
+    return cellDeg / math.max(0.2, math.cos(bandLat * math.pi / 180));
   }
 
   List<Spawn> _cell(int cx, int cy, double lngDeg, int w, Set<String> exclude) {
@@ -75,12 +84,13 @@ class SpawnEngine {
       final id = '$cx:$cy:$w:$i';
       final lat = (cy + rng.nextDouble()) * cellDeg;
       final lng = (cx + rng.nextDouble()) * lngDeg;
-      final rarity = rng.rollRarity();
+      final rolled = rng.rollRarity();
       final shiny = rng.chance(kShinyOdds);
       final zb = zoneBias?.call(lat, lng);
       final genre = catalog.pickGenre(rng, bias: zb == null || zb.isEmpty ? bias : _combine(bias, zb));
-      final song = catalog.pickSong(rng, genreId: genre);
+      final song = catalog.pickSong(rng, genreId: genre, rarity: rolled);
       if (song == null || exclude.contains(id)) continue;
+      final rarity = catalog.rarityOf(song);
       out.add(Spawn(
         id: id,
         point: LatLng(lat, lng),

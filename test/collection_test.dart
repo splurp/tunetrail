@@ -105,6 +105,28 @@ void main() {
     expect(later.map((s) => s.id).toSet().intersection(a.map((s) => s.id).toSet()), isEmpty);
   });
 
+  test('spawn positions do not move as the player walks', () async {
+    final cat = await _catalog(dir, 3000);
+    final e = SpawnEngine(cat);
+    final t = DateTime(2026, 6, 1, 12, 3);
+    final a = {for (final s in e.around(const LatLng(40.7580, -73.9855), now: t)) s.id: s.point};
+    // Walk ~150 m north and a little east.
+    final b = {for (final s in e.around(const LatLng(40.7594, -73.9850), now: t)) s.id: s.point};
+    final common = a.keys.toSet().intersection(b.keys.toSet());
+    expect(common.length, greaterThan(5));
+    for (final id in common) {
+      expect(a[id]!.latitude, b[id]!.latitude);
+      expect(a[id]!.longitude, b[id]!.longitude);
+    }
+  });
+
+  test('popularity rarity: superstar hits are rarer than deep cuts; small artists stay low', () {
+    expect(Catalog.computeRarity(990000, 1000000), Rarity.legendary);
+    expect(Catalog.computeRarity(500000, 1000000).index, inInclusiveRange(1, 2));
+    expect(Catalog.computeRarity(150000, 160000), Rarity.common);
+    expect(Catalog.computeRarity(480000, 480000).index, lessThanOrEqualTo(Rarity.rare.index));
+  });
+
   test('song json round trip and cdn urls', () {
     const s = Song(id: 5, title: 'T', artistId: 1, artistName: 'A', albumId: 2, albumTitle: 'B', coverMd5: '0123456789abcdef0123456789abcdef', genreId: 132, rank: 9);
     final r = Song.fromJson(s.toJson());

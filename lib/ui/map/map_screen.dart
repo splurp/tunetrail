@@ -12,6 +12,8 @@ import '../../game/genre_zones.dart';
 import '../../game/spawns.dart';
 import '../../map3d/camera.dart';
 import '../../map3d/figure3d.dart';
+import '../../map3d/footsteps_painter.dart';
+import '../../map3d/router.dart';
 import '../../map3d/ground_painter.dart';
 import '../app.dart';
 import '../screens/debug_screen.dart';
@@ -31,7 +33,7 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMixin {
+class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final Camera3D _cam = Camera3D();
   final ValueNotifier<double> _clock = ValueNotifier(0);
 
@@ -48,10 +50,20 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
   double _scaleStartDistance = 230;
   double? _joyX, _joyY;
 
+  // Guided view ("Nearby" → show me the way).
+  late final AnimationController _guide = AnimationController(vsync: this);
+  double _gFromBearing = 0, _gToBearing = 0, _gFromDist = 230, _gOverDist = 600, _gFromPitch = Camera3D.basePitch;
+  bool _gOverhead = false;
+  List<(double, double, double, bool)> _prints = const [];
+  String? _trailTarget;
+  DateTime _trailUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  final ValueNotifier<double> _trailReveal = ValueNotifier(0);
+
   @override
   void initState() {
     super.initState();
     _ticker = createTicker(_onTick)..start();
+    _guide.addListener(_applyGuide);
   }
 
   void _onTick(Duration d) {
@@ -80,15 +92,104 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     _mapVersion = g.mapData.version;
     _lastBearing = _cam.bearing;
     _lastDistance = _cam.distance;
+    if (_guide.isAnimating) changed = true;
+    // Clear the footstep trail once the player reaches the song or it expires.
+    if (_prints.isNotEmpty) {
+      final target = g.spawns.where((s) => s.id == _trailTarget).firstOrNull;
+      if (target == null || metersBetween(g.location.position, target.point) <= Game.catchRangeMeters || DateTime.now().isAfter(_trailUntil)) {
+        _prints = const [];
+        _trailTarget = null;
+      }
+    }
     if (changed) _groundDirty.value++;
+  }
+
+  /// Rotates the camera by how far the finger travels *around* the player,
+  /// so horizontal and vertical swipes both turn the view. Dragging right
+  /// (above the player) turns the camera right.
+  void _rotateBy(Offset focal, Offset delta) {
+    _cam.update();
+    final c = Offset(_cam.cx, _cam.cy);
+    final cur = focal - c, prev = focal - delta - c;
+    if (cur.distance < 48 || prev.distance < 48) {
+      _cam.bearing = (_cam.bearing + delta.dx * 0.35) % 360;
+      return;
+    }
+    var d = math.atan2(cur.dy, cur.dx) - math.atan2(prev.dy, prev.dx);
+    if (d > math.pi) d -= 2 * math.pi;
+    if (d < -math.pi) d += 2 * math.pi;
+    _cam.bearing = (_cam.bearing + d * 180 / math.pi) % 360;
   }
 
   @override
   void dispose() {
     _ticker.dispose();
+    _guide.dispose();
     _focus.dispose();
     super.dispose();
   }
+
+  static double _lerpAngle(double a, double b, double t) {
+    final d = ((b - a + 540) % 360) - 180;
+    return (a + d * t + 360) % 360;
+  }
+
+  /// Applies the guide animation to the camera.
+  void _applyGuide() {
+    final t = _guide.value;
+    if (!_gOverhead) {
+      final e = Curves.easeInOutCubic.transform(t);
+      _cam.bearing = _lerpAngle(_gFromBearing, _gToBearing, e);
+      return;
+    }
+    // Timeline (0..1): zoom out 0–0.25, hold + trail 0.25–0.68, back 0.68–1.
+    if (t < 0.25) {
+      final e = Curves.easeInOutCubic.transform(t / 0.25);
+      _cam.pitch = _gFromPitch + (76 - _gFromPitch) * e;
+      _cam.distance = _gFromDist + (_gOverDist - _gFromDist) * e;
+      _trailReveal.value = 0;
+    } else if (t < 0.68) {
+      _cam.pitch = 76;
+      _cam.distance = _gOverDist;
+      _trailReveal.value = ((t - 0.27) / 0.33).clamp(0.0, 1.0);
+    } else {
+      final e = Curves.easeInOutCubic.transform((t - 0.68) / 0.32);
+      _cam.pitch = 76 + (Camera3D.basePitch - 76) * e;
+      _cam.distance = _gOverDist + (230 - _gOverDist) * e;
+      _cam.bearing = _lerpAngle(_gFromBearing, _gToBearing, e);
+      _trailReveal.value = 1;
+    }
+  }
+
+  /// Nearby → tap a song: face it if it's in range, otherwise zoom out,
+  /// draw footsteps along the roads to it and zoom back in facing it.
+  void _guideTo(Game g, Spawn s) {
+    final (x, y) = g.mapData.toWorld(s.point.latitude, s.point.longitude);
+    _cam.update();
+    _gFromBearing = _cam.bearing;
+    _gToBearing = _cam.bearingTo(x, y);
+    _gFromDist = _cam.distance;
+    _gFromPitch = _cam.pitch;
+    _guide.stop();
+    // Use real distance here (not the debug unlimited-range switch).
+    if (metersBetween(g.location.position, s.point) <= Game.catchRangeMeters) {
+      _gOverhead = false;
+      _guide.duration = const Duration(milliseconds: 700);
+      _guide.forward(from: 0);
+      return;
+    }
+    final dist = math.sqrt((x - _cam.px) * (x - _cam.px) + (y - _cam.py) * (y - _cam.py));
+    _gOverDist = (dist * 2.4).clamp(380.0, 1100.0);
+    final route = RoadRouter(g.mapData).route(_cam.px, _cam.py, x, y);
+    _prints = footprintsAlong(route);
+    _trailTarget = s.id;
+    _trailUntil = DateTime.now().add(const Duration(minutes: 3));
+    _trailReveal.value = 0;
+    _gOverhead = true;
+    _guide.duration = const Duration(milliseconds: 4200);
+    _guide.forward(from: 0);
+  }
+
 
   void _setJoystick(Game g, double x, double y) {
     _joyX = x;
@@ -151,12 +252,16 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         },
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onScaleStart: (_) => _scaleStartDistance = _cam.distance,
+          onScaleStart: (_) {
+            _guide.stop();
+            _cam.pitch = Camera3D.basePitch;
+            _scaleStartDistance = _cam.distance.clamp(120.0, 460.0);
+          },
           onScaleUpdate: (d) {
             if (d.pointerCount >= 2) {
               _cam.distance = (_scaleStartDistance / d.scale).clamp(120.0, 460.0);
             } else {
-              _cam.bearing = (_cam.bearing - d.focalPointDelta.dx * 0.35) % 360;
+              _rotateBy(d.localFocalPoint, d.focalPointDelta);
             }
             if (_joyX != null) _setJoystick(g, _joyX!, _joyY!);
           },
@@ -170,6 +275,15 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                   palette: theme.palette,
                   catchRadius: Game.catchRangeMeters,
                   repaint: _groundDirty,
+                ),
+              ),
+            ),
+            // Footstep trail on the ground.
+            IgnorePointer(
+              child: ValueListenableBuilder<int>(
+                valueListenable: _groundDirty,
+                builder: (context, _, _) => CustomPaint(
+                  painter: FootstepsPainter(camera: _cam, prints: _prints, reveal: _trailReveal.value, opacity: 1, color: theme.accent),
                 ),
               ),
             ),
@@ -232,6 +346,13 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
             child: Align(alignment: Alignment.centerLeft, child: Text('Nearby', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700))),
           ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Tap a song to face it, or to see the way there.', style: TextStyle(fontSize: 12, color: kTextTertiary)),
+            ),
+          ),
           if (list.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('No songs nearby — keep walking.')),
           Flexible(
             child: ListView.builder(
@@ -245,9 +366,10 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                   rarity: s.rarity,
                   shiny: s.shiny,
                   subtitle: '${s.song.artistName} · ${genreName(s.song.genreId)} · $d m',
+                  trailing: Icon(metersBetween(g.location.position, s.point) <= Game.catchRangeMeters ? Icons.center_focus_strong_outlined : Icons.near_me_outlined, size: 18, color: kTextTertiary),
                   onTap: () {
                     Navigator.pop(ctx);
-                    _tapSpawn(g, s);
+                    _guideTo(g, s);
                   },
                 );
               },
@@ -279,7 +401,7 @@ class _SpawnLayer extends StatelessWidget {
       final (x, y) = game.mapData.toWorld(s.point.latitude, s.point.longitude);
       final ya = cam.alignY(x, y);
       if ((ya < 0) != front) continue;
-      if (ya < cam.yNear || ya > 700) continue;
+      if (ya < cam.yNear || ya > cam.yFar * 0.75) continue;
       final ground = cam.project(x, y);
       if (ground == null) continue;
       final scale = (cam.scaleAt(x, y) / cam.scaleAt(cam.px, cam.py) * 0.8).clamp(0.5, 1.15);

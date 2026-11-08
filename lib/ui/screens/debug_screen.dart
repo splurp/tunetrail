@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../../data/models.dart';
 import '../../game/store_catalog.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
@@ -120,6 +121,13 @@ class _DebugScreenState extends State<DebugScreen> {
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TeleportScreen())),
         ),
         ListTile(leading: const Icon(Icons.refresh), title: const Text('Respawn nearby songs'), onTap: g.debugRespawn),
+        ListTile(
+          leading: const Icon(Icons.library_add_outlined),
+          title: const Text('Spawn a song…'),
+          subtitle: const Text('Search by song or artist and drop it next to you'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SpawnSongScreen())),
+        ),
         const _H('Collection stress test'),
         ListTile(
           title: Text('${formatNumber(g.collection.length)} cards • ${formatNumber(g.catalog.size)} songs in catalog'),
@@ -260,6 +268,99 @@ class _TeleportScreenState extends State<TeleportScreen> {
         const Padding(
           padding: EdgeInsets.all(8),
           child: Text('Search by OpenStreetMap Nominatim', style: TextStyle(fontSize: 11, color: Colors.white38)),
+        ),
+      ]),
+    );
+  }
+}
+
+
+/// Debug: search Deezer for a song (by title or artist) and spawn it a few
+/// metres from the player.
+class SpawnSongScreen extends StatefulWidget {
+  const SpawnSongScreen({super.key});
+  @override
+  State<SpawnSongScreen> createState() => _SpawnSongScreenState();
+}
+
+class _SpawnSongScreenState extends State<SpawnSongScreen> {
+  final _q = TextEditingController();
+  List<Song> _results = [];
+  bool _loading = false;
+  bool _shiny = false;
+  String? _error;
+
+  Future<void> _search() async {
+    final q = _q.text.trim();
+    if (q.isEmpty) return;
+    final g = GameScope.read(context);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final tracks = await g.api.searchTracks(q, limit: 40);
+      // Also surface the top songs of a matching artist.
+      final artists = await g.api.searchArtists(q, limit: 1);
+      final extra = artists.isEmpty || artists.first.name.toLowerCase() != q.toLowerCase()
+          ? <Song>[]
+          : await g.api.artistTop(artists.first.id, limit: 25);
+      final seen = <int>{};
+      final list = [for (final s in [...extra, ...tracks]) if (seen.add(s.id)) s];
+      g.catalog.addSongs(list);
+      setState(() => _results = list);
+      if (_results.isEmpty) setState(() => _error = 'No songs found');
+    } catch (e) {
+      setState(() => _error = 'Search failed: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Spawn a song')),
+      body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+          child: TextField(
+            controller: _q,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _search(),
+            decoration: InputDecoration(
+              hintText: 'Song title or artist name',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _loading
+                  ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
+                  : IconButton(icon: const Icon(Icons.arrow_forward), onPressed: _search),
+            ),
+          ),
+        ),
+        SwitchListTile(title: const Text('Spawn as shiny'), value: _shiny, onChanged: (v) => setState(() => _shiny = v)),
+        if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: kTextSecondary))),
+        Expanded(
+          child: ListView.builder(
+            itemCount: _results.length,
+            itemBuilder: (_, i) {
+              final s = _results[i];
+              final r = g.catalog.rarityOf(g.catalog.songs[s.id] ?? s);
+              return CardRow(
+                song: s,
+                rarity: r,
+                shiny: _shiny,
+                subtitle: '${s.artistName} · rank ${formatNumber(s.rank)}',
+                trailing: const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.add_location_alt_outlined, size: 20)),
+                onTap: () {
+                  g.debugSpawnSong(s, shiny: _shiny);
+                  g.toast('Spawned "${s.title}" next to you');
+                  Navigator.of(context).popUntil((r) => r.isFirst);
+                },
+              );
+            },
+          ),
         ),
       ]),
     );
