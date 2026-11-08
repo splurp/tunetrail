@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -6,6 +8,7 @@ import 'package:tunetrail/data/catalog.dart';
 import 'package:tunetrail/data/collection.dart';
 import 'package:tunetrail/data/deezer_api.dart';
 import 'package:tunetrail/data/models.dart';
+import 'package:tunetrail/game/audio_service.dart';
 import 'package:tunetrail/game/spawns.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
@@ -42,7 +45,8 @@ void main() {
     final now = DateTime.now();
     col.addMany([
       for (var i = 0; i < 100000; i++)
-        (1 + rng.nextInt(20000), rng.rollRarity(), rng.chance(128), CardSource.debug, now.subtract(Duration(seconds: rng.nextInt(1 << 25))))
+        // One card per variant (song × rarity × shiny).
+        (1 + i % 20000, Rarity.values[(i ~/ 20000) % 5], i % 128 == 0, CardSource.debug, now.subtract(Duration(seconds: rng.nextInt(1 << 25))))
     ]);
     expect(col.length, 100000);
 
@@ -169,7 +173,8 @@ void main() {
     final e = SpawnEngine(cat);
     (int, int) sample() {
       var fav = 0, total = 0;
-      for (var w = 0; w < 300; w++) {
+      // Enough spawns that the (rare) baseline isn't dominated by noise.
+      for (var w = 0; w < 2500; w++) {
         for (final s in e.around(const LatLng(40.758, -73.9855), now: DateTime(2026, 1, 1).add(Duration(minutes: 15 * w)))) {
           total++;
           if (s.song.artistId == 7) fav++;
@@ -223,5 +228,58 @@ void main() {
     expect(r.genreId, 132);
     expect(s.cover(), contains('/images/cover/0123456789abcdef0123456789abcdef/250x250'));
     expect(md5FromUrl('https://cdn-images.dzcdn.net/images/artist/71eeb9e2eeb375df35a3c0654a5a01ab/56x56-000000-80-0-0.jpg'), '71eeb9e2eeb375df35a3c0654a5a01ab');
+  });
+
+  test('one copy per variant; editions are separate variants', () async {
+    final cat = await _catalog(dir, 50);
+    final col = CollectionStore(cat, dir);
+    col.add(1, Rarity.rare, false, CardSource.wild);
+    col.add(1, Rarity.rare, true, CardSource.wild);
+    col.add(1, Rarity.rare, false, CardSource.wild, edition: Edition.movie);
+    col.add(1, Rarity.rare, false, CardSource.wild, edition: Edition.sample);
+    expect(col.ownsVariant(1, Rarity.rare, false, Edition.standard), isTrue);
+    expect(col.ownsVariant(1, Rarity.rare, true, Edition.movie), isFalse);
+    expect(col.editionCounts, [2, 1, 1]);
+    // Duplicates from older saves are folded away (earliest kept).
+    col.add(1, Rarity.rare, false, CardSource.pack, at: DateTime(2020));
+    col.add(1, Rarity.rare, false, CardSource.pack);
+    expect(col.length, 6);
+    final removed = col.removeDuplicateVariants();
+    expect(removed.length, 2);
+    expect(col.length, 4);
+    final kept = col.byUid(col.uidAt(col.query(const CollectionQuery(editionMask: 1, normalOnly: true)).first))!;
+    expect(kept.acquiredAt.year, 2020);
+    expect(col.query(const CollectionQuery(editionMask: 1 << 2)).length, 1);
+    // Persisted with the edition bits.
+    await col.save();
+    final again = CollectionStore(cat, dir);
+    await again.load();
+    expect(again.editionCounts, [2, 1, 1]);
+    expect(again.ownsVariant(1, Rarity.rare, false, Edition.sample), isTrue);
+    // Payload round trip keeps the edition.
+    final p = CardPayload.fromJson(again.byUid(again.uidAt(again.query(const CollectionQuery(editionMask: 2)).first))!.toPayload().toJson());
+    expect(p.edition, Edition.movie);
+  });
+
+  test('beat analysis finds tempo and phase of a click track', () {
+    const fs = 8000;
+    const bpm = 96.0, phase = 0.37;
+    final x = Float32List(fs * 20);
+    final rnd = math.Random(2);
+    for (var i = 0; i < x.length; i++) {
+      x[i] = (rnd.nextDouble() - 0.5) * 0.02;
+    }
+    for (var t = phase; t < 20; t += 60 / bpm) {
+      final s = (t * fs).round();
+      for (var k = 0; k < 400 && s + k < x.length; k++) {
+        x[s + k] += math.exp(-k / 60) * math.sin(k * 0.9) * 0.8;
+      }
+    }
+    final known = analyzeBeats((x, fs, bpm))!;
+    expect((known.phase - phase).abs(), lessThan(0.02));
+    final est = analyzeBeats((x, fs, 0))!;
+    expect((est.bpm - bpm).abs(), lessThan(1.5));
+    final d = ((est.phase - phase) / est.period);
+    expect((d - d.roundToDouble()).abs() * est.period, lessThan(0.03));
   });
 }

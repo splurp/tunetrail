@@ -45,6 +45,8 @@ dependencies:
   dart_earcut: ^1.2.0
   ffi: ^2.2.0
   flutter_soloud: ^5.2.3
+  video_player: ^2.14.1
+  fvp: ^0.40.0
 
 dev_dependencies:
   flutter_test:

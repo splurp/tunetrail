@@ -292,6 +292,7 @@ class ListingQuery {
     this.rarities = const {},
     this.shinyOnly = false,
     this.normalOnly = false,
+    this.editions = const {},
     this.genres = const {},
     this.tradesOnly = false,
     this.sort = ListingSort.newest,
@@ -303,6 +304,9 @@ class ListingQuery {
   final Set<int> rarities;
   final bool shinyOnly;
   final bool normalOnly;
+
+  /// Edition indices to include (empty = all).
+  final Set<int> editions;
   final Set<int> genres;
   final bool tradesOnly;
   final ListingSort sort;
@@ -315,6 +319,7 @@ class ListingQuery {
         if (rarities.isNotEmpty) 'rarities': rarities.join(','),
         if (shinyOnly) 'shiny': '1',
         if (normalOnly) 'normal': '1',
+        if (editions.isNotEmpty) 'editions': editions.join(','),
         if (genres.isNotEmpty) 'genres': genres.join(','),
         if (tradesOnly) 'trades': '1',
         'sort': sort.name,
@@ -332,6 +337,7 @@ class ListingQuery {
             .toSet(),
         shinyOnly: p['shiny'] == '1',
         normalOnly: p['normal'] == '1',
+        editions: (p['editions'] ?? '').split(',').where((s) => s.isNotEmpty).map(int.parse).toSet(),
         genres: (p['genres'] ?? '').split(',').where((s) => s.isNotEmpty).map(int.parse).toSet(),
         tradesOnly: p['trades'] == '1',
         sort: ListingSort.values.firstWhere((s) => s.name == p['sort'],

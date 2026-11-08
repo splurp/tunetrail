@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:tunetrail_core/tunetrail_core.dart';
+
 import '../../data/collection.dart';
+import '../../data/samples.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
 import 'artist_screen.dart';
@@ -32,15 +35,23 @@ class CardDetailScreen extends StatelessWidget {
         ],
       ),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        Center(child: SongCardView(song: s, rarity: card.rarity, shiny: card.shiny, width: w.clamp(200, 340) * 0.85)),
+        Center(child: SongCardView(song: s, rarity: card.rarity, shiny: card.shiny, edition: card.edition, width: w.clamp(200, 340) * 0.85)),
         const SizedBox(height: 18),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          FilledButton.icon(
+        Wrap(alignment: WrapAlignment.center, spacing: 10, runSpacing: 10, children: [
+          if (card.edition == Edition.sample && SampleLibrary.of(s.id) != null)
+            ValueListenableBuilder(
+              valueListenable: g.samples,
+              builder: (context, pb, _) => FilledButton.icon(
+                onPressed: () => pb.active && pb.songId == s.id ? g.samples.stop() : g.samples.play(SampleLibrary.of(s.id)!),
+                icon: Icon(pb.active && pb.songId == s.id ? Icons.stop : Icons.graphic_eq),
+                label: Text(pb.active && pb.songId == s.id ? 'Stop' : 'Play breakdown'),
+              ),
+            ),
+          (card.edition == Edition.sample ? OutlinedButton.icon : FilledButton.icon)(
             onPressed: () => g.audio.playOne(s.id),
             icon: const Icon(Icons.play_arrow),
             label: const Text('Play preview'),
           ),
-          const SizedBox(width: 10),
           OutlinedButton.icon(
             onPressed: () => _addToPlaylist(context, uid),
             icon: const Icon(Icons.playlist_add),
@@ -57,7 +68,12 @@ class CardDetailScreen extends StatelessWidget {
           CardSource.trade => 'Trade',
           CardSource.debug => 'Debug generator',
         }),
-        _InfoRow('Copies owned', '${g.collection.copiesOf(s.id)}'),
+        _InfoRow('Edition', card.edition.label),
+        _InfoRow('Variants of this song owned', '${g.collection.copiesOf(s.id)}'),
+        if (card.edition == Edition.sample && SampleLibrary.of(s.id) != null) ...[
+          _InfoRow('Samples', '${SampleLibrary.of(s.id)!.source.title} — ${SampleLibrary.of(s.id)!.source.artistName} (${SampleLibrary.of(s.id)!.sourceYear})'),
+          if (g.profile.debugEnabled) SampleSyncTuner(songId: s.id),
+        ],
         _InfoRow('Est. market value', '${formatNumber(payload.fair)} coins'),
         _InfoRow('Popularity', '${formatNumber(s.rank)} Deezer rank'),
         _InfoRow('Scrap value', '${g.scrapValueOf(card)} coins'),
@@ -206,4 +222,71 @@ class _InfoRow extends StatelessWidget {
           Expanded(child: Text(v, style: const TextStyle(fontWeight: FontWeight.w600))),
         ]),
       );
+}
+
+/// Debug tool: nudge a Sample edition's alignment (where the passage
+/// starts in each preview, and the speed change) and save it locally.
+class SampleSyncTuner extends StatefulWidget {
+  const SampleSyncTuner({super.key, required this.songId});
+  final int songId;
+  @override
+  State<SampleSyncTuner> createState() => _SampleSyncTunerState();
+}
+
+class _SampleSyncTunerState extends State<SampleSyncTuner> {
+  late SampleInfo _s = SampleLibrary.of(widget.songId)!;
+
+  void _set(SampleInfo n) {
+    final g = GameScope.read(context);
+    setState(() => _s = n);
+    final v = (n.sourceAt, n.songAt, n.rate);
+    SampleLibrary.overrides[widget.songId] = v;
+    g.profile.sampleOverrides[widget.songId] = v;
+    g.profile.changed();
+  }
+
+  Widget _row(String label, double value, double step, String unit, SampleInfo Function(double) apply) => Row(children: [
+        Expanded(child: Text('$label  ${value.toStringAsFixed(unit == '×' ? 3 : 2)}$unit', style: const TextStyle(fontSize: 13))),
+        for (final d in [-10 * step, -step, step, 10 * step])
+          SizedBox(
+            width: 50,
+            child: TextButton(
+              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(44, 32)),
+              onPressed: () => _set(apply(value + d)),
+              child: FittedBox(child: Text(d > 0 ? '+${_fmt(d)}' : _fmt(d), maxLines: 1, style: const TextStyle(fontSize: 12))),
+            ),
+          ),
+      ]);
+
+  static String _fmt(double d) => d.abs() >= 1 ? d.toStringAsFixed(0) : d.toStringAsFixed(d.abs() < 0.01 ? 3 : 2);
+
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.read(context);
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(14), border: Border.all(color: kOutline)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Sample sync tuner (debug)', style: TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        _row('Original passage at', _s.sourceAt, 0.01, 's', (v) => _s.copyWith(sourceAt: v.clamp(0.0, 29.0))),
+        _row('Song passage at', _s.songAt, 0.01, 's', (v) => _s.copyWith(songAt: v.clamp(0.0, 29.0))),
+        _row('Speed', _s.rate, 0.005, '×', (v) => _s.copyWith(rate: v.clamp(0.5, 2.0))),
+        Row(children: [
+          TextButton.icon(onPressed: () => g.samples.play(_s), icon: const Icon(Icons.play_arrow), label: const Text('Audition')),
+          const Spacer(),
+          TextButton(
+            onPressed: () {
+              SampleLibrary.overrides.remove(widget.songId);
+              g.profile.sampleOverrides.remove(widget.songId);
+              g.profile.changed();
+              setState(() => _s = SampleLibrary.of(widget.songId)!);
+            },
+            child: const Text('Reset'),
+          ),
+        ]),
+      ]),
+    );
+  }
 }

@@ -177,6 +177,7 @@ class MarketEngine {
     if (q.rarities.isNotEmpty && !q.rarities.contains(c.rarity.index)) return false;
     if (q.shinyOnly && !c.shiny) return false;
     if (q.normalOnly && c.shiny) return false;
+    if (q.editions.isNotEmpty && !q.editions.contains(c.edition.index)) return false;
     if (q.genres.isNotEmpty && !q.genres.contains(c.genreId)) return false;
     if (text.isNotEmpty &&
         !c.title.toLowerCase().contains(text) &&

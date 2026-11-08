@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
-import '../../data/collection.dart';
+import '../../game/game.dart';
 import '../../game/store_catalog.dart';
 import '../widgets/cards.dart';
 
@@ -11,7 +11,7 @@ import '../widgets/cards.dart';
 class PackOpeningScreen extends StatefulWidget {
   const PackOpeningScreen({super.key, required this.pack, required this.cards});
   final PackDef pack;
-  final List<OwnedCard> cards;
+  final List<PackPull> cards;
   @override
   State<PackOpeningScreen> createState() => _PackOpeningScreenState();
 }
@@ -44,7 +44,7 @@ class _PackOpeningScreenState extends State<PackOpeningScreen> with TickerProvid
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     final cardW = math.min(170.0, (w - 48) / (widget.cards.length > 3 ? 2.2 : 2));
-    final best = widget.cards.map((c) => c.rarity.index).reduce(math.max);
+    final best = widget.cards.map((c) => c.card.rarity.index).reduce(math.max);
     return Scaffold(
       appBar: AppBar(title: Text(widget.pack.name)),
       body: Container(
@@ -65,7 +65,8 @@ class _PackOpeningScreenState extends State<PackOpeningScreen> with TickerProvid
                         final v = Curves.easeInOut.transform(_flip[i].value);
                         final showFront = v >= 0.5;
                         final angle = v * math.pi;
-                        final c = widget.cards[i];
+                        final pull = widget.cards[i];
+                        final c = pull.card;
                         return Transform(
                           alignment: Alignment.center,
                           transform: Matrix4.identity()
@@ -75,7 +76,18 @@ class _PackOpeningScreenState extends State<PackOpeningScreen> with TickerProvid
                               ? Transform(
                                   alignment: Alignment.center,
                                   transform: Matrix4.identity()..rotateY(math.pi),
-                                  child: SongCardView(song: c.song, rarity: c.rarity, shiny: c.shiny, width: cardW),
+                                  child: Stack(children: [
+                                    SongCardView(song: c.song, rarity: c.rarity, shiny: c.shiny, edition: c.edition, width: cardW),
+                                    if (pull.duplicate)
+                                      Positioned.fill(
+                                        child: Container(
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(cardW * 0.07)),
+                                          child: Text('Already owned\nScrapped +${pull.duplicateCoins}',
+                                              textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+                                        ),
+                                      ),
+                                  ]),
                                 )
                               : _Back(width: cardW, color: widget.pack.color),
                         );

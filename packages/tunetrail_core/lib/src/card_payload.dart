@@ -22,6 +22,7 @@ class CardPayload {
     this.duration = 0,
     this.artistPicMd5 = '',
     this.acquiredAt = 0,
+    this.edition = Edition.standard,
   });
 
   final int uid;
@@ -39,8 +40,9 @@ class CardPayload {
   final int rank;
   final int duration;
   final int acquiredAt;
+  final Edition edition;
 
-  int get fair => fairValue(rarity, shiny, popularity: rank);
+  int get fair => fairValue(rarity, shiny, popularity: rank, edition: edition);
 
   Map<String, dynamic> toJson() => {
         'uid': uid,
@@ -58,6 +60,7 @@ class CardPayload {
         'rank': rank,
         'duration': duration,
         'acq': acquiredAt,
+        if (edition != Edition.standard) 'ed': edition.index,
       };
 
   factory CardPayload.fromJson(Map<String, dynamic> j) => CardPayload(
@@ -76,6 +79,7 @@ class CardPayload {
         rank: (j['rank'] as num?)?.toInt() ?? 0,
         duration: (j['duration'] as num?)?.toInt() ?? 0,
         acquiredAt: (j['acq'] as num?)?.toInt() ?? 0,
+        edition: Edition.fromIndex((j['ed'] as num?)?.toInt() ?? 0),
       );
 
   CardPayload withUid(int newUid) => CardPayload(
@@ -94,5 +98,6 @@ class CardPayload {
         rank: rank,
         duration: duration,
         acquiredAt: acquiredAt,
+        edition: edition,
       );
 }

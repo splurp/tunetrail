@@ -73,6 +73,9 @@ class PlayerProfile extends ChangeNotifier {
   /// Spawn ids caught/fled recently → expiry (ms epoch).
   Map<String, int> spentSpawns = {};
 
+  /// Sample-edition sync tuner overrides: songId → (sourceAt, songAt, rate).
+  Map<int, (double, double, double)> sampleOverrides = {};
+
   /// Favourite artists (shown on the profile/showcase; 10× spawn weight).
   List<FavoriteArtist> favoriteArtists = [];
 
@@ -154,6 +157,7 @@ class PlayerProfile extends ChangeNotifier {
         'coins': coins,
         'bits': bits,
         'xp': xp,
+        'sampleOv': {for (final e in sampleOverrides.entries) '${e.key}': [e.value.$1, e.value.$2, e.value.$3]},
         'color': figureColor,
         'owned': owned.toList(),
         'theme': activeTheme,
@@ -201,6 +205,14 @@ class PlayerProfile extends ChangeNotifier {
     coins = (j['coins'] as num?)?.toInt() ?? coins;
     bits = (j['bits'] as num?)?.toInt() ?? bits;
     xp = (j['xp'] as num?)?.toInt() ?? 0;
+    sampleOverrides = {
+      for (final e in (j['sampleOv'] as Map<String, dynamic>? ?? const {}).entries)
+        int.parse(e.key): (
+          ((e.value as List)[0] as num).toDouble(),
+          ((e.value as List)[1] as num).toDouble(),
+          ((e.value as List)[2] as num).toDouble(),
+        ),
+    };
     figureColor = (j['color'] as num?)?.toInt() ?? figureColor;
     owned = {...owned, for (final x in (j['owned'] as List? ?? const [])) x as String};
     activeTheme = j['theme'] as String? ?? activeTheme;

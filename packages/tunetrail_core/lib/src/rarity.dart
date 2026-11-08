@@ -32,6 +32,26 @@ enum Rarity {
   static Rarity fromIndex(int i) => Rarity.values[i.clamp(0, 4)];
 }
 
+/// Card editions: alternate presentations of a song. Each edition (with
+/// rarity and shininess) is a separate variant — a player owns at most one
+/// copy of each variant.
+enum Edition {
+  standard('Standard', 1.0),
+
+  /// Full-card music-video clip with the details overlaid.
+  movie('Movie', 2.0),
+
+  /// Waveform breakdown aligned with the song it samples; plays the sample
+  /// first, then fades into the song.
+  sample('Sample', 2.5);
+
+  const Edition(this.label, this.valueMultiplier);
+  final String label;
+  final double valueMultiplier;
+
+  static Edition fromIndex(int i) => Edition.values[i.clamp(0, Edition.values.length - 1)];
+}
+
 /// Chance (1 in N) that any card roll becomes a shiny variant.
 const int kShinyOdds = 128;
 
@@ -43,18 +63,18 @@ int quickSellValue(Rarity r, bool shiny) =>
     ((r.baseValue * (shiny ? kShinyValueMultiplier : 1)) * 0.25).round();
 
 /// Estimated fair market value of a card.
-int fairValue(Rarity r, bool shiny, {int popularity = 500000}) {
+int fairValue(Rarity r, bool shiny, {int popularity = 500000, Edition edition = Edition.standard}) {
   // Deezer "rank" ranges roughly 0..1,000,000; popular songs are worth more.
   final popFactor = 0.75 + (popularity.clamp(0, 1000000) / 1000000) * 0.75;
-  return (r.baseValue * (shiny ? kShinyValueMultiplier : 1) * popFactor)
+  return (r.baseValue * (shiny ? kShinyValueMultiplier : 1) * popFactor * edition.valueMultiplier)
       .round();
 }
 
 /// Coins for scrapping a card in the Scrapyard. Songs with more streams
 /// (higher Deezer rank, 0..1,000,000) are worth more scrap.
-int scrapValue(Rarity r, bool shiny, int rank) {
+int scrapValue(Rarity r, bool shiny, int rank, {Edition edition = Edition.standard}) {
   final streams = rank.clamp(0, 1000000) / 1000000;
-  final base = r.baseValue * 0.2 * (0.35 + 1.65 * streams * streams);
+  final base = r.baseValue * 0.2 * (0.35 + 1.65 * streams * streams) * edition.valueMultiplier;
   final v = math.max(1, base.round());
   return shiny ? v * 3 : v;
 }

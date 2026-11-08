@@ -61,13 +61,17 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
   }
 
   int get _activeFilters =>
-      (_q.rarityMask == 0x1F ? 0 : 1) + (_q.shinyOnly || _q.normalOnly ? 1 : 0) + (_q.genres.isEmpty ? 0 : 1) + (_q.favoritesOnly ? 1 : 0);
+      (_q.rarityMask == 0x1F ? 0 : 1) +
+      (_q.shinyOnly || _q.normalOnly || _q.editionMask != 0x7 ? 1 : 0) +
+      (_q.genres.isEmpty ? 0 : 1) +
+      (_q.favoritesOnly ? 1 : 0);
 
   String get _filterSummary {
     final parts = <String>[
       if (_q.rarityMask != 0x1F) [for (final r in Rarity.values) if ((_q.rarityMask >> r.index) & 1 == 1) r.label].join(', '),
       if (_q.shinyOnly) 'Shiny',
-      if (_q.normalOnly) 'Standard',
+      if (_q.normalOnly) 'Not shiny',
+      if (_q.editionMask != 0x7) [for (final e in Edition.values) if ((_q.editionMask >> e.index) & 1 == 1) e.label].join(', '),
       if (_q.genres.isNotEmpty) _q.genres.length == 1 ? genreName(_q.genres.first) : '${_q.genres.length} genres',
       if (_q.favoritesOnly) 'Favourites',
     ];
@@ -170,7 +174,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
           child: FilterDropdown(
             activeCount: _activeFilters,
             summary: _filterSummary,
-            onReset: () => _setQuery(_q.copyWith(rarityMask: 0x1F, shinyOnly: false, normalOnly: false, favoritesOnly: false, genres: const {})),
+            onReset: () => _setQuery(_q.copyWith(rarityMask: 0x1F, shinyOnly: false, normalOnly: false, favoritesOnly: false, genres: const {}, editionMask: 0x7)),
             sections: () => [
               FilterSection(
                 title: 'Rarity',
@@ -191,7 +195,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
               ),
               FilterSection(
                 title: 'Variant',
-                onClear: () => _setQuery(_q.copyWith(shinyOnly: false, normalOnly: false)),
+                onClear: () => _setQuery(_q.copyWith(shinyOnly: false, normalOnly: false, editionMask: 0x7)),
                 options: [
                   FilterOption(
                     label: '✦ Shiny  ${formatNumber(c.shinyCount)}',
@@ -199,10 +203,20 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
                     onTap: () => _setQuery(_q.copyWith(shinyOnly: !_q.shinyOnly, normalOnly: false)),
                   ),
                   FilterOption(
-                    label: 'Standard',
+                    label: 'Not shiny',
                     selected: _q.normalOnly,
                     onTap: () => _setQuery(_q.copyWith(normalOnly: !_q.normalOnly, shinyOnly: false)),
                   ),
+                  for (final e in Edition.values)
+                    FilterOption(
+                      label: '${e.label}  ${formatNumber(c.editionCounts[e.index])}',
+                      selected: _q.editionMask != 0x7 && (_q.editionMask >> e.index) & 1 == 1,
+                      onTap: () {
+                        var m = _q.editionMask == 0x7 ? 0 : _q.editionMask;
+                        m ^= 1 << e.index;
+                        _setQuery(_q.copyWith(editionMask: m == 0 ? 0x7 : m));
+                      },
+                    ),
                 ],
               ),
               FilterSection(
@@ -308,6 +322,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
             song: card.song,
             rarity: card.rarity,
             shiny: card.shiny,
+            edition: card.edition,
             favorite: card.favorite,
             selected: _picked.contains(card.uid),
             badge: _q.uniqueSongs && c.copiesOf(card.song.id) > 1 ? '×${c.copiesOf(card.song.id)}' : null,
@@ -328,6 +343,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
             song: card.song,
             rarity: card.rarity,
             shiny: card.shiny,
+            edition: card.edition,
             selected: _picked.contains(card.uid),
             onTap: () => _open(c, rows[i]),
           );

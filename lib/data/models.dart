@@ -130,7 +130,8 @@ class Song {
           {required int uid,
           required Rarity rarity,
           required bool shiny,
-          int acquiredAt = 0}) =>
+          int acquiredAt = 0,
+          Edition edition = Edition.standard}) =>
       CardPayload(
         uid: uid,
         songId: id,
@@ -147,6 +148,7 @@ class Song {
         rank: rank,
         duration: duration,
         acquiredAt: acquiredAt,
+        edition: edition,
       );
 
   factory Song.fromPayload(CardPayload c) => Song(

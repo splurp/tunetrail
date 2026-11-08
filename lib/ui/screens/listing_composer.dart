@@ -25,7 +25,7 @@ Future<bool> showQuickListSheet(BuildContext context, int uid) async {
           const SheetHandle(),
           const Text('Quick list', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          CardRow(song: card.song, rarity: card.rarity, shiny: card.shiny),
+          CardRow(song: card.song, rarity: card.rarity, shiny: card.shiny, edition: card.edition),
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(14),
@@ -187,7 +187,7 @@ class _ListingComposerState extends State<ListingComposer> {
             margin: const EdgeInsets.only(bottom: 8),
             decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(14), border: Border.all(color: kOutline)),
             child: Row(children: [
-              Expanded(child: CardRow(song: c.song, rarity: c.rarity, shiny: c.shiny, subtitle: '${c.song.artistName} · est. ${formatNumber(c.toPayload().fair)}')),
+              Expanded(child: CardRow(song: c.song, rarity: c.rarity, shiny: c.shiny, edition: c.edition, subtitle: '${c.song.artistName} · est. ${formatNumber(c.toPayload().fair)}')),
               SizedBox(
                 width: 92,
                 child: TextField(

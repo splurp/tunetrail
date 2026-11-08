@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/models.dart';
+import '../../data/samples.dart';
+import 'edition_views.dart';
 import 'net_image.dart';
 import 'ui_kit.dart';
 
@@ -155,17 +157,25 @@ class SongCardView extends StatelessWidget {
     required this.shiny,
     this.width = 260,
     this.footer,
+    this.edition = Edition.standard,
+    this.live = true,
   });
   final Song song;
   final Rarity rarity;
   final bool shiny;
   final double width;
   final Widget? footer;
+  final Edition edition;
+
+  /// Animate edition media (music video) — off for cheap previews.
+  final bool live;
 
   @override
   Widget build(BuildContext context) {
     final c = rarityColor(rarity);
     final glow = rarity.index >= Rarity.epic.index;
+    if (edition == Edition.movie) return Glint(enabled: shiny, child: _movie(context, c, glow));
+    final sample = edition == Edition.sample ? SampleLibrary.of(song.id) : null;
     final card = Container(
       width: width,
       padding: EdgeInsets.all(width * 0.045),
@@ -181,13 +191,16 @@ class SongCardView extends StatelessWidget {
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         AspectRatio(
           aspectRatio: 1,
-          child: LayoutBuilder(
-            builder: (context, box) => Art(song.cover(500), size: box.maxWidth, radius: width * 0.045, decodeSize: 500),
-          ),
+          child: sample != null
+              ? ClipRRect(borderRadius: BorderRadius.circular(width * 0.045), child: SampleBreakdownPanel(info: sample))
+              : LayoutBuilder(
+                  builder: (context, box) => Art(song.cover(500), size: box.maxWidth, radius: width * 0.045, decodeSize: 500),
+                ),
         ),
         SizedBox(height: width * 0.05),
         Row(children: [
           Expanded(child: RarityLabel(rarity, shiny: shiny, fontSize: width * 0.048)),
+          if (edition != Edition.standard) ...[EditionBadge(edition, size: width * 0.034), SizedBox(width: width * 0.02)],
           Text(genreName(song.genreId).toUpperCase(), style: TextStyle(color: kTextTertiary, fontSize: width * 0.038, letterSpacing: 0.8)),
         ]),
         SizedBox(height: width * 0.02),
@@ -212,6 +225,64 @@ class SongCardView extends StatelessWidget {
     );
     return Glint(enabled: shiny, child: card);
   }
+
+  /// Movie edition: the music video fills the card; details float on top.
+  Widget _movie(BuildContext context, Color c, bool glow) {
+    final h = width * 1.48;
+    return Container(
+      width: width,
+      height: h,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(width * 0.07),
+        color: Colors.black,
+        border: Border.all(color: c.withValues(alpha: 0.9), width: 1.4),
+        boxShadow: [
+          if (glow) BoxShadow(color: c.withValues(alpha: 0.28), blurRadius: width * 0.14),
+          const BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 10)),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(fit: StackFit.expand, children: [
+        MovieBackdrop(song: song, live: live),
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x66000000), Color(0x00000000), Color(0x00000000), Color(0xCC000000), Color(0xF2000000)],
+              stops: [0, 0.18, 0.45, 0.78, 1],
+            ),
+          ),
+        ),
+        Positioned(
+          left: width * 0.05,
+          right: width * 0.05,
+          top: width * 0.05,
+          child: Row(children: [
+            Expanded(child: RarityLabel(rarity, shiny: shiny, fontSize: width * 0.048)),
+            EditionBadge(Edition.movie, size: width * 0.034),
+          ]),
+        ),
+        Positioned(
+          left: width * 0.05,
+          right: width * 0.05,
+          bottom: width * 0.05,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(genreName(song.genreId).toUpperCase(), style: TextStyle(color: Colors.white60, fontSize: width * 0.036, letterSpacing: 0.8)),
+            SizedBox(height: width * 0.01),
+            Text(song.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: width * 0.078, fontWeight: FontWeight.w800, color: Colors.white, height: 1.1, shadows: const [Shadow(blurRadius: 8)])),
+            SizedBox(height: width * 0.012),
+            Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.052, color: Colors.white, fontWeight: FontWeight.w500)),
+            Text(song.albumTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.042, color: Colors.white70)),
+            ?footer,
+          ]),
+        ),
+      ]),
+    );
+  }
 }
 
 /// Compact tile used in the 100k-item collection grid. Deliberately cheap:
@@ -227,10 +298,12 @@ class CardTile extends StatelessWidget {
     this.badge,
     this.onTap,
     this.onLongPress,
+    this.edition = Edition.standard,
   });
   final Song song;
   final Rarity rarity;
   final bool shiny;
+  final Edition edition;
   final bool favorite;
   final bool selected;
   final String? badge;
@@ -252,6 +325,7 @@ class CardTile extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, box) => Stack(children: [
               Art(song.cover(250), size: box.maxWidth, radius: 0, decodeSize: 160),
+              if (edition != Edition.standard) Positioned(left: 5, bottom: 5, child: EditionBadge(edition, size: 8)),
               if (favorite) const Positioned(top: 5, right: 5, child: Icon(Icons.favorite, size: 14, color: Colors.white)),
               if (badge != null)
                 Positioned(
@@ -286,7 +360,9 @@ class CardTile extends StatelessWidget {
 
 /// Compact row for list layout.
 class CardRow extends StatelessWidget {
-  const CardRow({super.key, required this.song, required this.rarity, required this.shiny, this.trailing, this.onTap, this.subtitle, this.selected = false});
+  const CardRow(
+      {super.key, required this.song, required this.rarity, required this.shiny, this.trailing, this.onTap, this.subtitle, this.selected = false, this.edition = Edition.standard});
+  final Edition edition;
   final Song song;
   final Rarity rarity;
   final bool shiny;
@@ -317,6 +393,7 @@ class CardRow extends StatelessWidget {
             RarityDot(rarity, size: 7),
             const SizedBox(width: 6),
             SizedBox(width: 84, child: RarityLabel(rarity, shiny: shiny, fontSize: 11)),
+            if (edition != Edition.standard) EditionBadge(edition, size: 8),
           ]),
           ?trailing,
         ]),

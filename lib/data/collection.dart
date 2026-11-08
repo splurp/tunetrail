@@ -48,11 +48,17 @@ const int kFlagShiny = 0x08;
 const int kFlagFavorite = 0x10;
 const int kFlagListed = 0x20; // escrowed on the market (hidden from trades)
 const int kRarityMask = 0x07;
+const int kEditionShift = 6; // bits 6–7: Edition index
+
+/// Key identifying a card variant: song × rarity × shiny × edition. A
+/// player owns at most one card per variant.
+int variantKey(int songId, Rarity rarity, bool shiny, Edition edition) =>
+    songId << 6 | rarity.index << 3 | (shiny ? 4 : 0) | edition.index;
 
 /// A lightweight view of one owned card.
 class OwnedCard {
   OwnedCard(this.uid, this.song, this.rarity, this.shiny, this.favorite,
-      this.acquiredAt, this.source);
+      this.acquiredAt, this.source, [this.edition = Edition.standard]);
   final int uid;
   final Song song;
   final Rarity rarity;
@@ -60,11 +66,15 @@ class OwnedCard {
   final bool favorite;
   final DateTime acquiredAt;
   final CardSource source;
+  final Edition edition;
+
+  int get variant => variantKey(song.id, rarity, shiny, edition);
 
   CardPayload toPayload() => song.toPayload(
       uid: uid,
       rarity: rarity,
       shiny: shiny,
+      edition: edition,
       acquiredAt: acquiredAt.millisecondsSinceEpoch);
 }
 
@@ -83,7 +93,11 @@ class CollectionQuery {
     this.sort = CollectionSort.dateAcquired,
     this.descending = true,
     this.uniqueSongs = false,
+    this.editionMask = 0x7,
   });
+
+  /// Bit i set ⇒ include Edition index i.
+  final int editionMask;
 
   final String text;
 
@@ -117,6 +131,7 @@ class CollectionQuery {
     CollectionSort? sort,
     bool? descending,
     bool? uniqueSongs,
+    int? editionMask,
   }) =>
       CollectionQuery(
         text: text ?? this.text,
@@ -130,6 +145,7 @@ class CollectionQuery {
         sort: sort ?? this.sort,
         descending: descending ?? this.descending,
         uniqueSongs: uniqueSongs ?? this.uniqueSongs,
+        editionMask: editionMask ?? this.editionMask,
       );
 }
 
@@ -152,6 +168,8 @@ class CollectionStore extends ChangeNotifier {
   final _source = _U8();
   final Map<int, int> _indexOfUid = {};
   final Map<int, int> _songCounts = {};
+  final Map<int, int> _variants = {}; // variant key → uid
+  final List<int> editionCounts = List.filled(Edition.values.length, 0);
   final List<int> rarityCounts = List.filled(5, 0);
   int shinyCount = 0;
   int version = 0;
@@ -163,6 +181,47 @@ class CollectionStore extends ChangeNotifier {
   int get uniqueSongCount => _songCounts.length;
   bool ownsSong(int songId) => (_songCounts[songId] ?? 0) > 0;
   int copiesOf(int songId) => _songCounts[songId] ?? 0;
+
+  /// Whether this exact variant is already owned.
+  bool ownsVariant(int songId, Rarity rarity, bool shiny, Edition edition) =>
+      _variants.containsKey(variantKey(songId, rarity, shiny, edition));
+
+  int _variantAt(int i) => _songIds[i] << 6 | (_flags[i] & kRarityMask) << 3 | (_flags[i] & kFlagShiny != 0 ? 4 : 0) | _editionBits(_flags[i]);
+  static int _editionBits(int f) => (f >> kEditionShift) & 0x3;
+
+  /// Ordering of variants: rarity, then edition, then shiny.
+  static int _rankOf(int f) => (f & kRarityMask) * 8 + _editionBits(f) * 2 + (f & kFlagShiny != 0 ? 1 : 0);
+
+  /// Removes extra copies of any variant (keeps the earliest). Returns the
+  /// removed cards so they can be compensated.
+  List<OwnedCard> removeDuplicateVariants() {
+    final seen = <int, int>{};
+    final extra = <int>[];
+    for (var i = 0; i < length; i++) {
+      final k = _variantAt(i);
+      final prev = seen[k];
+      if (prev == null) {
+        seen[k] = i;
+      } else if (_acquired[i] < _acquired[prev]) {
+        extra.add(_uids[prev]);
+        seen[k] = i;
+      } else {
+        extra.add(_uids[i]);
+      }
+    }
+    final out = <OwnedCard>[];
+    for (final uid in extra) {
+      final c = byUid(uid);
+      if (c != null) out.add(c);
+      remove(uid);
+    }
+    // Re-index variants from scratch.
+    _variants.clear();
+    for (var i = 0; i < length; i++) {
+      _variants[_variantAt(i)] = _uids[i];
+    }
+    return out;
+  }
 
   // -------------------------------------------------------------- persist
   static const _magic = 0x54544331; // "TTC1"
@@ -229,31 +288,38 @@ class CollectionStore extends ChangeNotifier {
     _source.add(source);
     _songCounts[songId] = (_songCounts[songId] ?? 0) + 1;
     rarityCounts[flags & kRarityMask]++;
+    editionCounts[_editionBits(flags)]++;
     if (flags & kFlagShiny != 0) shinyCount++;
+    _variants[_variantAt(_uids.length - 1)] = uid;
   }
 
   /// Adds a new card and returns its uid.
   int add(int songId, Rarity rarity, bool shiny, CardSource source,
-      {int? uid, DateTime? at, bool notify = true}) {
+      {int? uid, DateTime? at, bool notify = true, Edition edition = Edition.standard}) {
     final id = uid != null && !_indexOfUid.containsKey(uid) ? uid : newUid();
     _append(id, songId, (at ?? DateTime.now()).millisecondsSinceEpoch,
-        rarity.index | (shiny ? kFlagShiny : 0), source.index);
+        rarity.index | (shiny ? kFlagShiny : 0) | edition.index << kEditionShift, source.index);
     if (notify) _changed();
     return id;
   }
 
   /// Bulk insert (used by packs, inbox claims and the debug generator).
-  void addMany(Iterable<(int songId, Rarity rarity, bool shiny, CardSource src, DateTime at)> cards) {
+  /// Variants already owned are skipped; returns how many were added.
+  int addMany(Iterable<(int songId, Rarity rarity, bool shiny, CardSource src, DateTime at)> cards) {
+    var n = 0;
     for (final c in cards) {
+      if (ownsVariant(c.$1, c.$2, c.$3, Edition.standard)) continue;
       _append(newUid(), c.$1, c.$5.millisecondsSinceEpoch,
           c.$2.index | (c.$3 ? kFlagShiny : 0), c.$4.index);
+      n++;
     }
     _changed();
+    return n;
   }
 
-  void addPayload(CardPayload p, CardSource source) {
+  int addPayload(CardPayload p, CardSource source) {
     catalog.ensureFromPayload(p);
-    add(p.songId, p.rarity, p.shiny, source, uid: p.uid);
+    return add(p.songId, p.rarity, p.shiny, source, uid: p.uid, edition: p.edition);
   }
 
   /// Removes a card (sold, traded, listed). Returns false if not owned.
@@ -269,7 +335,10 @@ class CollectionStore extends ChangeNotifier {
       _songCounts[songId] = c;
     }
     rarityCounts[f & kRarityMask]--;
+    editionCounts[_editionBits(f)]--;
     if (f & kFlagShiny != 0) shinyCount--;
+    final vk = _variantAt(i);
+    if (_variants[vk] == uid) _variants.remove(vk);
     final last = length - 1;
     if (i != last) {
       _uids[i] = _uids[last];
@@ -298,6 +367,8 @@ class CollectionStore extends ChangeNotifier {
   void clear() {
     _indexOfUid.clear();
     _songCounts.clear();
+    _variants.clear();
+    editionCounts.fillRange(0, editionCounts.length, 0);
     _uids.length = 0;
     _songIds.length = 0;
     _acquired.length = 0;
@@ -344,6 +415,7 @@ class CollectionStore extends ChangeNotifier {
       f & kFlagFavorite != 0,
       DateTime.fromMillisecondsSinceEpoch(_acquired[i]),
       CardSource.values[_source[i].clamp(0, CardSource.values.length - 1)],
+      Edition.fromIndex(_editionBits(f)),
     );
   }
 
@@ -351,6 +423,7 @@ class CollectionStore extends ChangeNotifier {
   int uidAt(int i) => _uids[i];
   int rarityAt(int i) => _flags[i] & kRarityMask;
   bool shinyAt(int i) => _flags[i] & kFlagShiny != 0;
+  Edition editionAt(int i) => Edition.fromIndex(_editionBits(_flags[i]));
 
   /// Distinct owned song ids.
   Iterable<int> get ownedSongIds => _songCounts.keys;
@@ -371,7 +444,7 @@ class CollectionStore extends ChangeNotifier {
     var bestScore = -1;
     for (var i = 0; i < length; i++) {
       if (_songIds[i] != songId) continue;
-      final score = (_flags[i] & kRarityMask) * 2 + (_flags[i] & kFlagShiny != 0 ? 1 : 0);
+      final score = _rankOf(_flags[i]);
       if (score > bestScore) {
         bestScore = score;
         best = i;
@@ -404,6 +477,7 @@ class CollectionStore extends ChangeNotifier {
       if (q.shinyOnly && f & kFlagShiny == 0) continue;
       if (q.favoritesOnly && f & kFlagFavorite == 0) continue;
       if (q.normalOnly && f & kFlagShiny != 0) continue;
+      if ((q.editionMask >> _editionBits(f)) & 1 == 0) continue;
       if (needSong) {
         final sid = _songIds[i];
         final s = songs[sid];
@@ -433,7 +507,7 @@ class CollectionStore extends ChangeNotifier {
           primary = _acquired[i] ~/ 1000; // seconds: fits in 31 bits
         case CollectionSort.rarity:
           final f = _flags[i];
-          primary = ((f & kRarityMask) * 2 + (f & kFlagShiny != 0 ? 1 : 0)) << 31 |
+          primary = _rankOf(f) << 31 |
               (_acquired[i] ~/ 1000) & 0x7FFFFFFF;
         case CollectionSort.title:
           primary = (titleRank[_songIds[i]] ?? 0x1FFFFF) << 3 | (_flags[i] & kRarityMask);
@@ -475,8 +549,8 @@ class CollectionStore extends ChangeNotifier {
       if (cur == null) {
         best[sid] = i;
       } else {
-        final a = (_flags[i] & kRarityMask) * 2 + (_flags[i] & kFlagShiny != 0 ? 1 : 0);
-        final b = (_flags[cur] & kRarityMask) * 2 + (_flags[cur] & kFlagShiny != 0 ? 1 : 0);
+        final a = _rankOf(_flags[i]);
+        final b = _rankOf(_flags[cur]);
         if (a > b) best[sid] = i;
       }
     }

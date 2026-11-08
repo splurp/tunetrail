@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import 'package:tunetrail_core/tunetrail_core.dart';
 
+import '../../data/samples.dart';
 import '../../data/models.dart';
 import '../../game/store_catalog.dart';
 import '../app.dart';
@@ -128,6 +130,16 @@ class _DebugScreenState extends State<DebugScreen> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SpawnSongScreen())),
         ),
+        for (final s in SampleLibrary.all)
+          ListTile(
+            leading: const Icon(Icons.graphic_eq),
+            title: Text('Spawn Sample edition: ${s.song.title}'),
+            subtitle: Text('${s.song.artistName} · samples ${s.source.title} (${s.source.artistName})'),
+            onTap: () {
+              g.debugSpawnSong(s.song, edition: Edition.sample);
+              g.toast('Spawned the Sample edition of "${s.song.title}" next to you');
+            },
+          ),
         const _H('Collection stress test'),
         ListTile(
           title: Text('${formatNumber(g.collection.length)} cards • ${formatNumber(g.catalog.size)} songs in catalog'),
@@ -288,6 +300,7 @@ class _SpawnSongScreenState extends State<SpawnSongScreen> {
   List<Song> _results = [];
   bool _loading = false;
   bool _shiny = false;
+  Edition _edition = Edition.standard;
   String? _error;
 
   Future<void> _search() async {
@@ -340,6 +353,23 @@ class _SpawnSongScreenState extends State<SpawnSongScreen> {
           ),
         ),
         SwitchListTile(title: const Text('Spawn as shiny'), value: _shiny, onChanged: (v) => setState(() => _shiny = v)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            const Text('Edition'),
+            const SizedBox(width: 12),
+            for (final e in Edition.values)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ChoiceChip(label: Text(e.label), selected: _edition == e, onSelected: (_) => setState(() => _edition = e)),
+              ),
+          ]),
+        ),
+        if (_edition == Edition.sample)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Text('Sample editions need sample data; songs without it show as standard cards.', style: TextStyle(fontSize: 12, color: kTextTertiary)),
+          ),
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: kTextSecondary))),
         Expanded(
           child: ListView.builder(
@@ -351,10 +381,11 @@ class _SpawnSongScreenState extends State<SpawnSongScreen> {
                 song: s,
                 rarity: r,
                 shiny: _shiny,
+                edition: _edition,
                 subtitle: '${s.artistName} · rank ${formatNumber(s.rank)}',
                 trailing: const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.add_location_alt_outlined, size: 20)),
                 onTap: () {
-                  g.debugSpawnSong(s, shiny: _shiny);
+                  g.debugSpawnSong(s, shiny: _shiny, edition: _edition == Edition.sample && !SampleLibrary.has(s.id) ? Edition.standard : _edition);
                   g.toast('Spawned "${s.title}" next to you');
                   Navigator.of(context).popUntil((r) => r.isFirst);
                 },

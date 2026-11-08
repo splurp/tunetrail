@@ -33,6 +33,9 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   bool _caught = false;
   bool _fled = false;
   OwnedCard? _card;
+
+  /// Coins credited when the caught variant was already owned.
+  int _dupCoins = 0;
   bool _busy = false;
   bool _playing = false;
   bool _perfect = false;
@@ -62,6 +65,16 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   static const _maxAttempts = 5;
 
   Rarity get r => widget.spawn.rarity;
+
+  /// The spawn's edition, unless it's a Movie whose song turned out to have
+  /// no video.
+  Edition get _edition {
+    final s = widget.spawn;
+    if (s.edition == Edition.movie && _game?.movies.hasMovie(s.song.id) == false) return Edition.standard;
+    return s.edition;
+  }
+
+  bool get _alreadyOwned => _game?.collection.ownsVariant(widget.spawn.song.id, r, widget.spawn.shiny, _edition) ?? false;
 
   @override
   void initState() {
@@ -225,6 +238,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
       final g = GameScope.read(context);
       if (success) {
         _card = g.catchSpawn(widget.spawn, perfect: _perfect);
+        _dupCoins = _card == null ? g.lastDuplicateCoins : 0;
         if (!g.profile.keepPlayingAfterCatch && _playing) g.audio.stop();
         HapticFeedback.heavyImpact();
         _fx.forward(from: 0);
@@ -336,12 +350,8 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                           duration: const Duration(milliseconds: 600),
                           child: AnimatedBuilder(
                             animation: _spin,
-                            builder: (context, child) => Transform(
-                              alignment: Alignment.center,
-                              transform: _spinMatrix(_spin.value),
-                              child: child,
-                            ),
-                            child: SongCardView(song: s.song, rarity: s.rarity, shiny: s.shiny || _perfect, width: cardW),
+                            builder: (context, child) => Transform(alignment: Alignment.center, transform: _spinMatrix(_spin.value), child: child),
+                            child: SongCardView(song: s.song, rarity: s.rarity, shiny: s.shiny || _perfect, edition: _edition, width: cardW),
                           ),
                         ),
                       ),
@@ -381,37 +391,48 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                             '${_accuracy == null ? '' : '$_accuracy% timing  ·  '}+${s.rarity.catchCoins * (s.shiny || _perfect ? 3 : 1)} coins  ·  +${s.rarity.catchXp * (s.shiny || _perfect ? 3 : 1)} XP',
                             style: const TextStyle(color: kTextSecondary, fontWeight: FontWeight.w500),
                           ),
+                          if (_dupCoins > 0) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'You already own this variant — sent to the scrapyard for $_dupCoins coins',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: kTextSecondary, fontSize: 13),
+                            ),
+                          ],
                           const SizedBox(height: 14),
                           Wrap(
                             alignment: WrapAlignment.center,
                             spacing: 10,
                             runSpacing: 10,
                             children: [
-                              OutlinedButton.icon(
-                                icon: const Icon(Icons.sell_outlined, size: 18),
-                                label: const Text('List for sale'),
-                                onPressed: _card == null
-                                    ? null
-                                    : () async {
-                                        final listed = await showQuickListSheet(context, _card!.uid);
-                                        if (listed && context.mounted) Navigator.of(context).pop();
-                                      },
-                              ),
-                              OutlinedButton.icon(
-                                icon: const Icon(Icons.recycling, size: 18),
-                                label: Text(_card == null ? 'Quicksell' : 'Quicksell · ${_game?.scrapValueOf(_card!) ?? 0}c'),
-                                onPressed: _card == null ? null : _quicksell,
-                              ),
-                              OutlinedButton(
-                                onPressed: () {
-                                  final card = _card;
-                                  Navigator.of(context).pop();
-                                  if (card != null) {
-                                    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CardDetailScreen(uid: card.uid)));
-                                  }
-                                },
-                                child: const Text('View card'),
-                              ),
+                              if (_card != null)
+                                OutlinedButton.icon(
+                                  icon: const Icon(Icons.sell_outlined, size: 18),
+                                  label: const Text('List for sale'),
+                                  onPressed: _card == null
+                                      ? null
+                                      : () async {
+                                          final listed = await showQuickListSheet(context, _card!.uid);
+                                          if (listed && context.mounted) Navigator.of(context).pop();
+                                        },
+                                ),
+                              if (_card != null)
+                                OutlinedButton.icon(
+                                  icon: const Icon(Icons.recycling, size: 18),
+                                  label: Text(_card == null ? 'Quicksell' : 'Quicksell · ${_game?.scrapValueOf(_card!) ?? 0}c'),
+                                  onPressed: _card == null ? null : _quicksell,
+                                ),
+                              if (_card != null)
+                                OutlinedButton(
+                                  onPressed: () {
+                                    final card = _card;
+                                    Navigator.of(context).pop();
+                                    if (card != null) {
+                                      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CardDetailScreen(uid: card.uid)));
+                                    }
+                                  },
+                                  child: const Text('View card'),
+                                ),
                               const SizedBox(width: 12),
                               FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Back to map')),
                             ],
@@ -440,7 +461,8 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            '${_synced ? '${_bpm!.round()} BPM · ' : (_waiting ? '' : 'Not synced · ')}Catch chance ${(_baseCatch[r.index] * 100).round()}% · a flawless 100% beat makes it shiny',
+                            '${_synced ? '${_bpm!.round()} BPM · ' : (_waiting ? '' : 'Not synced · ')}Catch chance ${(_baseCatch[r.index] * 100).round()}% · a flawless 100% beat makes it shiny${_alreadyOwned ? '\nYou already own this variant — a catch is auto-scrapped unless it turns shiny' : ''}',
+                            textAlign: TextAlign.center,
                             style: const TextStyle(color: Colors.white54, fontSize: 12),
                           ),
                         ],

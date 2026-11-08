@@ -12,8 +12,11 @@ import '../data/collection.dart';
 import '../data/deezer_api.dart';
 import '../data/models.dart';
 import '../data/profile.dart';
+import '../data/samples.dart';
 import '../map3d/map_data.dart';
 import 'genre_zones.dart';
+import 'movie_service.dart';
+import 'sample_player.dart';
 import 'audio_service.dart';
 import 'location_service.dart';
 import 'market_service.dart';
@@ -24,7 +27,7 @@ import 'store_catalog.dart';
 
 /// Central game controller. Owns every subsystem and exposes game actions.
 class Game extends ChangeNotifier {
-  Game._(this.dir, this.api, this.catalog, this.collection, this.profile, this.location, this.audio, this.mapData)
+  Game._(this.dir, this.api, this.catalog, this.collection, this.profile, this.location, this.audio, this.mapData, this.movies)
       : zones = GenreZones(mapData) {
     spawnEngine = SpawnEngine(catalog, zoneBias: (lat, lng) => zones.sample(lat, lng).genreBias);
   }
@@ -37,6 +40,8 @@ class Game extends ChangeNotifier {
   final LocationService location;
   final AudioService audio;
   final MapData mapData;
+  final MovieService movies;
+  late final SamplePlayer samples = SamplePlayer(audio);
   final GenreZones zones;
   late final SpawnEngine spawnEngine;
 
@@ -72,7 +77,9 @@ class Game extends ChangeNotifier {
     final audio = AudioService(catalog);
     final tilesDir = Directory('${dir.path}/tiles');
     await tilesDir.create(recursive: true);
-    final g = Game._(dir, api, catalog, collection, profile, location, audio, MapData(tilesDir));
+    final movies = MovieService(dir);
+    await movies.load();
+    final g = Game._(dir, api, catalog, collection, profile, location, audio, MapData(tilesDir), movies);
     await g._init();
     return g;
   }
@@ -89,6 +96,26 @@ class Game extends ChangeNotifier {
     mapData.addListener(_onMapData);
     mapData.ensureAround(location.position.latitude, location.position.longitude);
     collection.addListener(notifyListeners);
+    movies.addListener(_applyMovieResults);
+    SampleLibrary.overrides
+      ..clear()
+      ..addAll(profile.sampleOverrides);
+    for (final s in SampleLibrary.all) {
+      catalog.addSongs([s.song]);
+    }
+    // One copy per variant: fold any older duplicates into the scrapyard.
+    final dups = collection.removeDuplicateVariants();
+    if (dups.isNotEmpty) {
+      var coins = 0;
+      for (final c in dups) {
+        coins += scrapValueOf(c);
+        _removeFromPlaylists(c.uid);
+      }
+      profile.coins += coins;
+      profile.cardsScrapped += dups.length;
+      profile.changed();
+      Timer(const Duration(seconds: 3), () => toast('${dups.length} duplicate cards were auto-scrapped for $coins coins'));
+    }
     unawaited(audio.setVolume(profile.volume));
     await _connectMarket();
     _resetDailyIfNeeded();
@@ -133,7 +160,7 @@ class Game extends ChangeNotifier {
       for (final i in items) {
         if (i.coins > 0) profile.coins += i.coins;
         for (final c in i.cards) {
-          collection.addPayload(c, CardSource.trade);
+          acquirePayload(c, CardSource.trade);
         }
         if (i.message.contains('accepted') || i.message.contains('Trade with')) {
           profile.tradesCompleted++;
@@ -147,6 +174,38 @@ class Game extends ChangeNotifier {
       }
     } catch (_) {}
   }
+
+  // ----------------------------------------------------------- acquiring
+  /// Adds a card unless the player already owns that exact variant (song ×
+  /// rarity × shiny × edition); a duplicate goes straight to the scrapyard
+  /// for its coin value instead. Returns the new card, or null for a
+  /// duplicate (the coins credited are in [lastDuplicateCoins]).
+  OwnedCard? acquire(int songId, Rarity rarity, bool shiny, Edition edition, CardSource source,
+      {int? uid, bool notify = true, bool announce = true}) {
+    if (collection.ownsVariant(songId, rarity, shiny, edition)) {
+      final song = catalog.songs[songId];
+      final coins = scrapValue(rarity, shiny, song?.rank ?? 0, edition: edition);
+      lastDuplicateCoins = coins;
+      profile.coins += coins;
+      profile.cardsScrapped++;
+      profile.changed();
+      if (announce) toast('Already owned: ${song?.title ?? 'song'} (${variantLabel(rarity, shiny, edition)}) — scrapped for $coins coins');
+      return null;
+    }
+    lastDuplicateCoins = 0;
+    final id = collection.add(songId, rarity, shiny, source, uid: uid, notify: notify, edition: edition);
+    return collection.byUid(id);
+  }
+
+  int lastDuplicateCoins = 0;
+
+  OwnedCard? acquirePayload(CardPayload p, CardSource source, {bool keepUid = true}) {
+    catalog.ensureFromPayload(p);
+    return acquire(p.songId, p.rarity, p.shiny, p.edition, source, uid: keepUid ? p.uid : null);
+  }
+
+  static String variantLabel(Rarity r, bool shiny, Edition e) =>
+      [if (shiny) 'shiny', r.label, if (e != Edition.standard) e.label].join(' ');
 
   /// Lists a folder of owned cards: uid → price. Cards move into escrow.
   Future<void> listCards(Map<int, int> prices, {int? folderPrice, String note = '', bool trades = false}) async {
@@ -166,7 +225,7 @@ class Game extends ChangeNotifier {
       questEvent(QuestKind.listOnMarket);
     } catch (e) {
       for (final c in cards) {
-        collection.addPayload(c.toPayload(), c.source);
+        acquirePayload(c.toPayload(), c.source);
       }
       rethrow;
     }
@@ -183,12 +242,12 @@ class Game extends ChangeNotifier {
 
   Future<void> cancelListing(Listing l) async {
     for (final c in await market.cancelListing(l.id)) {
-      collection.addPayload(c, CardSource.market);
+      acquirePayload(c, CardSource.market);
     }
   }
 
   Future<void> withdrawFromListing(Listing l, int cardUid) async {
-    collection.addPayload(await market.withdrawItem(l.id, cardUid), CardSource.market);
+    acquirePayload(await market.withdrawItem(l.id, cardUid), CardSource.market);
   }
 
   /// Buys a whole folder at its folder price.
@@ -199,7 +258,7 @@ class Game extends ChangeNotifier {
     profile.changed();
     try {
       for (final c in await market.buy(l.id, price)) {
-        collection.addPayload(c.withUid(collection.newUid()), CardSource.market);
+        acquirePayload(c, CardSource.market, keepUid: false);
       }
     } catch (e) {
       profile.coins += price;
@@ -210,12 +269,16 @@ class Game extends ChangeNotifier {
 
   /// Buys a single song from a folder at its own price.
   Future<void> buyListingItem(Listing l, ListingItem item) async {
+    final c = item.card;
+    if (collection.ownsVariant(c.songId, c.rarity, c.shiny, c.edition)) {
+      throw MarketException('You already own this variant');
+    }
     if (profile.coins < item.price) throw MarketException('Not enough coins');
     profile.coins -= item.price;
     profile.changed();
     try {
       final c = await market.buyItem(l.id, item.card.uid, item.price);
-      collection.addPayload(c.withUid(collection.newUid()), CardSource.market);
+      acquirePayload(c, CardSource.market, keepUid: false);
     } catch (e) {
       profile.coins += item.price;
       profile.changed();
@@ -236,7 +299,7 @@ class Game extends ChangeNotifier {
       await market.createOffer(l.id, [for (final c in cards) c.toPayload()], coins, note: note);
     } catch (e) {
       for (final c in cards) {
-        collection.addPayload(c.toPayload(), c.source);
+        acquirePayload(c.toPayload(), c.source);
       }
       profile.coins += coins;
       profile.changed();
@@ -297,6 +360,27 @@ class Game extends ChangeNotifier {
     debugSpawns.removeWhere((d) => d.expiresAt.isBefore(now) || profile.spentSpawns.containsKey(d.id));
     spawns = [...spawnEngine.around(location.position, exclude: profile.spentSpawns.keys.toSet()), ...debugSpawns];
     zoneHere = zones.sample(location.position.latitude, location.position.longitude);
+    _applyMovieResults();
+  }
+
+  /// Movie editions only exist for songs with a music video: unknown songs
+  /// are looked up, and spawns whose song has none revert to Standard.
+  void _applyMovieResults() {
+    var changed = false;
+    final out = <Spawn>[];
+    for (final s in spawns) {
+      if (s.edition == Edition.movie) {
+        final has = movies.hasMovie(s.song.id);
+        if (has == null) unawaited(movies.clipFor(s.song));
+        if (has == false) {
+          out.add(s.withEdition(Edition.standard));
+          changed = true;
+          continue;
+        }
+      }
+      out.add(s);
+    }
+    if (changed) spawns = out;
     notifyListeners();
   }
 
@@ -312,10 +396,13 @@ class Game extends ChangeNotifier {
   }
 
   /// Catches a spawn. A 100% perfect catch makes any song shiny.
-  OwnedCard catchSpawn(Spawn s, {bool perfect = false}) {
+  /// Returns the new card, or null if that variant was already owned (it is
+  /// then auto-scrapped; see [lastDuplicateCoins]).
+  OwnedCard? catchSpawn(Spawn s, {bool perfect = false}) {
     catalog.addSongs([s.song]);
     final shiny = s.shiny || perfect;
-    final uid = collection.add(s.song.id, s.rarity, shiny, CardSource.wild);
+    final edition = s.edition == Edition.movie && movies.hasMovie(s.song.id) == false ? Edition.standard : s.edition;
+    final card = acquire(s.song.id, s.rarity, shiny, edition, CardSource.wild, announce: false);
     profile.coins += s.rarity.catchCoins * (shiny ? 3 : 1);
     profile.xp += s.rarity.catchXp * (shiny ? 3 : 1);
     profile.totalCaught++;
@@ -324,7 +411,7 @@ class Game extends ChangeNotifier {
     questEvent(QuestKind.catchGenre, genreId: s.song.genreId);
     if (s.rarity.index >= Rarity.rare.index) questEvent(QuestKind.catchRarePlus);
     _markSpent(s);
-    return collection.byUid(uid)!;
+    return card;
   }
 
   void fleeSpawn(Spawn s) => _markSpent(s);
@@ -336,7 +423,7 @@ class Game extends ChangeNotifier {
 
   // ----------------------------------------------------------------- packs
   /// Opens a pack; returns the new cards. Throws if not enough bits.
-  List<OwnedCard> openPack(PackDef p, {int? genreId}) {
+  List<PackPull> openPack(PackDef p, {int? genreId}) {
     if (profile.bits < p.bits) throw MarketException('Not enough bits');
     if (catalog.size == 0) throw MarketException('Song catalog still loading');
     profile.bits -= p.bits;
@@ -365,10 +452,12 @@ class Game extends ChangeNotifier {
       final i = rng.nextInt(rolls.length);
       rolls[i] = (rolls[i].$1, rolls[i].$2, true);
     }
-    final out = <OwnedCard>[];
+    final out = <PackPull>[];
     for (final r in rolls) {
-      final uid = collection.add(r.$1.id, r.$2, r.$3, CardSource.pack, notify: false);
-      out.add(collection.byUid(uid)!);
+      // Songs with known sample data sometimes come as Sample editions.
+      final ed = SampleLibrary.has(r.$1.id) && rng.chance(4) ? Edition.sample : Edition.standard;
+      final card = acquire(r.$1.id, r.$2, r.$3, ed, CardSource.pack, notify: false, announce: false);
+      out.add(PackPull(card ?? OwnedCard(-1, r.$1, r.$2, r.$3, false, DateTime.now(), CardSource.pack, ed), card == null ? lastDuplicateCoins : 0));
     }
     collection.notifyListeners();
     unawaited(collection.save());
@@ -420,7 +509,7 @@ class Game extends ChangeNotifier {
   }
 
   /// Scrapyard value of a card: rarer and more-streamed songs pay more.
-  int scrapValueOf(OwnedCard c) => scrapValue(c.rarity, c.shiny, c.song.rank);
+  int scrapValueOf(OwnedCard c) => scrapValue(c.rarity, c.shiny, c.song.rank, edition: c.edition);
 
   /// Scraps cards for coins. Returns the coins earned.
   int scrap(Iterable<int> uids) {
@@ -492,9 +581,8 @@ class Game extends ChangeNotifier {
     OwnedCard? card;
     if (q.reward.songId != null && catalog.songs.containsKey(q.reward.songId)) {
       final song = catalog.songs[q.reward.songId]!;
-      final uid = collection.add(song.id, catalog.rarityOf(song),
-          q.reward.shiny || Rng(DateTime.now().microsecondsSinceEpoch).chance(8), CardSource.quest);
-      card = collection.byUid(uid);
+      card = acquire(song.id, catalog.rarityOf(song), q.reward.shiny || Rng(DateTime.now().microsecondsSinceEpoch).chance(8), Edition.standard,
+          CardSource.quest);
     }
     profile.changed();
     notifyListeners();
@@ -609,7 +697,7 @@ class Game extends ChangeNotifier {
   final List<Spawn> debugSpawns = [];
 
   /// Debug: spawns [song] a few metres in front of the player.
-  Spawn debugSpawnSong(Song song, {bool shiny = false, Rarity? rarity}) {
+  Spawn debugSpawnSong(Song song, {bool shiny = false, Rarity? rarity, Edition edition = Edition.standard}) {
     catalog.addSongs([song]);
     final known = catalog.songs[song.id] ?? song;
     final rng = math.Random();
@@ -625,6 +713,7 @@ class Game extends ChangeNotifier {
       rarity: rarity ?? catalog.rarityOf(known),
       shiny: shiny,
       expiresAt: DateTime.now().add(const Duration(minutes: 30)),
+      edition: edition,
     );
     debugSpawns.add(s);
     _refreshSpawns(force: true);
@@ -684,4 +773,13 @@ class Game extends ChangeNotifier {
     audio.dispose();
     super.dispose();
   }
+}
+
+/// One card from a pack; [duplicateCoins] > 0 when that variant was already
+/// owned and the card went to the scrapyard instead.
+class PackPull {
+  const PackPull(this.card, this.duplicateCoins);
+  final OwnedCard card;
+  final int duplicateCoins;
+  bool get duplicate => duplicateCoins > 0 || card.uid < 0;
 }

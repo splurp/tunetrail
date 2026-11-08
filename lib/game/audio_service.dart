@@ -115,8 +115,13 @@ class AudioService extends ChangeNotifier {
     if (s != null && _sl.isInitialized) await _sl.disposeSource(s);
   }
 
+  /// Called whenever normal playback starts or stops, so external players
+  /// (sample breakdowns) can step aside.
+  VoidCallback? onTakeover;
+
   Future<void> _playCurrent() async {
     final req = ++_request;
+    onTakeover?.call();
     final id = queue[index];
     loading = true;
     error = null;
@@ -196,6 +201,7 @@ class AudioService extends ChangeNotifier {
 
   Future<void> stop() async {
     _request++;
+    onTakeover?.call();
     loading = false;
     await _stopSound();
     playing = false;
@@ -212,7 +218,6 @@ class AudioService extends ChangeNotifier {
     if (cached != null) return cached;
     final bytes = await previewBytes(songId);
     if (bytes == null) return null;
-    await _ensureInit();
     final secs = await clipSeconds(songId, bytes);
     // Samples are taken evenly across the whole clip, so request exactly
     // fs per second of real length to get a true time base.
@@ -231,11 +236,16 @@ class AudioService extends ChangeNotifier {
     if (known != null) return known;
     bytes ??= await previewBytes(songId);
     if (bytes == null) return 30;
-    await _ensureInit();
-    final src = await _sl.loadMem('len-$songId.mp3', bytes);
-    final secs = math.max(1.0, _sl.getLength(src).inMicroseconds / 1e6);
-    await _sl.disposeSource(src);
-    return _lengths[songId] = secs;
+    try {
+      await _ensureInit();
+      final src = await _sl.loadMem('len-$songId.mp3', bytes);
+      final secs = math.max(1.0, _sl.getLength(src).inMicroseconds / 1e6);
+      await _sl.disposeSource(src);
+      return _lengths[songId] = secs;
+    } catch (_) {
+      // No audio device (decoding still works): previews are 30 s clips.
+      return 30;
+    }
   }
 
   /// Amplitude envelope (0..1) of a song's preview, [perSecond] points per
@@ -243,7 +253,6 @@ class AudioService extends ChangeNotifier {
   Future<Float32List?> waveform(int songId, {int perSecond = 40}) async {
     final bytes = await previewBytes(songId);
     if (bytes == null) return null;
-    await _ensureInit();
     const fs = 4000;
     final secs = await clipSeconds(songId, bytes);
     final samples = await _sl.readSamplesFromMem(bytes, (secs * fs).round());

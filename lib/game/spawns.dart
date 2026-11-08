@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:latlong2/latlong.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
+import '../data/samples.dart';
 import '../data/catalog.dart';
 import '../data/models.dart';
 
@@ -15,6 +16,7 @@ class Spawn {
     required this.rarity,
     required this.shiny,
     required this.expiresAt,
+    this.edition = Edition.standard,
   });
   final String id;
   final LatLng point;
@@ -22,7 +24,18 @@ class Spawn {
   final Rarity rarity;
   final bool shiny;
   final DateTime expiresAt;
+  final Edition edition;
+
+  Spawn withEdition(Edition e) =>
+      Spawn(id: id, point: point, song: song, rarity: rarity, shiny: shiny, expiresAt: expires, edition: e);
+  DateTime get expires => expiresAt;
 }
+
+/// Chance a wild spawn is a Movie edition (kept only if a video exists).
+const double kMovieSpawnChance = 0.035;
+
+/// Chance a spawn of a song with known sample data is a Sample edition.
+const double kSampleSpawnChance = 0.3;
 
 /// Deterministic world spawns.
 ///
@@ -92,6 +105,12 @@ class SpawnEngine {
       final song = catalog.maybeFavorite(rng, rolled, bias: weights) ?? catalog.pickSong(rng, genreId: genre, rarity: rolled);
       if (song == null || exclude.contains(id)) continue;
       final rarity = catalog.rarityOf(song);
+      final er = rng.nextDouble();
+      final edition = SampleLibrary.has(song.id) && er < kSampleSpawnChance
+          ? Edition.sample
+          : er > 1 - kMovieSpawnChance
+          ? Edition.movie
+          : Edition.standard;
       out.add(Spawn(
         id: id,
         point: LatLng(lat, lng),
@@ -99,6 +118,7 @@ class SpawnEngine {
         rarity: rarity,
         shiny: shiny,
         expiresAt: expires,
+        edition: edition,
       ));
     }
     return out;

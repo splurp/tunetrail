@@ -99,6 +99,7 @@ class _ScrapyardScreenState extends State<ScrapyardScreen> {
                       song: c.song,
                       rarity: c.rarity,
                       shiny: c.shiny,
+                      edition: c.edition,
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                         const SizedBox(width: 6),
                         Text('${g.scrapValueOf(c)}', style: const TextStyle(fontWeight: FontWeight.w600)),
