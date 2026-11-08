@@ -12,8 +12,9 @@ import 'package:tunetrail/map3d/props3d.dart';
 void main() {
   test('render props', () async {
     for (final (name, set, bearing) in [
-      ('vapor_215', PropSet.vaporMonuments, 215.0),
-      ('vapor_30', PropSet.vaporMonuments, 30.0),
+      ('vapor_0', PropSet.vaporMonuments, 0.0),
+      ('vapor_90', PropSet.vaporMonuments, 90.0),
+      ('vapor_200', PropSet.vaporMonuments, 200.0),
       ('sakura', PropSet.sakuraTrees, 0.0),
     ]) {
       final cam = Camera3D()
@@ -31,5 +32,21 @@ void main() {
         ..parent.createSync(recursive: true)
         ..writeAsBytesSync(png!.buffer.asUint8List());
     }
+    // Close-up of the bust.
+    final cam = Camera3D()
+      ..bearing = 0
+      ..pitch = 12
+      ..distance = 300
+      ..px = 0
+      ..py = 0;
+    const size = Size(480, 800);
+    final rec = ui.PictureRecorder();
+    final canvas = Canvas(rec);
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFE9D5F3));
+    PropsPainter(camera: cam, set: PropSet.vaporMonuments, fog: const Color(0xFFB9F2F0))
+        .debugDraw(canvas, size, PropInstance(PropsPainter.bustMesh, 0, 900, scale: 3.5, yaw: -(180 + 30) * 3.14159 / 180));
+    final img = await rec.endRecording().toImage(480, 800);
+    final png = await img.toByteData(format: ui.ImageByteFormat.png);
+    File('build/props_bust.png').writeAsBytesSync(png!.buffer.asUint8List());
   });
 }

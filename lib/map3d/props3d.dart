@@ -61,6 +61,54 @@ class LowPolyMesh {
     prism(x, y, z0, z0 + h, math.sqrt2 / 2, math.sqrt2 / 2, 4, col, rot: math.pi / 4, sx: w, sy: d);
   }
 
+  /// Tapered round tube along any axis (arms of drapery, flutes, laurel).
+  void tube(List<double> p0, List<double> p1, double r0, double r1, int sides, Color col, {bool caps = true}) {
+    final ax = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+    final al = math.sqrt(ax[0] * ax[0] + ax[1] * ax[1] + ax[2] * ax[2]);
+    if (al < 1e-9) return;
+    final a = [ax[0] / al, ax[1] / al, ax[2] / al];
+    final ref = a[2].abs() > 0.9 ? [1.0, 0.0, 0.0] : [0.0, 0.0, 1.0];
+    var u = [a[1] * ref[2] - a[2] * ref[1], a[2] * ref[0] - a[0] * ref[2], a[0] * ref[1] - a[1] * ref[0]];
+    final ul = math.sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]);
+    u = [u[0] / ul, u[1] / ul, u[2] / ul];
+    final v = [a[1] * u[2] - a[2] * u[1], a[2] * u[0] - a[0] * u[2], a[0] * u[1] - a[1] * u[0]];
+    final centre = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, (p0[2] + p1[2]) / 2];
+    List<double> at(List<double> c, double r, int k) {
+      final t = k * 2 * math.pi / sides;
+      return [for (var i = 0; i < 3; i++) c[i] + (u[i] * math.cos(t) + v[i] * math.sin(t)) * r];
+    }
+
+    for (var k = 0; k < sides; k++) {
+      final q0 = at(p0, r0, k), q1 = at(p0, r0, k + 1), q2 = at(p1, r1, k + 1), q3 = at(p1, r1, k);
+      tri(q0, q1, q2, col, centre);
+      tri(q0, q2, q3, col, centre);
+      if (caps) {
+        tri(p0, q1, q0, col, centre);
+        tri(p1, q3, q2, col, centre);
+      }
+    }
+  }
+
+  /// A surface of revolution-like blob: [radius] gives the distance from
+  /// [c] for each direction (theta from +z, phi around z from +y).
+  void sculpt(List<double> c, double Function(double theta, double phi) radius, Color Function(double theta, double phi) colorAt,
+      {int lat = 14, int lon = 22}) {
+    List<double> pt(int i, int j) {
+      final th = math.pi * i / lat, ph = 2 * math.pi * j / lon;
+      final r = radius(th, ph);
+      return [c[0] + r * math.sin(th) * math.sin(ph), c[1] + r * math.sin(th) * math.cos(ph), c[2] + r * math.cos(th)];
+    }
+
+    for (var i = 0; i < lat; i++) {
+      for (var j = 0; j < lon; j++) {
+        final col = colorAt(math.pi * (i + 0.5) / lat, 2 * math.pi * (j + 0.5) / lon);
+        final a = pt(i, j), b = pt(i, j + 1), d = pt(i + 1, j + 1), e = pt(i + 1, j);
+        if (i != 0) tri(a, b, d, col, c);
+        if (i != lat - 1) tri(a, d, e, col, c);
+      }
+    }
+  }
+
   /// Low-poly ellipsoid with optional vertex jitter for an organic look.
   void ellipsoid(
     double x,
@@ -130,6 +178,17 @@ class PropsPainter extends CustomPainter {
   final Color fog;
 
   static final _vapor = _vaporMeshes();
+
+  /// The vaporwave bust mesh (for render checks).
+  static LowPolyMesh get bustMesh => _vapor.$1;
+
+  /// Draws one instance (for render checks).
+  void debugDraw(Canvas canvas, Size size, PropInstance p) {
+    final cam = camera
+      ..size = size
+      ..update();
+    _draw(canvas, cam, p, PropLight(key: _unit([-0.5, 0.6, 0.65]), ambient: 0.62, keyTint: const Color(0xFFFFD6F2), rim: _unit([0.8, -0.3, 0.2]), rimColor: const Color(0xFF48DBFB), fog: fog), size);
+  }
   static final _trees = _sakuraMeshes();
 
   @override
@@ -178,7 +237,8 @@ class PropsPainter extends CustomPainter {
     final back = cam.distance * math.cos(pr);
     final camX = cam.px - math.sin(br) * back, camY = cam.py - math.cos(br) * back, camZ = cam.distance * math.sin(pr);
     final dist = math.sqrt(math.pow(p.x - cam.px, 2) + math.pow(p.y - cam.py, 2));
-    final fogT = ((dist - 300) / 1500).clamp(0.0, 0.4);
+    // Distance haze: monuments kilometres away sit deep in the fog.
+    final fogT = ((dist - 400) / 4500).clamp(0.0, 0.82);
 
     final pos = <double>[];
     final cols = <int>[];
@@ -296,68 +356,142 @@ class PropsPainter extends CustomPainter {
 
   // ------------------------------------------------------------- vaporwave
   static (LowPolyMesh, LowPolyMesh, LowPolyMesh) _vaporMeshes() {
-    const marble = Color(0xFFF7F1FB), marbleDark = Color(0xFFE6DAF2), pink = Color(0xFFFFC6EC);
-    // Classical bust rising straight out of the ground: chest, sloped
-    // shoulders, neck, head, nose, chin and a crown of curls. Faces +y.
-    const head = [0.0, 6.0, 112.0];
-    final bust = LowPolyMesh()
-      ..prism(0, 0, -40, 40, 62, 46, 8, marble, sx: 1.3, sy: 0.62, rot: math.pi / 8, capColor: marbleDark)
-      ..prism(0, 0, 40, 58, 46, 20, 8, marble, sx: 1.3, sy: 0.7, rot: math.pi / 8)
-      ..prism(0, 3, 50, 90, 15, 13.5, 7, marbleDark)
-      ..ellipsoid(0, 6, 112, 26, 30, 34, marble, lat: 5, lon: 9, jitter: 0.06, seed: 3)
-      ..ellipsoid(0, 22, 88, 13, 10, 8, marble, lat: 3, lon: 6, seed: 9)
-      ..tri([0, 36, 120], [-5, 33, 104], [5, 33, 104], marbleDark, head)
-      ..tri([0, 41, 104], [-5, 33, 104], [5, 33, 104], marbleDark, head)
-      ..tri([0, 41, 104], [0, 36, 120], [-5, 33, 104], marble, head)
-      ..tri([0, 41, 104], [5, 33, 104], [0, 36, 120], marble, head);
-    for (final (x, y, z) in [
-      (-14.0, -8.0, 140.0),
-      (8.0, -10.0, 142.0),
-      (-22.0, -4.0, 125.0),
-      (20.0, -6.0, 128.0),
-      (0.0, -18.0, 130.0),
-      (-6.0, 6.0, 146.0),
-      (12.0, 8.0, 144.0),
-      (-16.0, -16.0, 116.0),
-      (16.0, -16.0, 118.0),
-    ]) {
-      bust.ellipsoid(x, y, z, 10, 10, 8, marbleDark, lat: 3, lon: 5, jitter: 0.15, seed: x.toInt() + 7);
+    const marble = Color(0xFFF7F1FB), marbleDark = Color(0xFFE2D4EE), shadow = Color(0xFFC9B6DE), pink = Color(0xFFFFC6EC);
+    const laurel = Color(0xFFF3D98B);
+    // ---- A classical (Greco-Roman) bust, rising out of the ground. Faces +y.
+    final bust = LowPolyMesh();
+    // Chest and shoulders under a toga: a broad, rounded torso.
+    bust.sculpt([0, 0, 24], (th, ph) {
+      final sx = math.sin(th) * math.sin(ph), sy = math.sin(th) * math.cos(ph), sz = math.cos(th);
+      // A superellipsoid: broad squared shoulders, shallow front-to-back,
+      // with the pectorals swelling slightly forward.
+      const p = 3.2;
+      var r = 1 / math.pow(math.pow((sx / 80).abs(), p) + math.pow((sy / 38).abs(), p) + math.pow((sz / 50).abs(), p), 1 / p);
+      if (sy > 0 && sz > 0) r *= 1 + 0.08 * sy * math.sin(th) * (1 - (sx * 1.6).abs()).clamp(0.0, 1.0);
+      return r;
+    }, (th, ph) => marble, lat: 14, lon: 28);
+    // Toga drapery: folds sweeping from the left shoulder across the chest.
+    for (var k = 0; k < 7; k++) {
+      final o = k * 7.0;
+      bust.tube([-62 + o * 0.6, 34 + k * 1.6, 66 - o * 0.3], [40 + o * 0.5, 44 + k * 0.5, -6 - o], 4.8, 3.8, 6, k.isEven ? marbleDark : marble);
     }
-    // Doric column with base and capital.
+    // Collarbones and neck (with the long neck muscles).
+    bust.tube([-34, 30, 70], [-8, 34, 66], 3.8, 3.2, 6, marble);
+    bust.tube([34, 30, 70], [8, 34, 66], 3.8, 3.2, 6, marble);
+    bust.tube([0, 6, 62], [0, 9, 100], 20, 17, 14, marble);
+    bust.tube([-13, 5, 98], [-5, 22, 70], 5.5, 5, 6, marbleDark);
+    bust.tube([13, 5, 98], [5, 22, 70], 5.5, 5, 6, marbleDark);
+    // Head: an egg shape with a tapering jaw.
+    const hc = [0.0, 10.0, 122.0];
+    bust.sculpt(hc, (th, ph) {
+      final sz = math.cos(th), sy = math.sin(th) * math.cos(ph), sx = math.sin(th) * math.sin(ph);
+      var r = 1 / math.sqrt(sx * sx / (23 * 23) + sy * sy / (27 * 27) + sz * sz / (31 * 31));
+      if (sz < -0.2) r *= 1 - 0.25 * (-sz - 0.2) * (1 - sy.abs()); // narrower jaw
+      if (sy > 0.6 && sz > -0.3 && sz < 0.3) r *= 0.96; // flatter face plane
+      return r;
+    }, (th, ph) => marble, lat: 14, lon: 22);
+    // Face (front is +y): brow ridge, eye sockets, nose, lips, chin, ears.
+    bust.tube([-14, 32, 130], [14, 32, 130], 3.2, 3.2, 6, marble);
+    for (final x in [-8.5, 8.5]) {
+      bust.ellipsoid(x, 31.5, 125, 5, 1.6, 2.6, shadow, lat: 3, lon: 6); // sockets
+      bust.ellipsoid(x, 32.4, 125, 2.8, 1.4, 1.7, marbleDark, lat: 3, lon: 6); // eyes
+      bust.ellipsoid(x * 2.75, 6, 124, 2.5, 6, 9, marbleDark, lat: 3, lon: 6); // ears
+    }
+    bust
+      ..tri([0, 33, 128], [-3.6, 37, 112], [3.6, 37, 112], marble, [0, 30, 118])
+      ..tri([0, 33, 128], [0, 40.5, 112.5], [-3.6, 37, 112], marble, [0, 30, 118])
+      ..tri([0, 33, 128], [3.6, 37, 112], [0, 40.5, 112.5], marble, [0, 30, 118])
+      ..tri([-3.6, 37, 112], [0, 40.5, 112.5], [3.6, 37, 112], shadow, [0, 30, 118]);
+    bust.ellipsoid(0, 34.5, 106.5, 5.5, 2.2, 1.5, marbleDark, lat: 3, lon: 8); // upper lip
+    bust.ellipsoid(0, 34, 103.6, 4.6, 2.1, 1.4, marbleDark, lat: 3, lon: 8); // lower lip
+    bust.ellipsoid(0, 31, 97, 7, 5, 5, marble, lat: 4, lon: 8); // chin
+    // Hair: a cap of tight curls over the crown and back of the head.
+    final rnd = math.Random(11);
+    for (var ring = 0; ring < 4; ring++) {
+      final th = 0.25 + ring * 0.32;
+      final n = 6 + ring * 4;
+      for (var k = 0; k < n; k++) {
+        final ph = (k + (ring.isOdd ? 0.5 : 0)) * 2 * math.pi / n;
+        if (math.cos(ph) > 0.55 && ring >= 2) continue; // keep the face clear
+        final r = 28.0 + rnd.nextDouble() * 2;
+        bust.ellipsoid(hc[0] + r * math.sin(th) * math.sin(ph), hc[1] + r * math.sin(th) * math.cos(ph) * 0.95, hc[2] + 2 + r * math.cos(th) * 1.05, 6.2, 6.2, 5.2,
+            k.isEven ? marbleDark : marble,
+            lat: 3, lon: 6, jitter: 0.25, seed: ring * 31 + k);
+      }
+    }
+    // A gilded laurel wreath.
+    for (var k = 0; k < 18; k++) {
+      final ph = math.pi * 0.25 + k * (math.pi * 1.5) / 17;
+      final x = 26 * math.sin(ph), y = 10 + 29 * math.cos(ph);
+      final dx = math.cos(ph) * 6, dy = -math.sin(ph) * 6;
+      bust.tube([x, y, 138], [x + dx, y + dy, 142], 2.6, 0.4, 4, laurel);
+    }
+    // ---- Ionic column: base mouldings, fluted shaft, scrolled capital.
     final column = LowPolyMesh()
-      ..box(0, 0, -6, 26, 26, 10, marble)
-      ..prism(0, 0, 4, 110, 9, 8, 10, marble, capColor: marbleDark)
-      ..prism(0, 0, 110, 116, 8, 12, 10, marbleDark)
-      ..box(0, 0, 116, 28, 28, 7, marble);
-    // Broken column (shorter, tilted top).
+      ..box(0, 0, -6, 30, 30, 8, marble)
+      ..prism(0, 0, 2, 6, 13, 12, 16, marbleDark)
+      ..prism(0, 0, 6, 9, 11.5, 10.5, 16, marble);
+    for (var k = 0; k < 20; k++) {
+      final a = k * 2 * math.pi / 20;
+      column.tube([math.cos(a) * 9.6, math.sin(a) * 9.6, 9], [math.cos(a) * 8.6, math.sin(a) * 8.6, 112], 1.7, 1.5, 4, k.isEven ? marble : marbleDark, caps: false);
+    }
+    column
+      ..prism(0, 0, 9, 112, 8.6, 7.8, 20, shadow)
+      ..prism(0, 0, 112, 116, 8.2, 11, 16, marbleDark)
+      ..tube([-14, -4, 119], [-14, 4, 119], 5, 5, 10, marble)
+      ..tube([14, -4, 119], [14, 4, 119], 5, 5, 10, marble)
+      ..box(0, 0, 116, 26, 12, 6, marble)
+      ..box(0, 0, 122, 32, 32, 5, marble);
+    // Broken column with a pink fracture face.
     final broken = LowPolyMesh()
-      ..box(0, 0, -6, 26, 26, 10, marble)
-      ..prism(0, 0, 4, 58, 9, 8.6, 10, marble, capColor: pink)
-      ..prism(3, 2, 58, 66, 8.6, 6, 10, marbleDark);
+      ..box(0, 0, -6, 30, 30, 8, marble)
+      ..prism(0, 0, 2, 6, 13, 12, 16, marbleDark);
+    for (var k = 0; k < 20; k++) {
+      final a = k * 2 * math.pi / 20;
+      final top = 52 + 10 * math.sin(a * 2 + 1).abs();
+      broken.tube([math.cos(a) * 9.6, math.sin(a) * 9.6, 6], [math.cos(a) * 9.1, math.sin(a) * 9.1, top], 1.7, 1.6, 4, k.isEven ? marble : marbleDark, caps: false);
+    }
+    broken.prism(0, 0, 6, 54, 8.9, 8.5, 20, shadow, capColor: pink);
     return (bust, column, broken);
   }
 
-  /// Monuments stand far out on the ground in fixed world directions around
-  /// the player (like the skyline, they keep their bearing as you walk) and
-  /// rise out of the ground itself.
+  static double _h(int x, int y, int salt) => _hash(x, y, salt);
+
+  /// Colossal monuments stand far out in the world on a ~2.6 km grid, so
+  /// they stay put as you walk (slow parallax) and rise out of the ground
+  /// through the distance fog.
   List<PropInstance> _vaporInstances(Camera3D cam) {
     final (bust, column, broken) = _vapor;
-    PropInstance at(LowPolyMesh m, double az, double r, double scale, double faceAz) {
-      final a = az * math.pi / 180;
-      return PropInstance(m, cam.px + math.sin(a) * r, cam.py + math.cos(a) * r, scale: scale, yaw: -faceAz * math.pi / 180);
+    const cell = 3400.0;
+    final out = <PropInstance>[];
+    final c0x = (cam.px / cell).floor() - 3, c0y = (cam.py / cell).floor() - 3;
+    for (var gx = c0x; gx <= c0x + 6; gx++) {
+      for (var gy = c0y; gy <= c0y + 6; gy++) {
+        final x = (gx + 0.2 + 0.6 * _h(gx, gy, 21)) * cell;
+        final y = (gy + 0.2 + 0.6 * _h(gx, gy, 22)) * cell;
+        final d = math.sqrt(math.pow(x - cam.px, 2) + math.pow(y - cam.py, 2));
+        // Only far away (they're colossal) — none looming over the player.
+        if (d < 2600 || d > 8500) continue;
+        final kind = _h(gx, gy, 23);
+        // Face roughly towards the player's area, in three-quarter view.
+        final faceAz = math.atan2(cam.px - x, cam.py - y) * 180 / math.pi + 35;
+        final yaw = -faceAz * math.pi / 180;
+        if (kind > 0.8) continue; // some cells stay empty
+        if (kind < 0.3) {
+          out.add(PropInstance(bust, x, y, scale: 3.3 + 0.9 * _h(gx, gy, 24), yaw: yaw));
+        } else {
+          // A small colonnade of 2–4 columns, some broken.
+          final n = 2 + (_h(gx, gy, 25) * 3).floor();
+          final ang = _h(gx, gy, 26) * math.pi;
+          for (var i = 0; i < n; i++) {
+            final off = (i - (n - 1) / 2) * 110.0;
+            final m = _h(gx * 7 + i, gy, 27) < 0.35 ? broken : column;
+            out.add(PropInstance(m, x + math.cos(ang) * off, y + math.sin(ang) * off, scale: 2.2 + _h(gx, gy + i, 28) * 0.8, yaw: ang));
+          }
+        }
+      }
     }
-
-    return [
-      // Bust in three-quarter view, half-sunk into the ground.
-      at(bust, 215, 780, 1.55, 75),
-      at(column, 30, 640, 1.2, 0),
-      at(column, 42, 700, 1.0, 0),
-      at(broken, 330, 600, 1.3, 20),
-      at(column, 315, 720, 1.1, 0),
-      at(broken, 75, 660, 1.2, 0),
-      at(column, 160, 690, 1.15, 0),
-      at(broken, 250, 640, 1.0, 40),
-    ];
+    return out;
   }
 
   // --------------------------------------------------------------- sakura
@@ -403,19 +537,19 @@ class PropsPainter extends CustomPainter {
     return (h & 0xFFFFFF) / 0xFFFFFF;
   }
 
-  static const _cell = 70.0;
+  static const _cell = 190.0;
 
   /// Trees on a world-anchored grid, so they stay where they are as you
   /// walk. Trees near the player fade out so they never hide the action.
   List<PropInstance> _treeInstances(Camera3D cam) {
     final out = <PropInstance>[];
-    const reach = 650.0;
+    const reach = 1100.0;
     final c0x = ((cam.px - reach) / _cell).floor(), c1x = ((cam.px + reach) / _cell).ceil();
     final c0y = ((cam.py - reach) / _cell).floor(), c1y = ((cam.py + reach) / _cell).ceil();
     final halfW = cam.size.width / 2;
     for (var gx = c0x; gx <= c1x; gx++) {
       for (var gy = c0y; gy <= c1y; gy++) {
-        if (_hash(gx, gy, 1) > 0.5) continue;
+        if (_hash(gx, gy, 1) > 0.42) continue;
         final x = (gx + 0.15 + 0.7 * _hash(gx, gy, 2)) * _cell;
         final y = (gy + 0.15 + 0.7 * _hash(gx, gy, 3)) * _cell;
         final dx = x - cam.px, dy = y - cam.py;
@@ -426,9 +560,9 @@ class PropsPainter extends CustomPainter {
         final zc = cam.depth(ya, 0);
         if (zc <= 2) continue;
         final sx = cam.sx(cam.alignX(x, y), zc);
-        if ((sx - halfW).abs() > halfW + 25 * cam.focal / zc) continue;
-        // Invisible right around the player, fading back in from 45–95 m.
-        final alpha = ((d - 45) / 50).clamp(0.0, 1.0);
+        if ((sx - halfW).abs() > halfW + 60 * cam.focal / zc) continue;
+        // Invisible around the player, fading back in from 110–220 m.
+        final alpha = ((d - 110) / 110).clamp(0.0, 1.0);
         if (alpha <= 0) continue;
         out.add(
           PropInstance(
@@ -436,7 +570,7 @@ class PropsPainter extends CustomPainter {
             x,
             y,
             yaw: _hash(gx, gy, 5) * math.pi * 2,
-            scale: 2.3 + _hash(gx, gy, 6) * 1.1,
+            scale: 3.4 + _hash(gx, gy, 6) * 1.6,
             alpha: alpha * alpha * (3 - 2 * alpha),
           ),
         );
