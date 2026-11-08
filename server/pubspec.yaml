@@ -1,0 +1,13 @@
+name: tunetrail_server
+description: Multiplayer market server for Tunetrail.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  shelf: ^1.4.0
+  shelf_router: ^1.1.0
+  tunetrail_core:
+    path: ../packages/tunetrail_core

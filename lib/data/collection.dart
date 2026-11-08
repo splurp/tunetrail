@@ -1,0 +1,491 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:tunetrail_core/tunetrail_core.dart';
+
+import 'catalog.dart';
+import 'models.dart';
+
+/// Growable typed arrays (amortised O(1) append, no boxing).
+class _I64 {
+  Int64List data = Int64List(1024);
+  int length = 0;
+  void add(int v) {
+    if (length == data.length) {
+      final n = Int64List(data.length * 2)..setRange(0, length, data);
+      data = n;
+    }
+    data[length++] = v;
+  }
+
+  int operator [](int i) => data[i];
+  void operator []=(int i, int v) => data[i] = v;
+  void removeLast() => length--;
+}
+
+class _U8 {
+  Uint8List data = Uint8List(1024);
+  int length = 0;
+  void add(int v) {
+    if (length == data.length) {
+      final n = Uint8List(data.length * 2)..setRange(0, length, data);
+      data = n;
+    }
+    data[length++] = v;
+  }
+
+  int operator [](int i) => data[i];
+  void operator []=(int i, int v) => data[i] = v;
+  void removeLast() => length--;
+}
+
+/// Where a card came from.
+enum CardSource { wild, pack, quest, market, trade, debug }
+
+/// Card flag bits (packed with rarity in one byte).
+const int kFlagShiny = 0x08;
+const int kFlagFavorite = 0x10;
+const int kFlagListed = 0x20; // escrowed on the market (hidden from trades)
+const int kRarityMask = 0x07;
+
+/// A lightweight view of one owned card.
+class OwnedCard {
+  OwnedCard(this.uid, this.song, this.rarity, this.shiny, this.favorite,
+      this.acquiredAt, this.source);
+  final int uid;
+  final Song song;
+  final Rarity rarity;
+  final bool shiny;
+  final bool favorite;
+  final DateTime acquiredAt;
+  final CardSource source;
+
+  CardPayload toPayload() => song.toPayload(
+      uid: uid,
+      rarity: rarity,
+      shiny: shiny,
+      acquiredAt: acquiredAt.millisecondsSinceEpoch);
+}
+
+enum CollectionSort { dateAcquired, title, artist, rarity, album, popularity }
+
+class CollectionQuery {
+  const CollectionQuery({
+    this.text = '',
+    this.rarityMask = 0x1F,
+    this.shinyOnly = false,
+    this.favoritesOnly = false,
+    this.genreId,
+    this.artistId,
+    this.albumId,
+    this.sort = CollectionSort.dateAcquired,
+    this.descending = true,
+    this.uniqueSongs = false,
+  });
+
+  final String text;
+
+  /// Bit i set ⇒ include rarity index i.
+  final int rarityMask;
+  final bool shinyOnly;
+  final bool favoritesOnly;
+  final int? genreId;
+  final int? artistId;
+  final int? albumId;
+  final CollectionSort sort;
+  final bool descending;
+
+  /// Show only the best copy of each song.
+  final bool uniqueSongs;
+
+  CollectionQuery copyWith({
+    String? text,
+    int? rarityMask,
+    bool? shinyOnly,
+    bool? favoritesOnly,
+    int? Function()? genreId,
+    int? Function()? artistId,
+    int? Function()? albumId,
+    CollectionSort? sort,
+    bool? descending,
+    bool? uniqueSongs,
+  }) =>
+      CollectionQuery(
+        text: text ?? this.text,
+        rarityMask: rarityMask ?? this.rarityMask,
+        shinyOnly: shinyOnly ?? this.shinyOnly,
+        favoritesOnly: favoritesOnly ?? this.favoritesOnly,
+        genreId: genreId != null ? genreId() : this.genreId,
+        artistId: artistId != null ? artistId() : this.artistId,
+        albumId: albumId != null ? albumId() : this.albumId,
+        sort: sort ?? this.sort,
+        descending: descending ?? this.descending,
+        uniqueSongs: uniqueSongs ?? this.uniqueSongs,
+      );
+}
+
+/// High-performance owned-card store.
+///
+/// Cards are kept column-wise in typed arrays (≈26 bytes per card), so a
+/// 100,000-card collection costs ~2.6 MB of RAM, loads from disk in a few
+/// milliseconds and can be filtered + sorted in tens of milliseconds using
+/// packed 64-bit integer sort keys.
+class CollectionStore extends ChangeNotifier {
+  CollectionStore(this.catalog, this.dir);
+
+  final Catalog catalog;
+  final Directory dir;
+
+  final _uids = _I64();
+  final _songIds = _I64();
+  final _acquired = _I64(); // ms since epoch
+  final _flags = _U8(); // rarity | shiny | favourite | listed
+  final _source = _U8();
+  final Map<int, int> _indexOfUid = {};
+  final Map<int, int> _songCounts = {};
+  final List<int> rarityCounts = List.filled(5, 0);
+  int shinyCount = 0;
+  int version = 0;
+  int _uidCounter = 0;
+  Timer? _saveTimer;
+
+  File get _file => File('${dir.path}/collection.bin');
+  int get length => _uids.length;
+  int get uniqueSongCount => _songCounts.length;
+  bool ownsSong(int songId) => (_songCounts[songId] ?? 0) > 0;
+  int copiesOf(int songId) => _songCounts[songId] ?? 0;
+
+  // -------------------------------------------------------------- persist
+  static const _magic = 0x54544331; // "TTC1"
+  static const _recordSize = 8 + 8 + 8 + 1 + 1;
+
+  Future<void> load() async {
+    if (!await _file.exists()) return;
+    final bytes = await _file.readAsBytes();
+    if (bytes.length < 8) return;
+    final bd = ByteData.sublistView(bytes);
+    if (bd.getUint32(0, Endian.little) != _magic) return;
+    final count = bd.getUint32(4, Endian.little);
+    var o = 8;
+    for (var i = 0; i < count && o + _recordSize <= bytes.length; i++) {
+      final uid = bd.getInt64(o, Endian.little);
+      final song = bd.getInt64(o + 8, Endian.little);
+      final acq = bd.getInt64(o + 16, Endian.little);
+      final flags = bytes[o + 24];
+      final src = bytes[o + 25];
+      o += _recordSize;
+      _append(uid, song, acq, flags, src);
+    }
+    version++;
+  }
+
+  Future<void> save() async {
+    _saveTimer?.cancel();
+    final n = length;
+    final bytes = Uint8List(8 + n * _recordSize);
+    final bd = ByteData.sublistView(bytes);
+    bd.setUint32(0, _magic, Endian.little);
+    bd.setUint32(4, n, Endian.little);
+    var o = 8;
+    for (var i = 0; i < n; i++) {
+      bd.setInt64(o, _uids[i], Endian.little);
+      bd.setInt64(o + 8, _songIds[i], Endian.little);
+      bd.setInt64(o + 16, _acquired[i], Endian.little);
+      bytes[o + 24] = _flags[i];
+      bytes[o + 25] = _source[i];
+      o += _recordSize;
+    }
+    final tmp = File('${_file.path}.tmp');
+    await tmp.writeAsBytes(bytes, flush: true);
+    await tmp.rename(_file.path);
+  }
+
+  void _scheduleSave() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(seconds: 2), save);
+  }
+
+  // ------------------------------------------------------------ mutation
+  int newUid() {
+    _uidCounter = (_uidCounter + 1) & 0xFFFF;
+    return DateTime.now().microsecondsSinceEpoch * 1000 + _uidCounter % 1000;
+  }
+
+  void _append(int uid, int songId, int acquired, int flags, int source) {
+    _indexOfUid[uid] = _uids.length;
+    _uids.add(uid);
+    _songIds.add(songId);
+    _acquired.add(acquired);
+    _flags.add(flags);
+    _source.add(source);
+    _songCounts[songId] = (_songCounts[songId] ?? 0) + 1;
+    rarityCounts[flags & kRarityMask]++;
+    if (flags & kFlagShiny != 0) shinyCount++;
+  }
+
+  /// Adds a new card and returns its uid.
+  int add(int songId, Rarity rarity, bool shiny, CardSource source,
+      {int? uid, DateTime? at, bool notify = true}) {
+    final id = uid != null && !_indexOfUid.containsKey(uid) ? uid : newUid();
+    _append(id, songId, (at ?? DateTime.now()).millisecondsSinceEpoch,
+        rarity.index | (shiny ? kFlagShiny : 0), source.index);
+    if (notify) _changed();
+    return id;
+  }
+
+  /// Bulk insert (used by packs, inbox claims and the debug generator).
+  void addMany(Iterable<(int songId, Rarity rarity, bool shiny, CardSource src, DateTime at)> cards) {
+    for (final c in cards) {
+      _append(newUid(), c.$1, c.$5.millisecondsSinceEpoch,
+          c.$2.index | (c.$3 ? kFlagShiny : 0), c.$4.index);
+    }
+    _changed();
+  }
+
+  void addPayload(CardPayload p, CardSource source) {
+    catalog.ensureFromPayload(p);
+    add(p.songId, p.rarity, p.shiny, source, uid: p.uid);
+  }
+
+  /// Removes a card (sold, traded, listed). Returns false if not owned.
+  bool remove(int uid) {
+    final i = _indexOfUid.remove(uid);
+    if (i == null) return false;
+    final songId = _songIds[i];
+    final f = _flags[i];
+    final c = (_songCounts[songId] ?? 1) - 1;
+    if (c <= 0) {
+      _songCounts.remove(songId);
+    } else {
+      _songCounts[songId] = c;
+    }
+    rarityCounts[f & kRarityMask]--;
+    if (f & kFlagShiny != 0) shinyCount--;
+    final last = length - 1;
+    if (i != last) {
+      _uids[i] = _uids[last];
+      _songIds[i] = _songIds[last];
+      _acquired[i] = _acquired[last];
+      _flags[i] = _flags[last];
+      _source[i] = _source[last];
+      _indexOfUid[_uids[i]] = i;
+    }
+    _uids.removeLast();
+    _songIds.removeLast();
+    _acquired.removeLast();
+    _flags.removeLast();
+    _source.removeLast();
+    _changed();
+    return true;
+  }
+
+  void setFavorite(int uid, bool fav) {
+    final i = _indexOfUid[uid];
+    if (i == null) return;
+    _flags[i] = fav ? (_flags[i] | kFlagFavorite) : (_flags[i] & ~kFlagFavorite);
+    _changed();
+  }
+
+  void clear() {
+    _indexOfUid.clear();
+    _songCounts.clear();
+    _uids.length = 0;
+    _songIds.length = 0;
+    _acquired.length = 0;
+    _flags.length = 0;
+    _source.length = 0;
+    rarityCounts.fillRange(0, 5, 0);
+    shinyCount = 0;
+    _changed();
+  }
+
+  void _changed() {
+    version++;
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------- reads
+  bool contains(int uid) => _indexOfUid.containsKey(uid);
+
+  OwnedCard? byUid(int uid) {
+    final i = _indexOfUid[uid];
+    return i == null ? null : at(i);
+  }
+
+  /// Materialises the card at storage index [i]. Cheap: called only for the
+  /// handful of rows actually visible on screen.
+  OwnedCard at(int i) {
+    final f = _flags[i];
+    final songId = _songIds[i];
+    final song = catalog.songs[songId] ??
+        Song(
+            id: songId,
+            title: 'Unknown song',
+            artistId: 0,
+            artistName: '',
+            albumId: 0,
+            albumTitle: '',
+            coverMd5: '');
+    return OwnedCard(
+      _uids[i],
+      song,
+      Rarity.fromIndex(f & kRarityMask),
+      f & kFlagShiny != 0,
+      f & kFlagFavorite != 0,
+      DateTime.fromMillisecondsSinceEpoch(_acquired[i]),
+      CardSource.values[_source[i].clamp(0, CardSource.values.length - 1)],
+    );
+  }
+
+  int songIdAt(int i) => _songIds[i];
+  int uidAt(int i) => _uids[i];
+  int rarityAt(int i) => _flags[i] & kRarityMask;
+  bool shinyAt(int i) => _flags[i] & kFlagShiny != 0;
+
+  /// Distinct owned song ids.
+  Iterable<int> get ownedSongIds => _songCounts.keys;
+
+  /// Number of distinct songs owned for each artist.
+  int distinctSongsByArtist(int artistId) {
+    var n = 0;
+    for (final id in _songCounts.keys) {
+      if (catalog.songs[id]?.artistId == artistId) n++;
+    }
+    return n;
+  }
+
+  /// Best (rarest) owned copy of a song, or null.
+  OwnedCard? bestCopyOf(int songId) {
+    if (!ownsSong(songId)) return null;
+    var best = -1;
+    var bestScore = -1;
+    for (var i = 0; i < length; i++) {
+      if (_songIds[i] != songId) continue;
+      final score = (_flags[i] & kRarityMask) * 2 + (_flags[i] & kFlagShiny != 0 ? 1 : 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    return best < 0 ? null : at(best);
+  }
+
+  // ---------------------------------------------------------------- query
+  /// Returns storage indices matching [q], in display order.
+  ///
+  /// Implementation notes (why this is fast for 100k+ cards):
+  ///  * filtering touches only the typed arrays and a song lookup;
+  ///  * text matching uses a per-song lowercase cache computed once;
+  ///  * sorting packs (primary key, secondary key, index) into one 63-bit
+  ///    integer and sorts an Int64List — no closures over objects, no
+  ///    string comparisons.
+  Int32List query(CollectionQuery q) {
+    final sw = Stopwatch()..start();
+    final n = length;
+    final text = q.text.trim().toLowerCase();
+    final songs = catalog.songs;
+    final hits = Int32List(n);
+    var count = 0;
+    final needSong = text.isNotEmpty || q.genreId != null || q.artistId != null || q.albumId != null;
+    if (text.isNotEmpty) _ensureSearchCache();
+    for (var i = 0; i < n; i++) {
+      final f = _flags[i];
+      if ((q.rarityMask >> (f & kRarityMask)) & 1 == 0) continue;
+      if (q.shinyOnly && f & kFlagShiny == 0) continue;
+      if (q.favoritesOnly && f & kFlagFavorite == 0) continue;
+      if (needSong) {
+        final sid = _songIds[i];
+        final s = songs[sid];
+        if (s == null) continue;
+        if (q.genreId != null && s.genreId != q.genreId) continue;
+        if (q.artistId != null && s.artistId != q.artistId) continue;
+        if (q.albumId != null && s.albumId != q.albumId) continue;
+        if (text.isNotEmpty && !(_searchCache[sid]?.contains(text) ?? false)) continue;
+      }
+      hits[count++] = i;
+    }
+
+    var idx = Int32List.sublistView(hits, 0, count);
+    if (q.uniqueSongs) idx = _dedupe(idx);
+
+    final keys = Int64List(idx.length);
+    final (titleRank, artistRank) =
+        (q.sort == CollectionSort.title || q.sort == CollectionSort.artist || q.sort == CollectionSort.album)
+            ? catalog.sortRanks()
+            : (const <int, int>{}, const <int, int>{});
+    const idxBits = 21; // up to ~2M cards
+    for (var k = 0; k < idx.length; k++) {
+      final i = idx[k];
+      int primary;
+      switch (q.sort) {
+        case CollectionSort.dateAcquired:
+          primary = _acquired[i] ~/ 1000; // seconds: fits in 31 bits
+        case CollectionSort.rarity:
+          final f = _flags[i];
+          primary = ((f & kRarityMask) * 2 + (f & kFlagShiny != 0 ? 1 : 0)) << 31 |
+              (_acquired[i] ~/ 1000) & 0x7FFFFFFF;
+        case CollectionSort.title:
+          primary = (titleRank[_songIds[i]] ?? 0x1FFFFF) << 3 | (_flags[i] & kRarityMask);
+        case CollectionSort.artist:
+          final s = songs[_songIds[i]];
+          primary = (artistRank[s?.artistId] ?? 0x1FFFFF) << 21 |
+              ((titleRank[_songIds[i]] ?? 0x1FFFFF) & 0x1FFFFF);
+        case CollectionSort.album:
+          final s = songs[_songIds[i]];
+          primary = ((s?.albumId ?? 0) & 0xFFFFFFFFF) << 3 | (_flags[i] & kRarityMask);
+        case CollectionSort.popularity:
+          primary = songs[_songIds[i]]?.rank ?? 0;
+      }
+      keys[k] = (primary << idxBits) | (k & ((1 << idxBits) - 1));
+    }
+    keys.sort();
+    final out = Int32List(keys.length);
+    final mask = (1 << idxBits) - 1;
+    if (q.descending) {
+      for (var k = 0; k < keys.length; k++) {
+        out[k] = idx[keys[keys.length - 1 - k] & mask];
+      }
+    } else {
+      for (var k = 0; k < keys.length; k++) {
+        out[k] = idx[keys[k] & mask];
+      }
+    }
+    lastQueryMicros = sw.elapsedMicroseconds;
+    return out;
+  }
+
+  int lastQueryMicros = 0;
+
+  Int32List _dedupe(Int32List idx) {
+    final best = <int, int>{};
+    for (final i in idx) {
+      final sid = _songIds[i];
+      final cur = best[sid];
+      if (cur == null) {
+        best[sid] = i;
+      } else {
+        final a = (_flags[i] & kRarityMask) * 2 + (_flags[i] & kFlagShiny != 0 ? 1 : 0);
+        final b = (_flags[cur] & kRarityMask) * 2 + (_flags[cur] & kFlagShiny != 0 ? 1 : 0);
+        if (a > b) best[sid] = i;
+      }
+    }
+    return Int32List.fromList(best.values.toList());
+  }
+
+  final Map<int, String> _searchCache = {};
+  int _searchCacheVersion = -1;
+  void _ensureSearchCache() {
+    if (_searchCacheVersion == catalog.version && _searchCache.length >= _songCounts.length) {
+      return;
+    }
+    for (final sid in _songCounts.keys) {
+      if (_searchCache.containsKey(sid)) continue;
+      final s = catalog.songs[sid];
+      if (s == null) continue;
+      _searchCache[sid] = '${s.title}\u0000${s.artistName}\u0000${s.albumTitle}'.toLowerCase();
+    }
+    _searchCacheVersion = catalog.version;
+  }
+}

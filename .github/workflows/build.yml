@@ -1,0 +1,117 @@
+name: Build Tunetrail
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.9'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Core package tests
+        working-directory: packages/tunetrail_core
+        run: dart pub get && dart test
+      - name: Server analysis
+        working-directory: server
+        run: dart pub get && dart analyze
+
+  android:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build universal APK
+        run: flutter build apk --release
+      - name: Build per-ABI APKs (smaller downloads)
+        run: flutter build apk --release --split-per-abi
+      - name: Collect APKs
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/Tunetrail-android-universal.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/Tunetrail-android-arm64.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/Tunetrail-android-arm32.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk dist/Tunetrail-android-x86_64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunetrail-android
+          path: dist/*.apk
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath dist\Tunetrail-windows-x64.zip
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppSource="$PWD\build\windows\x64\runner\Release" /O"$PWD\dist" windows\installer.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunetrail-windows
+          path: dist/*
+
+  release:
+    needs: [android, windows]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('dev-build-{0}', github.run_number) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('Tunetrail dev build {0}', github.run_number) }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          body: |
+            Developer build of Tunetrail from `${{ github.ref_name }}` @ ${{ github.sha }}.
+
+            **Windows:** download `Tunetrail-windows-x64-setup.exe` (installer) or the portable `Tunetrail-windows-x64.zip` (extract, then run `Tunetrail.exe`).
+            **Android:** download `Tunetrail-android-universal.apk` (or the smaller `arm64` APK for most modern phones) and allow installs from unknown sources.
+
+            The debug menu is in Profile → Settings → Debug menu.
+          files: dist/*

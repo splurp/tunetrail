@@ -1,0 +1,371 @@
+import 'package:flutter/material.dart';
+import 'package:tunetrail_core/tunetrail_core.dart';
+
+import '../../data/models.dart';
+import '../../game/purchase_service.dart';
+import '../../game/store_catalog.dart';
+import '../app.dart';
+import '../map/map_themes.dart';
+import '../widgets/cards.dart';
+import '../widgets/stick_figure.dart';
+import 'pack_opening_screen.dart';
+
+class ShopScreen extends StatelessWidget {
+  const ShopScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    final free = g.profile.debugEnabled && g.profile.freePurchases;
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Shop'),
+          actions: [
+            CurrencyChip(icon: kCoinIcon, value: g.profile.coins, color: kCoinColor),
+            const SizedBox(width: 6),
+            CurrencyChip(icon: kBitsIcon, value: g.profile.bits, color: kBitsColor),
+            const SizedBox(width: 12),
+          ],
+          bottom: const TabBar(tabs: [Tab(text: 'Packs'), Tab(text: 'Bits'), Tab(text: 'Map themes'), Tab(text: 'Style')]),
+        ),
+        body: Column(children: [
+          if (free)
+            Container(
+              width: double.infinity,
+              color: Colors.orange.withValues(alpha: 0.25),
+              padding: const EdgeInsets.all(6),
+              child: const Text('DEBUG: real-money purchases are free (no charge)', textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
+            ),
+          const Expanded(child: TabBarView(children: [_Packs(), _Bits(), _Themes(), _Style()])),
+        ]),
+      ),
+    );
+  }
+}
+
+Future<void> buyProduct(BuildContext context, Product p) async {
+  final g = GameScope.read(context);
+  final r = await g.purchase(p);
+  switch (r) {
+    case PurchaseResult.granted:
+      break;
+    case PurchaseResult.pending:
+      g.toast('Purchase pending…');
+    case PurchaseResult.cancelled:
+      g.toast('Purchase cancelled');
+    case PurchaseResult.unavailable:
+      g.toast('Store unavailable on this device. (Developer build: enable Debug → Free purchases.)');
+    case PurchaseResult.error:
+      g.toast('Purchase failed');
+  }
+}
+
+// ---------------------------------------------------------------- packs
+class _Packs extends StatelessWidget {
+  const _Packs();
+
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    return ListView(padding: const EdgeInsets.all(12), children: [
+      for (final p in kPacks)
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              _PackArt(color: p.color, cards: p.cards),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(p.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 4),
+                  Text(p.description, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                  TextButton(
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                    onPressed: () => _showOdds(context, p),
+                    child: const Text('View drop rates'),
+                  ),
+                  FilledButton.icon(
+                    icon: const Icon(kBitsIcon, size: 18),
+                    label: Text('${p.bits} bits'),
+                    onPressed: g.profile.bits < p.bits ? null : () => _open(context, p),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      if (g.profile.bits < kPacks.first.bits)
+        TextButton(onPressed: () => DefaultTabController.of(context).animateTo(1), child: const Text('Get more bits →')),
+    ]);
+  }
+
+  Future<void> _open(BuildContext context, PackDef p) async {
+    final g = GameScope.read(context);
+    int? genre;
+    if (p.genreChoice) {
+      genre = await showDialog<int>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('Choose a genre'),
+          children: [
+            for (final gd in kGenres)
+              if (g.catalog.poolFor(gd.id).isNotEmpty)
+                SimpleDialogOption(onPressed: () => Navigator.pop(ctx, gd.id), child: Text('${gd.name}  (${g.catalog.poolFor(gd.id).length} songs)')),
+          ],
+        ),
+      );
+      if (genre == null) return;
+    }
+    try {
+      final cards = g.openPack(p, genreId: genre);
+      if (!context.mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PackOpeningScreen(pack: p, cards: cards)));
+    } catch (e) {
+      g.toast('$e');
+    }
+  }
+
+  void _showOdds(BuildContext context, PackDef p) {
+    final weights = [for (final r in Rarity.values) r.index >= p.allMin.index ? (r.spawnWeight * (r.index >= 2 ? p.luck : 1.0)) : 0.0];
+    final total = weights.fold<double>(0, (a, b) => a + b);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${p.name} drop rates'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (final r in Rarity.values)
+            if (weights[r.index] > 0)
+              Row(children: [
+                RarityDot(r),
+                const SizedBox(width: 8),
+                Expanded(child: Text(r.label)),
+                Text('${(weights[r.index] / total * 100).toStringAsFixed(1)}%'),
+              ]),
+          const SizedBox(height: 8),
+          Text('Shiny chance per card: ${p.guaranteedShiny ? 'one guaranteed, others ' : ''}1 in ${p.shinyOdds}'),
+          if (p.guaranteedMin != null) Text('Guaranteed: at least one ${p.guaranteedMin!.label} or better'),
+          const SizedBox(height: 8),
+          const Text('Rates are per card before guarantees are applied.', style: TextStyle(fontSize: 12, color: Colors.white54)),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+      ),
+    );
+  }
+}
+
+class _PackArt extends StatelessWidget {
+  const _PackArt({required this.color, required this.cards});
+  final Color color;
+  final int cards;
+  @override
+  Widget build(BuildContext context) => Glint(
+        strength: 0.45,
+        child: Container(
+          width: 84,
+          height: 116,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color, Color.lerp(color, Colors.black, 0.6)!]),
+            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 14)],
+          ),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(Icons.graphic_eq, size: 38, color: Colors.white),
+            Text('×$cards', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          ]),
+        ),
+      );
+}
+
+// ----------------------------------------------------------------- bits
+class _Bits extends StatelessWidget {
+  const _Bits();
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    return ListView(padding: const EdgeInsets.all(12), children: [
+      const Text('Bits are used to buy song packs.', style: TextStyle(color: Colors.white60)),
+      const SizedBox(height: 8),
+      for (final p in kBitsBundles)
+        Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: ListTile(
+            leading: const Icon(kBitsIcon, color: kBitsColor, size: 36),
+            title: Text('${formatNumber(p.bits)} bits', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+            subtitle: Text(p.description.isEmpty ? p.name : '${p.name} • ${p.description}'),
+            trailing: FilledButton(onPressed: () => buyProduct(context, p), child: Text(g.purchases.priceFor(p))),
+          ),
+        ),
+      if (g.purchases.storeAvailable)
+        TextButton(onPressed: g.purchases.restore, child: const Text('Restore purchases')),
+    ]);
+  }
+}
+
+// --------------------------------------------------------------- themes
+class _Themes extends StatelessWidget {
+  const _Themes();
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 220, childAspectRatio: 0.78, crossAxisSpacing: 10, mainAxisSpacing: 10),
+      itemCount: kThemeProducts.length,
+      itemBuilder: (context, i) {
+        final p = kThemeProducts[i];
+        final owned = g.profile.owned.contains(p.id);
+        final active = g.profile.activeTheme == p.id;
+        final t = themeById(p.id);
+        return Card(
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: active ? p.color : Colors.transparent, width: 2)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: _ThemePreview(theme: t)),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(p.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(p.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: active
+                      ? const OutlinedButton(onPressed: null, child: Text('Equipped'))
+                      : owned
+                          ? FilledButton.tonal(onPressed: () => g.equip(ProductKind.theme, p.id), child: const Text('Equip'))
+                          : FilledButton(onPressed: () => buyProduct(context, p), child: Text(g.purchases.priceFor(p))),
+                ),
+              ]),
+            ),
+          ]),
+        );
+      },
+    );
+  }
+}
+
+class _ThemePreview extends StatefulWidget {
+  const _ThemePreview({required this.theme});
+  final MapThemeDef theme;
+  @override
+  State<_ThemePreview> createState() => _ThemePreviewState();
+}
+
+class _ThemePreviewState extends State<_ThemePreview> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 60))..repeat();
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.theme;
+    // A stylised street grid run through the theme's colour grading.
+    Widget streets = CustomPaint(painter: _StreetsPainter(), child: const SizedBox.expand());
+    if (t.matrix != null) streets = ColorFiltered(colorFilter: ColorFilter.matrix(t.matrix!), child: streets);
+    return Stack(fit: StackFit.expand, children: [
+      streets,
+      AnimatedBuilder(animation: _c, builder: (_, _) => CustomPaint(painter: MapEffectPainter(t, _c.value * 60))),
+      Center(child: Icon(Icons.location_on, color: t.accent, size: 30, shadows: [Shadow(color: t.accent, blurRadius: 12)])),
+    ]);
+  }
+}
+
+class _StreetsPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFEDEBE6));
+    final park = Paint()..color = const Color(0xFFC8E6C9);
+    canvas.drawRect(Rect.fromLTWH(size.width * 0.6, size.height * 0.1, size.width * 0.3, size.height * 0.3), park);
+    canvas.drawRect(Rect.fromLTWH(0, size.height * 0.7, size.width * 0.3, size.height * 0.3), Paint()..color = const Color(0xFFB3E5FC));
+    final road = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 6;
+    final minor = Paint()
+      ..color = const Color(0xFFD6D3CC)
+      ..strokeWidth = 2;
+    for (var x = 0.0; x < size.width; x += 26) {
+      canvas.drawLine(Offset(x, 0), Offset(x + 8, size.height), minor);
+    }
+    for (var y = 0.0; y < size.height; y += 30) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y - 6), minor);
+    }
+    canvas.drawLine(Offset(0, size.height * 0.5), Offset(size.width, size.height * 0.42), road);
+    canvas.drawLine(Offset(size.width * 0.4, 0), Offset(size.width * 0.48, size.height), road..color = const Color(0xFFFFE0B2));
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ---------------------------------------------------------------- style
+class _Style extends StatelessWidget {
+  const _Style();
+
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    final p = g.profile;
+    Widget section(String title, ProductKind kind, List<Product> items, String? equipped) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
+            child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          ),
+          SizedBox(
+            height: 210,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              itemCount: items.length,
+              itemBuilder: (context, i) {
+                final it = items[i];
+                final owned = p.owned.contains(it.id);
+                final on = equipped == it.id;
+                final look = FigureLook(
+                  color: Color(p.figureColor),
+                  hat: kind == ProductKind.hat ? it.id : p.hat,
+                  shirt: kind == ProductKind.shirt ? it.id : p.shirt,
+                  pet: kind == ProductKind.pet ? it.id : null,
+                  backpack: kind == ProductKind.backpack ? it.id : p.backpack,
+                );
+                return Container(
+                  width: 140,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF171A28),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: on ? it.color : Colors.white12, width: on ? 2 : 1),
+                  ),
+                  child: Column(children: [
+                    Expanded(child: Center(child: StickFigure(look: look, size: 80, glow: false))),
+                    Text(it.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                    Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: owned
+                            ? FilledButton.tonal(onPressed: () => g.equip(kind, on ? null : it.id), child: Text(on ? 'Unequip' : 'Equip'))
+                            : FilledButton(onPressed: () => buyProduct(context, it), child: Text(g.purchases.priceFor(it))),
+                      ),
+                    ),
+                  ]),
+                );
+              },
+            ),
+          ),
+        ]);
+    return ListView(children: [
+      section('Hats', ProductKind.hat, kHatProducts, p.hat),
+      section('Shirts', ProductKind.shirt, kShirtProducts, p.shirt),
+      section('Backpacks', ProductKind.backpack, kBackpackProducts, p.backpack),
+      section('Pets', ProductKind.pet, kPetProducts, p.pet),
+      const SizedBox(height: 20),
+    ]);
+  }
+}
