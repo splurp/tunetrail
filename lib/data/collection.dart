@@ -273,6 +273,14 @@ class CollectionStore extends ChangeNotifier {
     _saveTimer = Timer(const Duration(seconds: 2), save);
   }
 
+  /// Cancels any pending debounced save (call [save] first to keep changes).
+  @override
+  void dispose() {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    super.dispose();
+  }
+
   // ------------------------------------------------------------ mutation
   int newUid() {
     _uidCounter = (_uidCounter + 1) & 0xFFFF;

@@ -41,6 +41,7 @@ void main() {
   test('100k-card collection: query, sort, persist', () async {
     final cat = await _catalog(dir, 20000);
     final col = CollectionStore(cat, dir);
+    addTearDown(col.dispose);
     final rng = Rng(1);
     final now = DateTime.now();
     col.addMany([
@@ -85,6 +86,7 @@ void main() {
 
     await col.save();
     final col2 = CollectionStore(cat, dir);
+    addTearDown(col2.dispose);
     await col2.load();
     expect(col2.length, 100000);
     expect(col2.rarityCounts, col.rarityCounts);
@@ -233,6 +235,7 @@ void main() {
   test('one copy per variant; editions are separate variants', () async {
     final cat = await _catalog(dir, 50);
     final col = CollectionStore(cat, dir);
+    addTearDown(col.dispose);
     col.add(1, Rarity.rare, false, CardSource.wild);
     col.add(1, Rarity.rare, true, CardSource.wild);
     col.add(1, Rarity.rare, false, CardSource.wild, edition: Edition.movie);
@@ -253,6 +256,7 @@ void main() {
     // Persisted with the edition bits.
     await col.save();
     final again = CollectionStore(cat, dir);
+    addTearDown(again.dispose);
     await again.load();
     expect(again.editionCounts, [2, 1, 1]);
     expect(again.ownsVariant(1, Rarity.rare, false, Edition.sample), isTrue);
