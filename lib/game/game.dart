@@ -724,6 +724,15 @@ class Game extends ChangeNotifier {
     unawaited(catalog.backfillPlays());
   }
 
+  // ------------------------------------------------------------- minigames
+  void awardMinigameBits(int bits) {
+    if (bits <= 0) return;
+    profile.bits += bits;
+    profile.minigameBits += bits;
+    profile.changed();
+    notifyListeners();
+  }
+
   // ----------------------------------------------------------------- debug
   void debugSetBalances({int? coins, int? bits}) {
     if (coins != null) profile.coins = coins;

@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../game/game.dart';
 import 'map/map_screen.dart';
+import 'screens/minigames_screen.dart';
 import 'screens/collection_screen.dart';
 import 'screens/market_screen.dart';
 import 'screens/profile_screen.dart';
@@ -246,7 +247,7 @@ class _HomeShellState extends State<HomeShell> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    const pages = [MapScreen(), CollectionScreen(), MarketScreen(), ShopScreen(), ProfileScreen()];
+    const pages = [MapScreen(), CollectionScreen(), MarketScreen(), ShopScreen(), MinigamesScreen(), ProfileScreen()];
     return Scaffold(
       body: IndexedStack(
         index: _tab,
@@ -265,6 +266,7 @@ class _HomeShellState extends State<HomeShell> with SingleTickerProviderStateMix
             NavigationDestination(icon: Icon(Icons.grid_view_outlined), selectedIcon: Icon(Icons.grid_view_rounded), label: 'Collection'),
             NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: 'Market'),
             NavigationDestination(icon: Icon(Icons.local_mall_outlined), selectedIcon: Icon(Icons.local_mall), label: 'Shop'),
+            NavigationDestination(icon: Icon(Icons.sports_esports_outlined), selectedIcon: Icon(Icons.sports_esports), label: 'Games'),
             NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),
           ],
         ),

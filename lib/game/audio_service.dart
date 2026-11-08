@@ -288,6 +288,36 @@ class AudioService extends ChangeNotifier {
 
   SoLoud get engine => _sl;
 
+  /// Plays [seconds] of a song's preview starting at [from] (Song Guesser
+  /// snippets). Stops any other playback.
+  Future<bool> playClip(int songId, {double from = 0, required double seconds}) async {
+    await stop();
+    final req = _request;
+    try {
+      await _ensureInit();
+      final bytes = await previewBytes(songId);
+      if (bytes == null || req != _request) return false;
+      final src = await _sl.loadMem('clip-$songId-${DateTime.now().microsecondsSinceEpoch}.mp3', bytes);
+      if (req != _request) {
+        await _sl.disposeSource(src);
+        return false;
+      }
+      _source = src;
+      final h = _handle = _sl.play(src, volume: _volume, paused: true);
+      _sl.seek(h, Duration(microseconds: (from * 1e6).round()));
+      _sl.setPause(h, false);
+      // Short fade at the end so the cut isn't a click.
+      Future<void>.delayed(Duration(microseconds: (math.max(0.0, seconds - 0.06) * 1e6).round()), () {
+        if (_handle == h && _sl.getIsValidVoiceHandle(h)) _sl.fadeVolume(h, 0, const Duration(milliseconds: 60));
+      });
+      _sl.schedulePause(h, Duration(microseconds: (seconds * 1e6).round()));
+      return true;
+    } catch (e) {
+      debugPrint('clip: $e');
+      return false;
+    }
+  }
+
   // ------------------------------------------------------------- effects
   final Map<Sfx, AudioSource> _sfx = {};
   bool sfxEnabled = true;

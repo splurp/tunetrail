@@ -113,6 +113,10 @@ class PlayerProfile extends ChangeNotifier {
   /// UI sound effects (catches, sales, trades…).
   bool soundEffects = true;
 
+  /// Minigame filter (languages + genres) and stats.
+  Map<String, dynamic>? minigameFilter;
+  int minigameBits = 0;
+
   /// Keep the preview playing after a song is caught (off by default).
   bool keepPlayingAfterCatch = false;
 
@@ -166,6 +170,8 @@ class PlayerProfile extends ChangeNotifier {
         'xp': xp,
         'beatOffset': beatOffsetMs,
         'sfx': soundEffects,
+        'mgFilter': minigameFilter,
+        'mgBits': minigameBits,
         'sampleOv2': {for (final e in sampleOverrides.entries) '${e.key}': [e.value.$1, e.value.$2]},
         'color': figureColor,
         'owned': owned.toList(),
@@ -216,6 +222,8 @@ class PlayerProfile extends ChangeNotifier {
     xp = (j['xp'] as num?)?.toInt() ?? 0;
     beatOffsetMs = (j['beatOffset'] as num?)?.toInt() ?? 0;
     soundEffects = j['sfx'] as bool? ?? true;
+    minigameFilter = j['mgFilter'] as Map<String, dynamic>?;
+    minigameBits = (j['mgBits'] as num?)?.toInt() ?? 0;
     sampleOverrides = {
       for (final e in (j['sampleOv2'] as Map<String, dynamic>? ?? const {}).entries)
         int.parse(e.key): (
