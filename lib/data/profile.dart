@@ -110,6 +110,9 @@ class PlayerProfile extends ChangeNotifier {
   /// to match this device's audio latency.
   int beatOffsetMs = 0;
 
+  /// UI sound effects (catches, sales, trades…).
+  bool soundEffects = true;
+
   /// Keep the preview playing after a song is caught (off by default).
   bool keepPlayingAfterCatch = false;
 
@@ -162,6 +165,7 @@ class PlayerProfile extends ChangeNotifier {
         'bits': bits,
         'xp': xp,
         'beatOffset': beatOffsetMs,
+        'sfx': soundEffects,
         'sampleOv2': {for (final e in sampleOverrides.entries) '${e.key}': [e.value.$1, e.value.$2]},
         'color': figureColor,
         'owned': owned.toList(),
@@ -211,6 +215,7 @@ class PlayerProfile extends ChangeNotifier {
     bits = (j['bits'] as num?)?.toInt() ?? bits;
     xp = (j['xp'] as num?)?.toInt() ?? 0;
     beatOffsetMs = (j['beatOffset'] as num?)?.toInt() ?? 0;
+    soundEffects = j['sfx'] as bool? ?? true;
     sampleOverrides = {
       for (final e in (j['sampleOv2'] as Map<String, dynamic>? ?? const {}).entries)
         int.parse(e.key): (

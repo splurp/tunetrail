@@ -200,25 +200,26 @@ const kMatrix = MapPalette(
 );
 
 const kArctic = MapPalette(
-  // Deep glacial blues so white snowfall stands out clearly.
-  ground: Color(0xFF3E5A6E),
-  field: Color(0xFF46647A),
-  forest: Color(0xFF34505F),
-  park: Color(0xFF3A5A68),
-  sand: Color(0xFF55707F),
-  campus: Color(0xFF425E72),
-  parking: Color(0xFF384F60),
-  plaza: Color(0xFF4A6577),
-  water: Color(0xFF1D3447),
-  roadMinor: Color(0xFF8FB0C4),
-  roadMajor: Color(0xFFA9C8DA),
-  roadHighway: Color(0xFFC9E2EF),
-  buildingWall: Color(0xFF6F8EA3),
-  buildingRoof: Color(0xFFB9D2E0),
+  // Mid glacial blues: bright enough to read as snowy, dark enough that
+  // white snowfall stands out against them.
+  ground: Color(0xFF7E9DB2),
+  field: Color(0xFF88A6BA),
+  forest: Color(0xFF6C8CA2),
+  park: Color(0xFF7496A8),
+  sand: Color(0xFF93ADBE),
+  campus: Color(0xFF819FB4),
+  parking: Color(0xFF7591A6),
+  plaza: Color(0xFF8AA6B9),
+  water: Color(0xFF3F6684),
+  roadMinor: Color(0xFFC2D8E6),
+  roadMajor: Color(0xFFD3E5F0),
+  roadHighway: Color(0xFFE6F2F8),
+  buildingWall: Color(0xFF9DB6C7),
+  buildingRoof: Color(0xFFDCEAF2),
   buildingEdge: Color(0x66FFFFFF),
-  skyTop: Color(0xFF4F7189),
-  skyBottom: Color(0xFF9DB9CA),
-  accent: Color(0xFF7FD3FF),
+  skyTop: Color(0xFF7F9FB6),
+  skyBottom: Color(0xFFBFD3E0),
+  accent: Color(0xFF2F8FD0),
 );
 
 const kMagma = MapPalette(

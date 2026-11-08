@@ -8,6 +8,9 @@ import 'package:http/http.dart' as http;
 import '../data/catalog.dart';
 import '../data/models.dart';
 
+/// Short UI sound effects (bundled original WAVs in assets/sfx).
+enum Sfx { catchSong, list, quicksell, offer, tradeAccepted, sold }
+
 /// Tempo and beat grid of a preview clip.
 class BeatInfo {
   const BeatInfo(this.bpm, this.phase, {this.estimated = false});
@@ -284,6 +287,32 @@ class AudioService extends ChangeNotifier {
   }
 
   SoLoud get engine => _sl;
+
+  // ------------------------------------------------------------- effects
+  final Map<Sfx, AudioSource> _sfx = {};
+  bool sfxEnabled = true;
+  double sfxVolume = 0.7;
+
+  static String _sfxAsset(Sfx s) => switch (s) {
+        Sfx.catchSong => 'assets/sfx/catch.wav',
+        Sfx.list => 'assets/sfx/list.wav',
+        Sfx.quicksell => 'assets/sfx/quicksell.wav',
+        Sfx.offer => 'assets/sfx/offer.wav',
+        Sfx.tradeAccepted => 'assets/sfx/trade_accepted.wav',
+        Sfx.sold => 'assets/sfx/sold.wav',
+      };
+
+  /// Plays a sound effect over whatever music is playing.
+  Future<void> playSfx(Sfx s) async {
+    if (!sfxEnabled) return;
+    try {
+      await _ensureInit();
+      final src = _sfx[s] ??= await _sl.loadAsset(_sfxAsset(s));
+      _sl.play(src, volume: sfxVolume);
+    } catch (e) {
+      debugPrint('sfx: $e');
+    }
+  }
 
   /// Claims playback for an external player (stops normal playback and
   /// returns a request token; check [isCurrentRequest] before acting).

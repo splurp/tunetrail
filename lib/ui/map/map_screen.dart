@@ -14,6 +14,7 @@ import '../../game/genre_zones.dart';
 import '../../game/spawns.dart';
 import '../../map3d/palette.dart';
 import '../../map3d/props3d.dart';
+import '../../map3d/snow3d.dart';
 import '../../map3d/camera.dart';
 import '../../platform/pointer_lock.dart';
 import '../../map3d/figure3d.dart';
@@ -460,7 +461,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 child: RepaintBoundary(
                   child: ValueListenableBuilder<double>(
                     valueListenable: _clock,
-                    builder: (context, t, _) => CustomPaint(painter: MapEffectPainter(theme, t, reduce: p.reduceEffects)),
+                    builder: (context, t, _) => CustomPaint(
+                      // Snow falls in 3D through the camera; other effects are screen overlays.
+                      painter: theme.effect == MapEffect.snow && !p.reduceEffects
+                          ? Snow3DPainter(camera: _cam, time: t)
+                          : MapEffectPainter(theme, t, reduce: p.reduceEffects),
+                    ),
                   ),
                 ),
               ),

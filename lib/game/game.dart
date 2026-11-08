@@ -117,6 +117,7 @@ class Game extends ChangeNotifier {
       Timer(const Duration(seconds: 3), () => toast('${dups.length} duplicate cards were auto-scrapped for $coins coins'));
     }
     unawaited(audio.setVolume(profile.volume));
+    audio.sfxEnabled = profile.soundEffects;
     await _connectMarket();
     _resetDailyIfNeeded();
     unawaited(location.start());
@@ -154,6 +155,9 @@ class Game extends ChangeNotifier {
     notifyListeners();
   }
 
+  final Set<String> _seenOffers = {};
+  bool _offersPrimed = false;
+
   Future<void> syncInbox() async {
     try {
       final items = await market.claimInbox();
@@ -164,14 +168,27 @@ class Game extends ChangeNotifier {
         }
         if (i.message.contains('accepted') || i.message.contains('Trade with')) {
           profile.tradesCompleted++;
+          unawaited(audio.playSfx(Sfx.tradeAccepted));
         }
-        if (i.message.contains('bought your')) profile.cardsSold++;
+        if (i.message.contains('bought your')) {
+          profile.cardsSold++;
+          unawaited(audio.playSfx(Sfx.sold));
+        }
         toast(i.message);
       }
       if (items.isNotEmpty) {
         profile.changed();
         notifyListeners();
       }
+      // New trade offers on my listings.
+      final incoming = [for (final o in await market.offers()) if (o.toId == profile.playerId) o];
+      final fresh = incoming.where((o) => !_seenOffers.contains(o.id)).toList();
+      if (_offersPrimed && fresh.isNotEmpty) {
+        unawaited(audio.playSfx(Sfx.offer));
+        toast(fresh.length == 1 ? 'New trade offer from ${fresh.first.fromName}' : '${fresh.length} new trade offers');
+      }
+      _seenOffers.addAll(incoming.map((o) => o.id));
+      _offersPrimed = true;
     } catch (_) {}
   }
 
@@ -227,6 +244,7 @@ class Game extends ChangeNotifier {
       await market.createListing([for (final c in cards) ListingItem(card: c.toPayload(), price: prices[c.uid]!)],
           folderPrice: folderPrice, note: note, acceptsTrades: trades);
       questEvent(QuestKind.listOnMarket);
+      unawaited(audio.playSfx(Sfx.list));
     } catch (e) {
       for (final c in cards) {
         acquirePayload(c.toPayload(), c.source);
@@ -447,6 +465,7 @@ class Game extends ChangeNotifier {
     // Editions are exclusive: a perfect catch only turns standard cards shiny.
     final shiny = edition == Edition.standard && (s.shiny || perfect);
     final card = acquire(s.song.id, s.rarity, shiny, edition, CardSource.wild, announce: false, serial: serial);
+    unawaited(audio.playSfx(Sfx.catchSong));
     profile.coins += s.rarity.catchCoins * (shiny ? 3 : 1);
     profile.xp += s.rarity.catchXp * (shiny ? 3 : 1);
     profile.totalCaught++;
@@ -569,6 +588,7 @@ class Game extends ChangeNotifier {
     }
     profile.coins += total;
     profile.cardsScrapped += n;
+    if (n > 0) unawaited(audio.playSfx(Sfx.quicksell));
     profile.changed();
     return total;
   }

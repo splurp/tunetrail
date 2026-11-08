@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../game/audio_service.dart';
+
 import '../../data/profile.dart';
 import '../app.dart';
 import 'card_detail_screen.dart';
@@ -35,6 +37,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               p.changed();
             },
           ),
+        ),
+        SwitchListTile(
+          title: const Text('Sound effects'),
+          subtitle: const Text('Catches, listings, quicksells, sales and trades'),
+          value: p.soundEffects,
+          onChanged: (v) {
+            p.soundEffects = v;
+            g.audio.sfxEnabled = v;
+            p.changed();
+            if (v) g.audio.playSfx(Sfx.catchSong);
+          },
         ),
         SwitchListTile(
           title: const Text('Play song preview during encounters'),
