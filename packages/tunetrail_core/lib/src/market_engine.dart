@@ -130,6 +130,8 @@ class MarketEngine {
         return false;
       }
       if (q.shinyOnly && !l.card.shiny) return false;
+      if (q.normalOnly && l.card.shiny) return false;
+      if (q.genres.isNotEmpty && !q.genres.contains(l.card.genreId)) return false;
       if (q.tradesOnly && !l.acceptsTrades) return false;
       if (text.isNotEmpty &&
           !l.card.title.toLowerCase().contains(text) &&

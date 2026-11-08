@@ -154,7 +154,7 @@ packages:
     source: hosted
     version: "1.0.9"
   dart_earcut:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: dart_earcut
       sha256: e485001bfc05dcbc437d7bfb666316182e3522d4c3f9668048e004d0eb2ce43b

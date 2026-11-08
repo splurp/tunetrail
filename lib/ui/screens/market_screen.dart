@@ -33,7 +33,7 @@ class MarketScreen extends StatelessWidget {
         body: Column(children: [
           Container(
             width: double.infinity,
-            color: const Color(0xFF12141F),
+            color: kBg,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             child: Text(g.market.label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
           ),
@@ -87,6 +87,8 @@ class _BrowseState extends State<_Browse> {
         rarities: _q.rarities,
         shinyOnly: _q.shinyOnly,
         tradesOnly: _q.tradesOnly,
+        normalOnly: _q.normalOnly,
+        genres: _q.genres,
         sort: _q.sort,
         offset: _items.length,
         limit: 50,
@@ -111,10 +113,12 @@ class _BrowseState extends State<_Browse> {
     _reload();
   }
 
-  ListingQuery _copy({String? text, Set<int>? rarities, bool? shiny, bool? trades, ListingSort? sort}) => ListingQuery(
+  ListingQuery _copy({String? text, Set<int>? rarities, bool? shiny, bool? normal, Set<int>? genres, bool? trades, ListingSort? sort}) => ListingQuery(
         text: text ?? _q.text,
         rarities: rarities ?? _q.rarities,
         shinyOnly: shiny ?? _q.shinyOnly,
+        normalOnly: normal ?? _q.normalOnly,
+        genres: genres ?? _q.genres,
         tradesOnly: trades ?? _q.tradesOnly,
         sort: sort ?? _q.sort,
       );
@@ -125,11 +129,9 @@ class _BrowseState extends State<_Browse> {
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
         child: TextField(
-          decoration: InputDecoration(
-            isDense: true,
+          decoration: const InputDecoration(
             hintText: 'Search listings',
-            prefixIcon: const Icon(Icons.search),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
+            prefixIcon: Icon(Icons.search, size: 20),
           ),
           onChanged: (v) {
             _debounce?.cancel();
@@ -137,35 +139,75 @@ class _BrowseState extends State<_Browse> {
           },
         ),
       ),
-      SizedBox(
-        height: 40,
-        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10), children: [
-          for (final r in Rarity.values)
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: FilterChip(
-                label: Text(r.label),
-                showCheckmark: false,
-                side: BorderSide(color: rarityColor(r)),
-                selectedColor: rarityColor(r).withValues(alpha: 0.35),
-                selected: _q.rarities.contains(r.index),
-                onSelected: (v) {
-                  final s = {..._q.rarities};
-                  v ? s.add(r.index) : s.remove(r.index);
-                  _set(_copy(rarities: s));
-                },
-              ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+        child: FilterDropdown(
+          activeCount: (_q.rarities.isEmpty ? 0 : 1) + (_q.shinyOnly || _q.normalOnly ? 1 : 0) + (_q.genres.isEmpty ? 0 : 1) + (_q.tradesOnly ? 1 : 0),
+          summary: [
+            if (_q.rarities.isNotEmpty) [for (final r in Rarity.values) if (_q.rarities.contains(r.index)) r.label].join(', '),
+            if (_q.shinyOnly) 'Shiny',
+            if (_q.normalOnly) 'Standard',
+            if (_q.genres.isNotEmpty) _q.genres.length == 1 ? genreName(_q.genres.first) : '${_q.genres.length} genres',
+            if (_q.tradesOnly) 'Trades',
+          ].join(' · '),
+          onReset: () => _set(ListingQuery(sort: _q.sort, text: _q.text)),
+          sections: () => [
+            FilterSection(
+              title: 'Rarity',
+              onClear: () => _set(_copy(rarities: {})),
+              options: [
+                for (final r in Rarity.values)
+                  FilterOption(
+                    label: r.label,
+                    dot: rarityColor(r),
+                    selected: _q.rarities.contains(r.index),
+                    onTap: () {
+                      final set = {..._q.rarities};
+                      set.contains(r.index) ? set.remove(r.index) : set.add(r.index);
+                      _set(_copy(rarities: set));
+                    },
+                  ),
+              ],
             ),
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: FilterChip(label: const Text('✦ Shiny'), selected: _q.shinyOnly, onSelected: (v) => _set(_copy(shiny: v))),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: FilterChip(label: const Text('Open to trades'), selected: _q.tradesOnly, onSelected: (v) => _set(_copy(trades: v))),
-          ),
+            FilterSection(
+              title: 'Variant',
+              onClear: () => _set(_copy(shiny: false, normal: false)),
+              options: [
+                FilterOption(label: '✦ Shiny', selected: _q.shinyOnly, onTap: () => _set(_copy(shiny: !_q.shinyOnly, normal: false))),
+                FilterOption(label: 'Standard', selected: _q.normalOnly, onTap: () => _set(_copy(normal: !_q.normalOnly, shiny: false))),
+              ],
+            ),
+            FilterSection(
+              title: 'Genre',
+              onClear: () => _set(_copy(genres: {})),
+              options: [
+                for (final gd in kGenres)
+                  FilterOption(
+                    label: gd.name,
+                    selected: _q.genres.contains(gd.id),
+                    onTap: () {
+                      final set = {..._q.genres};
+                      set.contains(gd.id) ? set.remove(gd.id) : set.add(gd.id);
+                      _set(_copy(genres: set));
+                    },
+                  ),
+              ],
+            ),
+            FilterSection(
+              title: 'Other',
+              options: [FilterOption(label: 'Open to trades', selected: _q.tradesOnly, onTap: () => _set(_copy(trades: !_q.tradesOnly)))],
+            ),
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+        child: Row(children: [
+          Text('${_items.length}${_more ? '+' : ''} listings', style: const TextStyle(fontSize: 12, color: kTextTertiary)),
+          const Spacer(),
           DropdownButton<ListingSort>(
             value: _q.sort,
+            isDense: true,
             underline: const SizedBox(),
             items: const [
               DropdownMenuItem(value: ListingSort.newest, child: Text('Newest')),
@@ -222,8 +264,7 @@ Future<bool?> showListingSheet(BuildContext context, Listing l) {
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: const Color(0xFF12141F),
-    builder: (ctx) => SafeArea(
+        builder: (ctx) => SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -513,7 +554,7 @@ class _ShowcasesState extends State<_Showcases> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
                         Expanded(child: Text(s.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-                        const Icon(Icons.favorite, size: 16, color: Colors.pinkAccent),
+                        const Icon(Icons.favorite, size: 16, color: kAccent),
                         const SizedBox(width: 4),
                         Text('${s.likes}'),
                       ]),

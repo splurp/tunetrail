@@ -31,8 +31,12 @@ class Spawn {
 /// the same place at the same time sees the same songs (given the same song
 /// catalog) — no server round-trip required.
 class SpawnEngine {
-  SpawnEngine(this.catalog);
+  SpawnEngine(this.catalog, {this.zoneBias});
   final Catalog catalog;
+
+  /// Genre multipliers for a location (genre "strength areas"), from the
+  /// map data around the spawn point.
+  final Map<int, double> Function(double lat, double lng)? zoneBias;
 
   static const cellDeg = 0.0018; // ≈200 m of latitude
   static const window = Duration(minutes: 15);
@@ -73,7 +77,8 @@ class SpawnEngine {
       final lng = (cx + rng.nextDouble()) * lngDeg;
       final rarity = rng.rollRarity();
       final shiny = rng.chance(kShinyOdds);
-      final genre = catalog.pickGenre(rng, bias: bias);
+      final zb = zoneBias?.call(lat, lng);
+      final genre = catalog.pickGenre(rng, bias: zb == null || zb.isEmpty ? bias : _combine(bias, zb));
       final song = catalog.pickSong(rng, genreId: genre);
       if (song == null || exclude.contains(id)) continue;
       out.add(Spawn(
@@ -85,6 +90,12 @@ class SpawnEngine {
         expiresAt: expires,
       ));
     }
+    return out;
+  }
+
+  Map<int, double> _combine(Map<int, double> a, Map<int, double> b) {
+    final out = Map<int, double>.of(a);
+    b.forEach((k, v) => out[k] = (out[k] ?? 1) * v);
     return out;
   }
 

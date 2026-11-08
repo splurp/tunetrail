@@ -11,7 +11,7 @@ import 'quests_screen.dart';
 import 'settings_screen.dart';
 
 const _palette = [
-  0xFF00E5FF, 0xFF18FFFF, 0xFF64FFDA, 0xFF69F0AE, 0xFFB2FF59, 0xFFEEFF41,
+  0xFFE9E6FF, 0xFF9A8CF0, 0xFF00E5FF, 0xFF18FFFF, 0xFF64FFDA, 0xFF69F0AE, 0xFFB2FF59, 0xFFEEFF41,
   0xFFFFFF00, 0xFFFFD740, 0xFFFFAB40, 0xFFFF6E40, 0xFFFF5252, 0xFFFF4081,
   0xFFE040FB, 0xFF7C4DFF, 0xFF536DFE, 0xFF448AFF, 0xFFFFFFFF, 0xFFBDBDBD,
 ];
@@ -141,7 +141,7 @@ class _Stats extends StatelessWidget {
       children: [
         for (final (k, v) in items)
           Container(
-            decoration: BoxDecoration(color: const Color(0xFF171A28), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(12), border: Border.all(color: kOutline)),
             padding: const EdgeInsets.all(6),
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               FittedBox(child: Text(v, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),

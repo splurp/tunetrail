@@ -22,22 +22,115 @@ class GameScope extends InheritedNotifier<Game> {
 }
 
 ThemeData buildTheme() {
-  const accent = Color(0xFF00E5FF);
-  final base = ThemeData(
+  const scheme = ColorScheme(
     brightness: Brightness.dark,
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(seedColor: accent, brightness: Brightness.dark, surface: const Color(0xFF12141F)),
-    scaffoldBackgroundColor: const Color(0xFF0B0D16),
+    primary: kAccent,
+    onPrimary: Colors.black,
+    primaryContainer: kAccentDim,
+    onPrimaryContainer: kTextPrimary,
+    secondary: Color(0xFFE6E6EB),
+    onSecondary: Colors.black,
+    secondaryContainer: kSurface2,
+    onSecondaryContainer: kTextPrimary,
+    tertiary: kAccent,
+    onTertiary: Colors.black,
+    error: Color(0xFFE5737A),
+    onError: Colors.black,
+    surface: kSurface,
+    onSurface: kTextPrimary,
+    onSurfaceVariant: kTextSecondary,
+    surfaceContainerLowest: kBg,
+    surfaceContainerLow: kSurface,
+    surfaceContainer: kSurface,
+    surfaceContainerHigh: kSurface2,
+    surfaceContainerHighest: Color(0xFF222227),
+    outline: kOutline,
+    outlineVariant: kOutline,
   );
+  final base = ThemeData(brightness: Brightness.dark, useMaterial3: true, colorScheme: scheme, scaffoldBackgroundColor: kBg);
+  final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
   return base.copyWith(
-    appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF0B0D16), elevation: 0, centerTitle: false),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: const Color(0xFF12141F),
-      indicatorColor: accent.withValues(alpha: 0.2),
-      labelTextStyle: WidgetStateProperty.all(const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+    textTheme: base.textTheme.apply(bodyColor: kTextPrimary, displayColor: kTextPrimary),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: kBg,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      centerTitle: false,
+      titleTextStyle: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: kTextPrimary, letterSpacing: -0.3),
     ),
-    cardTheme: const CardThemeData(color: Color(0xFF171A28), margin: EdgeInsets.zero),
-    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating, backgroundColor: Color(0xFF263238), contentTextStyle: TextStyle(color: Colors.white)),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: kBg,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: Colors.transparent,
+      height: 62,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(size: 22, color: s.contains(WidgetState.selected) ? kAccent : kTextTertiary)),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+          (s) => TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: s.contains(WidgetState.selected) ? kTextPrimary : kTextTertiary)),
+    ),
+    cardTheme: CardThemeData(
+      color: kSurface,
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: kOutline)),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: const Color(0xFFECECF1),
+        foregroundColor: Colors.black,
+        disabledBackgroundColor: kSurface2,
+        disabledForegroundColor: kTextTertiary,
+        shape: shape,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(foregroundColor: kTextPrimary, side: const BorderSide(color: kOutline), shape: shape, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
+    ),
+    textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: kAccent)),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: kSurface2,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      hintStyle: const TextStyle(color: kTextTertiary),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: kOutline)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: kOutline)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: kAccent.withValues(alpha: 0.7))),
+    ),
+    tabBarTheme: TabBarThemeData(
+      indicatorColor: kAccent,
+      indicatorSize: TabBarIndicatorSize.label,
+      dividerColor: kOutline,
+      labelColor: kTextPrimary,
+      unselectedLabelColor: kTextTertiary,
+      labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+    ),
+    chipTheme: base.chipTheme.copyWith(backgroundColor: kSurface2, side: const BorderSide(color: kOutline), shape: StadiumBorder(side: const BorderSide(color: kOutline))),
+    dividerTheme: const DividerThemeData(color: kOutline, thickness: 1, space: 1),
+    listTileTheme: const ListTileThemeData(iconColor: kTextSecondary),
+    bottomSheetTheme: const BottomSheetThemeData(backgroundColor: kSurface, surfaceTintColor: Colors.transparent, showDragHandle: false,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22)))),
+    dialogTheme: DialogThemeData(backgroundColor: kSurface, surfaceTintColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+    popupMenuTheme: PopupMenuThemeData(color: kSurface2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+    dropdownMenuTheme: const DropdownMenuThemeData(textStyle: TextStyle(fontSize: 13)),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Colors.white : kTextTertiary),
+      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? kAccent : kSurface2),
+      trackOutlineColor: WidgetStateProperty.all(kOutline),
+    ),
+    sliderTheme: base.sliderTheme.copyWith(activeTrackColor: kAccent, inactiveTrackColor: kSurface2, thumbColor: Colors.white),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(color: kAccent, linearTrackColor: kSurface2),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: const Color(0xFF1E1E23),
+      contentTextStyle: const TextStyle(color: kTextPrimary),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(backgroundColor: Color(0xFFECECF1), foregroundColor: Colors.black),
   );
 }
 
@@ -93,11 +186,11 @@ class _Splash extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
         body: Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.graphic_eq, size: 72, color: Color(0xFF00E5FF)),
-            const SizedBox(height: 12),
-            const Text('TUNETRAIL', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: 6)),
-            const SizedBox(height: 24),
-            if (error == null) const CircularProgressIndicator() else Text('Failed to start: $error'),
+            const Icon(Icons.graphic_eq_rounded, size: 44, color: kAccent),
+            const SizedBox(height: 14),
+            const Text('tunetrail', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w300, letterSpacing: 4)),
+            const SizedBox(height: 28),
+            if (error == null) const SizedBox(width: 120, child: LinearProgressIndicator(minHeight: 2)) else Text('Failed to start: $error'),
           ]),
         ),
       );
@@ -159,15 +252,15 @@ class _HomeShellState extends State<HomeShell> with SingleTickerProviderStateMix
       ),
       bottomNavigationBar: Column(mainAxisSize: MainAxisSize.min, children: [
         const MiniPlayer(),
+        const Divider(height: 1),
         NavigationBar(
           selectedIndex: _tab,
-          height: 64,
           onDestinationSelected: setTab,
           destinations: const [
-            NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Map'),
-            NavigationDestination(icon: Icon(Icons.library_music_outlined), selectedIcon: Icon(Icons.library_music), label: 'Collection'),
+            NavigationDestination(icon: Icon(Icons.explore_outlined), selectedIcon: Icon(Icons.explore), label: 'Explore'),
+            NavigationDestination(icon: Icon(Icons.grid_view_outlined), selectedIcon: Icon(Icons.grid_view_rounded), label: 'Collection'),
             NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: 'Market'),
-            NavigationDestination(icon: Icon(Icons.shopping_bag_outlined), selectedIcon: Icon(Icons.shopping_bag), label: 'Shop'),
+            NavigationDestination(icon: Icon(Icons.local_mall_outlined), selectedIcon: Icon(Icons.local_mall), label: 'Shop'),
             NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),
           ],
         ),

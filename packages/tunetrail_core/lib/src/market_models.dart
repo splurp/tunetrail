@@ -221,6 +221,8 @@ class ListingQuery {
     this.text = '',
     this.rarities = const {},
     this.shinyOnly = false,
+    this.normalOnly = false,
+    this.genres = const {},
     this.tradesOnly = false,
     this.sort = ListingSort.newest,
     this.offset = 0,
@@ -230,6 +232,8 @@ class ListingQuery {
   final String text;
   final Set<int> rarities;
   final bool shinyOnly;
+  final bool normalOnly;
+  final Set<int> genres;
   final bool tradesOnly;
   final ListingSort sort;
   final int offset;
@@ -240,6 +244,8 @@ class ListingQuery {
         if (text.isNotEmpty) 'q': text,
         if (rarities.isNotEmpty) 'rarities': rarities.join(','),
         if (shinyOnly) 'shiny': '1',
+        if (normalOnly) 'normal': '1',
+        if (genres.isNotEmpty) 'genres': genres.join(','),
         if (tradesOnly) 'trades': '1',
         'sort': sort.name,
         'offset': '$offset',
@@ -255,6 +261,8 @@ class ListingQuery {
             .map(int.parse)
             .toSet(),
         shinyOnly: p['shiny'] == '1',
+        normalOnly: p['normal'] == '1',
+        genres: (p['genres'] ?? '').split(',').where((s) => s.isNotEmpty).map(int.parse).toSet(),
         tradesOnly: p['trades'] == '1',
         sort: ListingSort.values.firstWhere((s) => s.name == p['sort'],
             orElse: () => ListingSort.newest),

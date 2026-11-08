@@ -76,7 +76,8 @@ class CollectionQuery {
     this.rarityMask = 0x1F,
     this.shinyOnly = false,
     this.favoritesOnly = false,
-    this.genreId,
+    this.normalOnly = false,
+    this.genres = const {},
     this.artistId,
     this.albumId,
     this.sort = CollectionSort.dateAcquired,
@@ -90,7 +91,12 @@ class CollectionQuery {
   final int rarityMask;
   final bool shinyOnly;
   final bool favoritesOnly;
-  final int? genreId;
+
+  /// Only non-shiny cards.
+  final bool normalOnly;
+
+  /// Genre ids to include (empty = all).
+  final Set<int> genres;
   final int? artistId;
   final int? albumId;
   final CollectionSort sort;
@@ -104,7 +110,8 @@ class CollectionQuery {
     int? rarityMask,
     bool? shinyOnly,
     bool? favoritesOnly,
-    int? Function()? genreId,
+    bool? normalOnly,
+    Set<int>? genres,
     int? Function()? artistId,
     int? Function()? albumId,
     CollectionSort? sort,
@@ -116,7 +123,8 @@ class CollectionQuery {
         rarityMask: rarityMask ?? this.rarityMask,
         shinyOnly: shinyOnly ?? this.shinyOnly,
         favoritesOnly: favoritesOnly ?? this.favoritesOnly,
-        genreId: genreId != null ? genreId() : this.genreId,
+        normalOnly: normalOnly ?? this.normalOnly,
+        genres: genres ?? this.genres,
         artistId: artistId != null ? artistId() : this.artistId,
         albumId: albumId != null ? albumId() : this.albumId,
         sort: sort ?? this.sort,
@@ -388,18 +396,19 @@ class CollectionStore extends ChangeNotifier {
     final songs = catalog.songs;
     final hits = Int32List(n);
     var count = 0;
-    final needSong = text.isNotEmpty || q.genreId != null || q.artistId != null || q.albumId != null;
+    final needSong = text.isNotEmpty || q.genres.isNotEmpty || q.artistId != null || q.albumId != null;
     if (text.isNotEmpty) _ensureSearchCache();
     for (var i = 0; i < n; i++) {
       final f = _flags[i];
       if ((q.rarityMask >> (f & kRarityMask)) & 1 == 0) continue;
       if (q.shinyOnly && f & kFlagShiny == 0) continue;
       if (q.favoritesOnly && f & kFlagFavorite == 0) continue;
+      if (q.normalOnly && f & kFlagShiny != 0) continue;
       if (needSong) {
         final sid = _songIds[i];
         final s = songs[sid];
         if (s == null) continue;
-        if (q.genreId != null && s.genreId != q.genreId) continue;
+        if (q.genres.isNotEmpty && !q.genres.contains(s.genreId)) continue;
         if (q.artistId != null && s.artistId != q.artistId) continue;
         if (q.albumId != null && s.albumId != q.albumId) continue;
         if (text.isNotEmpty && !(_searchCache[sid]?.contains(text) ?? false)) continue;

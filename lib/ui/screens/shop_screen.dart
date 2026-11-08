@@ -34,7 +34,7 @@ class ShopScreen extends StatelessWidget {
           if (free)
             Container(
               width: double.infinity,
-              color: Colors.orange.withValues(alpha: 0.25),
+              color: kAccentDim,
               padding: const EdgeInsets.all(6),
               child: const Text('DEBUG: real-money purchases are free (no charge)', textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
             ),
@@ -266,42 +266,65 @@ class _ThemePreviewState extends State<_ThemePreview> with SingleTickerProviderS
   @override
   Widget build(BuildContext context) {
     final t = widget.theme;
-    // A stylised street grid run through the theme's colour grading.
-    Widget streets = CustomPaint(painter: _StreetsPainter(), child: const SizedBox.expand());
-    if (t.matrix != null) streets = ColorFiltered(colorFilter: ColorFilter.matrix(t.matrix!), child: streets);
     return Stack(fit: StackFit.expand, children: [
-      streets,
+      CustomPaint(painter: _MiniWorldPainter(t)),
       AnimatedBuilder(animation: _c, builder: (_, _) => CustomPaint(painter: MapEffectPainter(t, _c.value * 60))),
-      Center(child: Icon(Icons.location_on, color: t.accent, size: 30, shadows: [Shadow(color: t.accent, blurRadius: 12)])),
     ]);
   }
 }
 
-class _StreetsPainter extends CustomPainter {
+/// A tiny 3D-ish scene rendered with a theme's palette.
+class _MiniWorldPainter extends CustomPainter {
+  _MiniWorldPainter(this.theme);
+  final MapThemeDef theme;
+
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFEDEBE6));
-    final park = Paint()..color = const Color(0xFFC8E6C9);
-    canvas.drawRect(Rect.fromLTWH(size.width * 0.6, size.height * 0.1, size.width * 0.3, size.height * 0.3), park);
-    canvas.drawRect(Rect.fromLTWH(0, size.height * 0.7, size.width * 0.3, size.height * 0.3), Paint()..color = const Color(0xFFB3E5FC));
-    final road = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 6;
-    final minor = Paint()
-      ..color = const Color(0xFFD6D3CC)
-      ..strokeWidth = 2;
-    for (var x = 0.0; x < size.width; x += 26) {
-      canvas.drawLine(Offset(x, 0), Offset(x + 8, size.height), minor);
+    final p = theme.palette;
+    final w = size.width, h = size.height;
+    final horizon = h * 0.22;
+    canvas.drawRect(Rect.fromLTWH(0, 0, w, horizon),
+        Paint()..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [p.skyTop, p.skyBottom]).createShader(Rect.fromLTWH(0, 0, w, horizon)));
+    canvas.drawRect(Rect.fromLTWH(0, horizon, w, h - horizon), Paint()..color = p.ground);
+    final vp = Offset(w * 0.5, horizon);
+    Path quad(double x0, double x1, double y0, double y1) {
+      // Ground quad in "perspective": x converges towards the vanishing point.
+      Offset g(double x, double y) => Offset(vp.dx + (x - vp.dx) * (y - horizon) / (h - horizon), y);
+      return Path()
+        ..moveTo(g(x0, y0).dx, y0)
+        ..lineTo(g(x1, y0).dx, y0)
+        ..lineTo(g(x1 * 1.0, y1).dx, y1)
+        ..lineTo(g(x0, y1).dx, y1)
+        ..close();
     }
-    for (var y = 0.0; y < size.height; y += 30) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y - 6), minor);
+
+    canvas.drawPath(quad(-w * 0.6, w * 0.25, horizon + 4, h * 0.55), Paint()..color = p.park);
+    canvas.drawPath(quad(w * 0.7, w * 1.6, horizon + 2, h * 0.7), Paint()..color = p.water);
+    canvas.drawPath(quad(w * 0.2, w * 0.62, h * 0.72, h), Paint()..color = p.parking);
+    // Roads converging to the horizon + one crossing road.
+    for (final (x, width, color) in [(w * 0.5, w * 0.14, p.roadMajor), (-w * 0.4, w * 0.08, p.roadMinor), (w * 1.5, w * 0.1, p.roadHighway)]) {
+      canvas.drawPath(
+          Path()
+            ..moveTo(vp.dx - 1, horizon)
+            ..lineTo(vp.dx + 1, horizon)
+            ..lineTo(x + width, h)
+            ..lineTo(x - width, h)
+            ..close(),
+          Paint()..color = color);
     }
-    canvas.drawLine(Offset(0, size.height * 0.5), Offset(size.width, size.height * 0.42), road);
-    canvas.drawLine(Offset(size.width * 0.4, 0), Offset(size.width * 0.48, size.height), road..color = const Color(0xFFFFE0B2));
+    final cy = h * 0.62;
+    canvas.drawRect(Rect.fromLTRB(0, cy, w, cy + h * 0.06), Paint()..color = p.roadMinor);
+    // A mega-building block.
+    final b = Rect.fromLTWH(w * 0.08, h * 0.3, w * 0.22, h * 0.12);
+    canvas.drawRect(b.translate(0, -h * 0.06), Paint()..color = p.buildingRoof);
+    canvas.drawRect(Rect.fromLTRB(b.left, b.bottom - h * 0.06, b.right, b.bottom), Paint()..color = p.buildingWall);
+    // Player marker.
+    canvas.drawCircle(Offset(w * 0.5, h * 0.8), 10, Paint()..color = p.accent.withValues(alpha: 0.25));
+    canvas.drawCircle(Offset(w * 0.5, h * 0.8), 4, Paint()..color = p.accent);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(_MiniWorldPainter old) => old.theme.id != theme.id;
 }
 
 // ---------------------------------------------------------------- style
@@ -338,7 +361,7 @@ class _Style extends StatelessWidget {
                   width: 140,
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF171A28),
+                    color: kSurface,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: on ? it.color : Colors.white12, width: on ? 2 : 1),
                   ),

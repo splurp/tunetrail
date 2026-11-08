@@ -107,7 +107,7 @@ class _Back extends StatelessWidget {
         height: width * 1.48,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(width * 0.07),
-          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color, const Color(0xFF12141F)]),
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color, kSurface]),
           border: Border.all(color: Colors.white24, width: 2),
           boxShadow: [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 12)],
         ),

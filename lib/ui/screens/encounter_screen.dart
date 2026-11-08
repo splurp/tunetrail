@@ -97,8 +97,8 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
         _Hit.miss => 'Off beat…',
       };
       _feedbackColor = switch (hit) {
-        _Hit.perfect => Colors.amberAccent,
-        _Hit.great => Colors.lightGreenAccent,
+        _Hit.perfect => kAccent,
+        _Hit.great => const Color(0xFFE6E6EB),
         _Hit.good => Colors.white,
         _Hit.miss => Colors.redAccent,
       };
@@ -316,7 +316,7 @@ class _ConfettiPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final r = math.Random(3);
     final c = size.center(Offset.zero);
-    final colors = [color, Colors.white, Colors.amberAccent, Colors.cyanAccent, Colors.pinkAccent];
+    final colors = [color, Colors.white, Colors.white70, kAccent, const Color(0xFFD9D9E0)];
     for (var i = 0; i < 90; i++) {
       final a = r.nextDouble() * math.pi * 2;
       final v = 200 + r.nextDouble() * 350;

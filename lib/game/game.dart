@@ -11,6 +11,8 @@ import '../data/collection.dart';
 import '../data/deezer_api.dart';
 import '../data/models.dart';
 import '../data/profile.dart';
+import '../map3d/map_data.dart';
+import 'genre_zones.dart';
 import 'audio_service.dart';
 import 'location_service.dart';
 import 'market_service.dart';
@@ -21,8 +23,10 @@ import 'store_catalog.dart';
 
 /// Central game controller. Owns every subsystem and exposes game actions.
 class Game extends ChangeNotifier {
-  Game._(this.dir, this.api, this.catalog, this.collection, this.profile, this.location, this.audio)
-      : spawnEngine = SpawnEngine(catalog);
+  Game._(this.dir, this.api, this.catalog, this.collection, this.profile, this.location, this.audio, this.mapData)
+      : zones = GenreZones(mapData) {
+    spawnEngine = SpawnEngine(catalog, zoneBias: (lat, lng) => zones.sample(lat, lng).genreBias);
+  }
 
   final Directory dir;
   final DeezerApi api;
@@ -31,7 +35,12 @@ class Game extends ChangeNotifier {
   final PlayerProfile profile;
   final LocationService location;
   final AudioService audio;
-  final SpawnEngine spawnEngine;
+  final MapData mapData;
+  final GenreZones zones;
+  late final SpawnEngine spawnEngine;
+
+  /// Genre zone reading at the player's position.
+  ZoneReading zoneHere = const ZoneReading({}, false);
   late final PurchaseService purchases;
   late MarketBackend market;
 
@@ -60,7 +69,9 @@ class Game extends ChangeNotifier {
     await collection.load();
     final location = LocationService(LatLng(profile.lastLat, profile.lastLng));
     final audio = AudioService(catalog);
-    final g = Game._(dir, api, catalog, collection, profile, location, audio);
+    final tilesDir = Directory('${dir.path}/tiles');
+    await tilesDir.create(recursive: true);
+    final g = Game._(dir, api, catalog, collection, profile, location, audio, MapData(tilesDir));
     await g._init();
     return g;
   }
@@ -74,6 +85,8 @@ class Game extends ChangeNotifier {
     location.addListener(_onLocation);
     catalog.addListener(_onCatalog);
     profile.addListener(notifyListeners);
+    mapData.addListener(_onMapData);
+    mapData.ensureAround(location.position.latitude, location.position.longitude);
     collection.addListener(notifyListeners);
     unawaited(audio.setVolume(profile.volume));
     await _connectMarket();
@@ -210,7 +223,14 @@ class Game extends ChangeNotifier {
   void _onLocation() {
     profile.lastLat = location.position.latitude;
     profile.lastLng = location.position.longitude;
+    mapData.ensureAround(location.position.latitude, location.position.longitude);
     _refreshSpawns();
+  }
+
+  Timer? _mapDebounce;
+  void _onMapData() {
+    _mapDebounce?.cancel();
+    _mapDebounce = Timer(const Duration(milliseconds: 400), () => _refreshSpawns(force: true));
   }
 
   void _onCatalog() {
@@ -229,6 +249,7 @@ class Game extends ChangeNotifier {
     final nowMs = now.millisecondsSinceEpoch;
     profile.spentSpawns.removeWhere((_, exp) => exp < nowMs);
     spawns = spawnEngine.around(location.position, exclude: profile.spentSpawns.keys.toSet());
+    zoneHere = zones.sample(location.position.latitude, location.position.longitude);
     notifyListeners();
   }
 
@@ -531,6 +552,8 @@ class Game extends ChangeNotifier {
   void dispose() {
     _tick?.cancel();
     _inboxTimer?.cancel();
+    _mapDebounce?.cancel();
+    mapData.dispose();
     market.dispose();
     purchases.dispose();
     location.dispose();

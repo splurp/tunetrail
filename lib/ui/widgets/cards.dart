@@ -5,6 +5,9 @@ import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/models.dart';
 import 'net_image.dart';
+import 'ui_kit.dart';
+
+export 'ui_kit.dart';
 
 Color rarityColor(Rarity r) => Color(r.argb);
 
@@ -107,7 +110,7 @@ class RarityLabel extends StatelessWidget {
     final color = rarityColor(rarity);
     final text = Text(
       shiny && showStar ? '✦ Shiny ${rarity.label}' : rarity.label,
-      style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: fontSize, letterSpacing: 0.3),
+      style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: fontSize, letterSpacing: 0.2),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );
@@ -163,53 +166,48 @@ class SongCardView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = rarityColor(rarity);
+    final glow = rarity.index >= Rarity.epic.index;
     final card = Container(
       width: width,
       padding: EdgeInsets.all(width * 0.045),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(width * 0.07),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color.lerp(c, Colors.black, 0.55)!, const Color(0xFF12141F), Color.lerp(c, Colors.black, 0.7)!],
-        ),
-        border: Border.all(color: c, width: width * 0.014),
-        boxShadow: [BoxShadow(color: c.withValues(alpha: 0.55), blurRadius: width * 0.12, spreadRadius: 1)],
+        color: const Color(0xFF111114),
+        border: Border.all(color: c.withValues(alpha: 0.85), width: 1.4),
+        boxShadow: [
+          if (glow) BoxShadow(color: c.withValues(alpha: 0.28), blurRadius: width * 0.14),
+          const BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 10)),
+        ],
       ),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: RarityLabel(rarity, shiny: shiny, fontSize: width * 0.055)),
-          Text(genreName(song.genreId), style: TextStyle(color: Colors.white54, fontSize: width * 0.045)),
-        ]),
-        SizedBox(height: width * 0.03),
         AspectRatio(
           aspectRatio: 1,
           child: LayoutBuilder(
-            builder: (context, box) => Art(song.cover(500), size: box.maxWidth, radius: width * 0.04, decodeSize: 500),
+            builder: (context, box) => Art(song.cover(500), size: box.maxWidth, radius: width * 0.045, decodeSize: 500),
           ),
         ),
-        SizedBox(height: width * 0.04),
+        SizedBox(height: width * 0.05),
+        Row(children: [
+          Expanded(child: RarityLabel(rarity, shiny: shiny, fontSize: width * 0.048)),
+          Text(genreName(song.genreId).toUpperCase(), style: TextStyle(color: kTextTertiary, fontSize: width * 0.038, letterSpacing: 0.8)),
+        ]),
+        SizedBox(height: width * 0.02),
         Text(song.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: width * 0.075, fontWeight: FontWeight.w800, color: Colors.white, height: 1.1)),
+            style: TextStyle(fontSize: width * 0.072, fontWeight: FontWeight.w700, color: kTextPrimary, height: 1.15)),
         SizedBox(height: width * 0.015),
         Row(children: [
           if (song.artistPicMd5.isNotEmpty) ...[
-            Art(artistPicUrl(song.artistPicMd5, size: 56), size: width * 0.08, circle: true),
+            Art(artistPicUrl(song.artistPicMd5, size: 56), size: width * 0.075, circle: true),
             SizedBox(width: width * 0.025),
           ],
           Expanded(
             child: Text(song.artistName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: width * 0.055, color: Colors.white70, fontWeight: FontWeight.w600)),
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.052, color: kTextSecondary, fontWeight: FontWeight.w500)),
           ),
         ]),
-        Text(song.albumTitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: width * 0.045, color: Colors.white38)),
+        Text(song.albumTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.043, color: kTextTertiary)),
         ?footer,
       ]),
     );
@@ -245,41 +243,41 @@ class CardTile extends StatelessWidget {
     final c = rarityColor(rarity);
     Widget tile = Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF171A28),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: selected ? Colors.white : c, width: selected ? 3 : 2),
+        color: kSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: selected ? kAccent : kOutline, width: selected ? 2 : 1),
       ),
-      padding: const EdgeInsets.all(5),
+      clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: LayoutBuilder(
             builder: (context, box) => Stack(children: [
-              Art(song.cover(250), size: box.maxWidth, radius: 6, decodeSize: 160),
-              if (favorite)
-                const Positioned(top: 2, right: 2, child: Icon(Icons.favorite, size: 16, color: Colors.pinkAccent)),
+              Art(song.cover(250), size: box.maxWidth, radius: 0, decodeSize: 160),
+              if (favorite) const Positioned(top: 5, right: 5, child: Icon(Icons.favorite, size: 14, color: Colors.white)),
               if (badge != null)
                 Positioned(
-                  bottom: 2,
-                  right: 2,
+                  bottom: 5,
+                  right: 5,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(6)),
+                    decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(6)),
                     child: Text(badge!, style: const TextStyle(fontSize: 10, color: Colors.white)),
                   ),
                 ),
-              if (selected)
-                const Positioned(top: 2, left: 2, child: Icon(Icons.check_circle, color: Colors.white, size: 20)),
+              if (selected) const Positioned(top: 5, left: 5, child: Icon(Icons.check_circle, color: kAccent, size: 20)),
             ]),
           ),
         ),
-        const SizedBox(height: 4),
-        Text(song.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-        Text(song.artistName,
-            maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white60)),
-        RarityLabel(rarity, shiny: shiny, fontSize: 10.5),
+        Container(height: 2, color: c),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 7),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kTextPrimary)),
+            Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: kTextSecondary)),
+            const SizedBox(height: 2),
+            RarityLabel(rarity, shiny: shiny, fontSize: 10),
+          ]),
+        ),
       ]),
     );
     if (shiny) tile = Glint(strength: 0.4, child: tile);
@@ -303,22 +301,24 @@ class CardRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        color: selected ? Colors.white10 : null,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        color: selected ? kAccentDim : null,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         child: Row(children: [
-          Container(width: 4, height: 44, color: rarityColor(rarity)),
-          const SizedBox(width: 8),
-          Glint(enabled: shiny, strength: 0.4, child: Art(song.cover(56), size: 44)),
-          const SizedBox(width: 10),
+          Glint(enabled: shiny, strength: 0.4, child: Art(song.cover(56), size: 44, radius: 8)),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
-              Text(subtitle ?? '${song.artistName} • ${song.albumTitle}',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.white60)),
+              Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, color: kTextPrimary)),
+              Text(subtitle ?? '${song.artistName} · ${song.albumTitle}',
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: kTextSecondary)),
             ]),
           ),
           const SizedBox(width: 8),
-          SizedBox(width: 92, child: Align(alignment: Alignment.centerRight, child: RarityLabel(rarity, shiny: shiny, fontSize: 11))),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            RarityDot(rarity, size: 7),
+            const SizedBox(width: 6),
+            SizedBox(width: 84, child: RarityLabel(rarity, shiny: shiny, fontSize: 11)),
+          ]),
           ?trailing,
         ]),
       ),
@@ -336,17 +336,12 @@ class CurrencyChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GestureDetector(
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.65),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withValues(alpha: 0.7)),
-          ),
+        child: Glass(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 5),
-            Text(formatNumber(value), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(formatNumber(value), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: kTextPrimary)),
           ]),
         ),
       );
@@ -364,7 +359,7 @@ String formatNumber(int v) {
   return b.toString();
 }
 
-const kCoinColor = Color(0xFFFFD54F);
-const kBitsColor = Color(0xFF40C4FF);
-const kCoinIcon = Icons.monetization_on;
-const kBitsIcon = Icons.memory;
+const kCoinColor = Color(0xFFD9B45A);
+const kBitsColor = kAccent;
+const kCoinIcon = Icons.toll_rounded;
+const kBitsIcon = Icons.diamond_outlined;

@@ -59,6 +59,20 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
     super.dispose();
   }
 
+  int get _activeFilters =>
+      (_q.rarityMask == 0x1F ? 0 : 1) + (_q.shinyOnly || _q.normalOnly ? 1 : 0) + (_q.genres.isEmpty ? 0 : 1) + (_q.favoritesOnly ? 1 : 0);
+
+  String get _filterSummary {
+    final parts = <String>[
+      if (_q.rarityMask != 0x1F) [for (final r in Rarity.values) if ((_q.rarityMask >> r.index) & 1 == 1) r.label].join(', '),
+      if (_q.shinyOnly) 'Shiny',
+      if (_q.normalOnly) 'Standard',
+      if (_q.genres.isNotEmpty) _q.genres.length == 1 ? genreName(_q.genres.first) : '${_q.genres.length} genres',
+      if (_q.favoritesOnly) 'Favourites',
+    ];
+    return parts.join(' · ');
+  }
+
   void _setQuery(CollectionQuery q) {
     setState(() => _q = q);
     if (_scroll.hasClients) _scroll.jumpTo(0);
@@ -126,9 +140,8 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
           child: TextField(
             controller: _search,
             decoration: InputDecoration(
-              isDense: true,
               hintText: 'Search songs, artists, albums',
-              prefixIcon: const Icon(Icons.search),
+              prefixIcon: const Icon(Icons.search, size: 20),
               suffixIcon: _search.text.isEmpty
                   ? null
                   : IconButton(
@@ -137,7 +150,6 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
                         _search.clear();
                         _setQuery(_q.copyWith(text: ''));
                       }),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
             ),
             onChanged: (v) {
               setState(() {});
@@ -146,57 +158,70 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
             },
           ),
         ),
-        SizedBox(
-          height: 40,
-          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10), children: [
-            for (final r in Rarity.values)
-              Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: FilterChip(
-                  label: Text('${r.label} ${formatNumber(c.rarityCounts[r.index])}'),
-                  selected: (_q.rarityMask >> r.index) & 1 == 1 && _q.rarityMask != 0x1F,
-                  selectedColor: rarityColor(r).withValues(alpha: 0.35),
-                  side: BorderSide(color: rarityColor(r)),
-                  showCheckmark: false,
-                  onSelected: (_) {
-                    var m = _q.rarityMask == 0x1F ? 0 : _q.rarityMask;
-                    m ^= 1 << r.index;
-                    _setQuery(_q.copyWith(rarityMask: m == 0 ? 0x1F : m));
-                  },
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: FilterChip(
-                label: Text('✦ Shiny ${formatNumber(c.shinyCount)}'),
-                selected: _q.shinyOnly,
-                onSelected: (v) => _setQuery(_q.copyWith(shinyOnly: v)),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: FilterChip(
-                avatar: const Icon(Icons.favorite, size: 16),
-                label: const Text('Favourites'),
-                selected: _q.favoritesOnly,
-                onSelected: (v) => _setQuery(_q.copyWith(favoritesOnly: v)),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: PopupMenuButton<int>(
-                onSelected: (v) => _setQuery(_q.copyWith(genreId: () => v == -1 ? null : v)),
-                itemBuilder: (_) => [
-                  const PopupMenuItem(value: -1, child: Text('All genres')),
-                  for (final gd in kGenres) PopupMenuItem(value: gd.id, child: Text(gd.name)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
+          child: FilterDropdown(
+            activeCount: _activeFilters,
+            summary: _filterSummary,
+            onReset: () => _setQuery(_q.copyWith(rarityMask: 0x1F, shinyOnly: false, normalOnly: false, favoritesOnly: false, genres: const {})),
+            sections: () => [
+              FilterSection(
+                title: 'Rarity',
+                onClear: () => _setQuery(_q.copyWith(rarityMask: 0x1F)),
+                options: [
+                  for (final r in Rarity.values)
+                    FilterOption(
+                      label: '${r.label}  ${formatNumber(c.rarityCounts[r.index])}',
+                      dot: rarityColor(r),
+                      selected: _q.rarityMask != 0x1F && (_q.rarityMask >> r.index) & 1 == 1,
+                      onTap: () {
+                        var m = _q.rarityMask == 0x1F ? 0 : _q.rarityMask;
+                        m ^= 1 << r.index;
+                        _setQuery(_q.copyWith(rarityMask: m == 0 ? 0x1F : m));
+                      },
+                    ),
                 ],
-                child: Chip(
-                  avatar: const Icon(Icons.category, size: 16),
-                  label: Text(_q.genreId == null ? 'Genre' : genreName(_q.genreId!)),
-                ),
               ),
-            ),
-          ]),
+              FilterSection(
+                title: 'Variant',
+                onClear: () => _setQuery(_q.copyWith(shinyOnly: false, normalOnly: false)),
+                options: [
+                  FilterOption(
+                    label: '✦ Shiny  ${formatNumber(c.shinyCount)}',
+                    selected: _q.shinyOnly,
+                    onTap: () => _setQuery(_q.copyWith(shinyOnly: !_q.shinyOnly, normalOnly: false)),
+                  ),
+                  FilterOption(
+                    label: 'Standard',
+                    selected: _q.normalOnly,
+                    onTap: () => _setQuery(_q.copyWith(normalOnly: !_q.normalOnly, shinyOnly: false)),
+                  ),
+                ],
+              ),
+              FilterSection(
+                title: 'Genre',
+                onClear: () => _setQuery(_q.copyWith(genres: const {})),
+                options: [
+                  for (final gd in kGenres)
+                    FilterOption(
+                      label: gd.name,
+                      selected: _q.genres.contains(gd.id),
+                      onTap: () {
+                        final set = {..._q.genres};
+                        set.contains(gd.id) ? set.remove(gd.id) : set.add(gd.id);
+                        _setQuery(_q.copyWith(genres: set));
+                      },
+                    ),
+                ],
+              ),
+              FilterSection(
+                title: 'Other',
+                options: [
+                  FilterOption(label: 'Favourites', selected: _q.favoritesOnly, onTap: () => _setQuery(_q.copyWith(favoritesOnly: !_q.favoritesOnly))),
+                ],
+              ),
+            ],
+          ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 2, 6, 2),
@@ -205,7 +230,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
               child: Text(
                 '${formatNumber(rows.length)} shown • ${formatNumber(c.length)} cards • ${formatNumber(c.uniqueSongCount)} unique'
                 ' • ${(c.lastQueryMicros / 1000).toStringAsFixed(1)} ms',
-                style: const TextStyle(fontSize: 11.5, color: Colors.white54),
+                style: const TextStyle(fontSize: 11.5, color: kTextTertiary),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -263,9 +288,9 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
         padding: const EdgeInsets.fromLTRB(10, 4, 10, 16),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 140,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-          childAspectRatio: 0.64,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 0.66,
         ),
         itemCount: rows.length,
         addAutomaticKeepAlives: false,

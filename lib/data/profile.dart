@@ -21,7 +21,7 @@ class PlayerProfile extends ChangeNotifier {
   int coins = 500;
   int bits = 0;
   int xp = 0;
-  int figureColor = 0xFF00E5FF;
+  int figureColor = 0xFFE9E6FF;
 
   // Cosmetics & themes.
   Set<String> owned = {'theme_classic'};

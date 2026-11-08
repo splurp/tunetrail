@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/profile.dart';
 import '../app.dart';
 import 'card_detail_screen.dart';
+import '../widgets/ui_kit.dart';
 import 'debug_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -95,7 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         if (p.debugEnabled)
           ListTile(
-            leading: const Icon(Icons.bug_report, color: Colors.orangeAccent),
+            leading: const Icon(Icons.bug_report, color: kAccent),
             title: const Text('Open debug menu'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DebugScreen())),
@@ -118,6 +119,6 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-        child: Text(text.toUpperCase(), style: const TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 1.2)),
+        child: Text(text.toUpperCase(), style: const TextStyle(color: kTextTertiary, fontWeight: FontWeight.w600, fontSize: 11, letterSpacing: 1.2)),
       );
 }

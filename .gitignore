@@ -50,3 +50,8 @@ app.*.map.json
 # Tunetrail
 server/market.json
 server/market.json.tmp
+
+# Android release signing (never commit)
+android/key.properties
+*.jks
+*.keystore

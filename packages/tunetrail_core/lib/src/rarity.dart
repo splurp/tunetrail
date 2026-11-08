@@ -1,10 +1,10 @@
 /// Song rarities, ordered from most to least common.
 enum Rarity {
-  common('Common', 0xFF9E9E9E, 5500, 10, 5, 10),
-  uncommon('Uncommon', 0xFF4CAF50, 2500, 30, 10, 25),
-  rare('Rare', 0xFF2196F3, 1200, 100, 25, 60),
-  epic('Epic', 0xFF9C27B0, 600, 400, 60, 150),
-  legendary('Legendary', 0xFFFFC107, 200, 1500, 150, 400);
+  common('Common', 0xFFA3A3AB, 5500, 10, 5, 10),
+  uncommon('Uncommon', 0xFF5DBB7A, 2500, 30, 10, 25),
+  rare('Rare', 0xFF4E8EF0, 1200, 100, 25, 60),
+  epic('Epic', 0xFFA774E8, 600, 400, 60, 150),
+  legendary('Legendary', 0xFFE3B341, 200, 1500, 150, 400);
 
   const Rarity(this.label, this.argb, this.spawnWeight, this.baseValue,
       this.catchCoins, this.catchXp);

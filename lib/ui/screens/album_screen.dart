@@ -59,7 +59,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 const SizedBox(height: 4),
                 InkWell(
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ArtistScreen(artistId: a.artistId, name: a.artistName))),
-                  child: Text(a.artistName, style: const TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.w700)),
+                  child: Text(a.artistName, style: const TextStyle(color: kAccent, fontWeight: FontWeight.w700)),
                 ),
                 Text('${a.recordType.toUpperCase()} • ${a.year} • ${tracks.length} tracks', style: const TextStyle(color: Colors.white54)),
                 const SizedBox(height: 10),
@@ -80,7 +80,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             child: ListTile(
-              leading: const Icon(Icons.emoji_events, color: Colors.amber),
+              leading: const Icon(Icons.emoji_events, color: kAccent),
               title: Text(quest.title),
               subtitle: Text(quest.description),
               trailing: g.questClaimed(quest)

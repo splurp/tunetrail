@@ -43,6 +43,7 @@ dependencies:
   in_app_purchase: ^3.3.1
   tunetrail_core:
     path: packages/tunetrail_core
+  dart_earcut: ^1.2.0
 
 dev_dependencies:
   flutter_test:

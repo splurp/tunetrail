@@ -82,7 +82,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                             const SizedBox(height: 4),
                             if (info != null) Text('${formatNumber(info.fans)} fans • ${info.albumCount} releases', style: const TextStyle(color: Colors.white60)),
                             const SizedBox(height: 4),
-                            Text('You own $owned of their songs', style: const TextStyle(color: Color(0xFF00E5FF))),
+                            Text('You own $owned of their songs', style: const TextStyle(color: kAccent)),
                           ]),
                         ),
                       ]),

@@ -19,7 +19,7 @@ class MiniPlayer extends StatelessWidget {
             ? 0.0
             : (audio.position.inMilliseconds / audio.duration.inMilliseconds).clamp(0.0, 1.0);
         return Material(
-          color: const Color(0xFF1A1D2E),
+          color: const Color(0xFF141417),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             LinearProgressIndicator(value: frac, minHeight: 2, backgroundColor: Colors.transparent),
             Padding(

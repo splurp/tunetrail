@@ -91,7 +91,7 @@ class StickFigurePainter extends CustomPainter {
     const hip = Offset(0, 76);
     final swing = walking ? math.sin(phase) * 0.6 : math.sin(phase) * 0.06;
 
-    _drawBackpack(canvas, walking, phase);
+    drawBackpack(canvas, look.backpack, walking, phase);
 
     // Legs.
     Offset leg(double a) => hip + Offset(math.sin(a) * 34, math.cos(a) * 34);
@@ -100,7 +100,7 @@ class StickFigurePainter extends CustomPainter {
 
     // Torso + shirt.
     canvas.drawLine(neck, hip, line);
-    _drawShirt(canvas, neck, hip);
+    drawShirt(canvas, look.shirt, neck, hip);
 
     // Arms.
     Offset arm(double a) => neck + const Offset(0, 6) + Offset(math.sin(a) * 30, math.cos(a) * 30);
@@ -122,21 +122,20 @@ class StickFigurePainter extends CustomPainter {
       canvas.drawCircle(const Offset(-4.5, 21), 2.2, eye);
       canvas.drawCircle(const Offset(4.5, 21), 2.2, eye);
     }
-    _drawHat(canvas, head, phase);
+    drawHat(canvas, look.hat, head, phase);
     canvas.restore();
 
     if (showPet && look.pet != null) {
       canvas.save();
       canvas.translate(size.width / 2 + 42 * s, 0);
       canvas.scale(s);
-      _drawPet(canvas, look.pet!, phase, walking);
+      drawPet(canvas, look.pet!, phase, walking);
       canvas.restore();
     }
   }
 
   // ------------------------------------------------------------- shirts
-  void _drawShirt(Canvas canvas, Offset neck, Offset hip) {
-    final id = look.shirt;
+  static void drawShirt(Canvas canvas, String? id, Offset neck, Offset hip) {
     if (id == null) return;
     final body = Path()
       ..moveTo(-12, neck.dy + 2)
@@ -222,8 +221,7 @@ class StickFigurePainter extends CustomPainter {
   }
 
   // --------------------------------------------------------------- hats
-  void _drawHat(Canvas canvas, Offset head, double phase) {
-    final id = look.hat;
+  static void drawHat(Canvas canvas, String? id, Offset head, double phase) {
     if (id == null) return;
     switch (id) {
       case 'hat_cap':
@@ -305,8 +303,7 @@ class StickFigurePainter extends CustomPainter {
   }
 
   // ---------------------------------------------------------- backpacks
-  void _drawBackpack(Canvas canvas, bool walking, double phase) {
-    final id = look.backpack;
+  static void drawBackpack(Canvas canvas, String? id, bool walking, double phase) {
     if (id == null) return;
     switch (id) {
       case 'bag_classic':
@@ -361,7 +358,7 @@ class StickFigurePainter extends CustomPainter {
   }
 
   // ---------------------------------------------------------------- pets
-  void _drawPet(Canvas canvas, String id, double phase, bool walking) {
+  static void drawPet(Canvas canvas, String id, double phase, bool walking) {
     final hop = walking ? -math.sin(phase * 2).abs() * 6 : -math.sin(phase).abs() * 2;
     final base = Offset(0, 104 + hop);
     canvas.drawOval(Rect.fromCenter(center: const Offset(0, 118), width: 26, height: 6),

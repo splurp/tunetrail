@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 /// On-screen analog stick. Reports x/y in [-1, 1] (y positive = up/north).
 /// Also supports WASD / arrow keys on desktop via [JoystickKeys].
 class Joystick extends StatefulWidget {
-  const Joystick({super.key, required this.onChanged, this.size = 130});
+  const Joystick({super.key, required this.onChanged, this.size = 120});
   final void Function(double x, double y) onChanged;
   final double size;
 
@@ -44,8 +44,8 @@ class _JoystickState extends State<Joystick> {
           Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.black.withValues(alpha: 0.35),
-              border: Border.all(color: Colors.white38, width: 2),
+              color: const Color(0x99101013),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
           ),
           Center(
@@ -56,10 +56,10 @@ class _JoystickState extends State<Joystick> {
                 height: s * 0.42,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const RadialGradient(colors: [Color(0xFF80F7FF), Color(0xFF00ACC1)]),
-                  boxShadow: [BoxShadow(color: Colors.cyanAccent.withValues(alpha: 0.5), blurRadius: 12)],
+                  color: const Color(0xFFE9E9EE),
+                  boxShadow: [BoxShadow(color: const Color(0xFF9A8CF0).withValues(alpha: 0.35), blurRadius: 14)],
                 ),
-                child: Icon(Icons.directions_walk, color: Colors.black.withValues(alpha: 0.6)),
+                child: const Icon(Icons.directions_walk_rounded, color: Colors.black54, size: 20),
               ),
             ),
           ),
@@ -69,7 +69,7 @@ class _JoystickState extends State<Joystick> {
                 alignment: Alignment(math.cos(i * math.pi / 2) * 0.82, math.sin(i * math.pi / 2) * 0.82),
                 child: Transform.rotate(
                   angle: i * math.pi / 2,
-                  child: const Icon(Icons.chevron_right, color: Colors.white54, size: 18),
+                  child: const Icon(Icons.chevron_right, color: Colors.white24, size: 16),
                 ),
               ),
         ]),

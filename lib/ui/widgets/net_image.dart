@@ -95,7 +95,7 @@ class Art extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: const Color(0xFF1E2233),
+        color: const Color(0xFF1B1B1F),
         borderRadius: circle ? null : BorderRadius.circular(radius),
         shape: circle ? BoxShape.circle : BoxShape.rectangle,
       ),

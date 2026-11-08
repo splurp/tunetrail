@@ -40,7 +40,7 @@ const kBitsBundles = [
 ];
 
 const kThemeProducts = [
-  Product(id: 'theme_classic', name: 'Classic Streets', kind: ProductKind.theme, usd: 0, description: 'The standard street map.', color: Color(0xFF8BC34A), icon: Icons.map),
+  Product(id: 'theme_classic', name: 'Obsidian', kind: ProductKind.theme, usd: 0, description: 'Default. Black and graphite streets with a soft violet glow.', color: Color(0xFF9A8CF0), icon: Icons.dark_mode),
   Product(id: 'theme_midnight', name: 'Midnight', kind: ProductKind.theme, usd: 1.99, description: 'Deep blue night streets with glowing roads.', color: Color(0xFF3F51B5), icon: Icons.nightlight),
   Product(id: 'theme_synthwave', name: 'Synthwave', kind: ProductKind.theme, usd: 2.99, description: 'Neon magenta grid and a retro sunset haze.', color: Color(0xFFFF00C8), icon: Icons.grid_on),
   Product(id: 'theme_vaporwave', name: 'Vaporwave', kind: ProductKind.theme, usd: 2.99, description: 'Pastel pink and teal aesthetic.', color: Color(0xFFFF9FF3), icon: Icons.landscape),
@@ -158,7 +158,7 @@ const kPacks = [
       bits: 100,
       cards: 5,
       description: '5 songs from any genre. At least one Uncommon or better.',
-      color: Color(0xFF26C6DA),
+      color: Color(0xFF7A7A86),
       guaranteedMin: Rarity.uncommon),
   PackDef(
       id: 'pack_genre',
@@ -166,7 +166,7 @@ const kPacks = [
       bits: 150,
       cards: 5,
       description: 'Pick a genre. 5 songs, at least one Rare or better.',
-      color: Color(0xFF66BB6A),
+      color: Color(0xFF5E8C6A),
       guaranteedMin: Rarity.rare,
       genreChoice: true),
   PackDef(
@@ -175,7 +175,7 @@ const kPacks = [
       bits: 350,
       cards: 5,
       description: 'All Uncommon or better, one Epic or better, boosted luck.',
-      color: Color(0xFF42A5F5),
+      color: Color(0xFF4E6FA8),
       allMin: Rarity.uncommon,
       guaranteedMin: Rarity.epic,
       luck: 1.5),
@@ -185,7 +185,7 @@ const kPacks = [
       bits: 1000,
       cards: 3,
       description: 'All Rare or better, with a guaranteed Legendary.',
-      color: Color(0xFFFFCA28),
+      color: Color(0xFFB39550),
       allMin: Rarity.rare,
       guaranteedMin: Rarity.legendary,
       luck: 2.0,
@@ -196,7 +196,7 @@ const kPacks = [
       bits: 1200,
       cards: 3,
       description: '3 songs with one guaranteed Shiny variant (any rarity).',
-      color: Color(0xFFE040FB),
+      color: Color(0xFF8A7AD6),
       luck: 1.5,
       guaranteedShiny: true),
 ];

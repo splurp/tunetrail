@@ -70,7 +70,7 @@ class _QuestList extends StatelessWidget {
                   else
                     Padding(
                       padding: const EdgeInsets.only(right: 12),
-                      child: Icon(_icon(q.kind), size: 36, color: done ? Colors.amber : Colors.white54),
+                      child: Icon(_icon(q.kind), size: 36, color: done ? kAccent : kTextTertiary),
                     ),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

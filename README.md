@@ -22,11 +22,39 @@ publishes a **GitHub Release** with:
 * `Tunetrail-windows-x64-setup.exe` (installer) and `Tunetrail-windows-x64.zip` (portable: extract, run `Tunetrail.exe`)
 * `Tunetrail-android-universal.apk` (any device) and per-ABI APKs (`arm64` suits most phones)
 
-APKs are signed with the debug key (developer build): enable *Install unknown apps* to sideload.
+### Android signing
+
+Release APKs are signed with Tunetrail's own release key (not the Android debug key, which antivirus apps commonly flag). Locally, signing reads `android/key.properties` (git-ignored). In CI, add these repository secrets:
+
+| Secret | Value |
+|---|---|
+| `TUNETRAIL_KEYSTORE_BASE64` | `base64 -w0 tunetrail-release.jks` |
+| `TUNETRAIL_KEYSTORE_PASSWORD` | keystore password |
+| `TUNETRAIL_KEY_ALIAS` | `tunetrail` |
+| `TUNETRAIL_KEY_PASSWORD` | key password |
+
+Without the secrets, CI falls back to the debug key and prints a warning. Keep the keystore safe: updates must be signed with the same key. Sideloaded apps from developers not registered with Google still show a Play Protect "unrecognised developer" prompt. Distributing through a Play Console testing track (or completing Android developer verification) removes it.
 
 ## Gameplay
 
-* **Real-world map.** OpenStreetMap street data. The player is always at the centre (pinch to zoom, two-finger rotate).
+* **3D world.** A custom renderer turns OpenStreetMap vector data into a stylised ground plane: main roads, parking lots, water, parks, fields and plazas, with **no ordinary buildings or driveways** (only mega-buildings like stadiums, airports, factories and malls, which are extruded as low 3D blocks). Your 3D stick figure walks on it at the centre, with distance fog toward the horizon. Drag to orbit the camera, pinch or scroll to zoom, and use Q/E on PC.
+* **Genre zones.** Every spawn point is scored against the land around it (≈160 m radius), so genres spawn more often where they fit:
+
+  | Zone | Boosted genres | Where |
+  |---|---|---|
+  | Open Country | Country | Farmland, meadows, open land with few roads/buildings |
+  | Concrete Jungle | Hip-Hop | Dense blocks: many buildings, tight street grids |
+  | Waterfront | Blues, Jazz | Rivers, lakes, harbours, coastline |
+  | Industrial Grid | Electronic, Dance | Industrial estates, factories, warehouses, data centres, large corporate buildings |
+  | After Hours | R&B | Bars, lounges, clubs, late-night dining strips |
+  | Iron & Stone | Metal | Rail yards and tracks, quarries, cemeteries, heavy infrastructure |
+  | Arena & Open Road | Rock | Highways, stadiums, arenas, music venues, rocky terrain |
+  | Shopping District | Pop, Top Hits | Malls, retail streets, shops, cinemas |
+  | Neon Campus | K-Pop & Asian | Campuses, arcades, karaoke, theme parks, Korean food |
+  | Plaza & Shore | Latin, Reggaeton, Brazilian | Public squares, markets, beaches, football pitches, Latin American food |
+  | Woodland / Old Town / Café Row / Island Time | Folk / Classical & Film / Soul & Alternative / Reggae | Forests / churches, museums & theatres / cafés & record shops / beaches |
+
+  The map shows the zone you're standing in; tap it to see every zone.
 * **Wild spawns.** The world is split into ~200 m cells and 15-minute windows. Each cell/window is hashed into a seed, so **everyone in the same place at the same time sees the same songs**, with no server needed. Time of day biases genres (electronic & R&B at night, folk & pop in the morning…).
 * **Rarities:** Common (grey), Uncommon (green), Rare (blue), Epic (purple), Legendary (gold). Rarer spawns glow brighter, and Legendaries get rotating light rays.
 * **Shiny variants** (1/128): an animated glint sweeps across the card and across the rarity name everywhere it's shown (collection, market, playlists, showcases).
@@ -38,7 +66,8 @@ APKs are signed with the debug key (developer build): enable *Install unknown ap
 * **Player market:** list cards for coins (held in escrow), buy, make **trade offers** (cards + coins) on trade-enabled listings, accept/decline offers, and publish a **showcase** of favourite cards and playlists that others can browse, like and listen to.
 * **Playlists:** build them from owned cards, reorder, and play them back (30-second Deezer previews, auto-advance, mini player).
 * **Character:** a stylised stick figure. Colour is free to change. Hats, shirts, backpacks and pets are sold in the store.
-* **Map themes** (store): Classic, Midnight, Synthwave, Vaporwave, Noir (rain & film grain), Vintage Vinyl, Digital Rain, Arctic (snow), Magma (embers), Aurora, Sakura (petals).
+* **Map themes** (store): Obsidian (default: black, graphite and a soft violet accent), Midnight, Synthwave, Vaporwave, Noir (rain), Vintage Vinyl, Digital Rain, Arctic (snow), Magma (embers), Aurora, Sakura (petals).
+* **Filters:** the collection and the market each have a large *Filters* dropdown with Rarity, Variant (Shiny / Standard) and Genre sections (plus Favourites, or Open to trades).
 
 ## Developer debug menu
 
@@ -56,7 +85,7 @@ Profile → ⚙ Settings → **Debug menu** switch, then *Open debug menu*:
 | What | Source |
 |---|---|
 | Songs, artists, albums, track order, discographies, cover art, artist photos, 30 s previews | [Deezer public API](https://developers.deezer.com/api) |
-| Street map tiles | © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors |
+| Map data (vector tiles, Shortbread schema) | © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, served by [VersaTiles](https://versatiles.org) |
 | Place search (teleport) | OpenStreetMap Nominatim |
 
 The catalog is built progressively: genre charts first (instantly playable),
@@ -67,10 +96,10 @@ genre spawn weights keep the game primarily English-language. The crawl
 targets ~60k songs (the debug menu can push it further); the result is cached
 locally as JSON lines.
 
-> **Before a public launch:** OSM's tile servers are for light use only. Point
-> *Settings → Map tile server* at your own or a commercial tile provider (any
-> `{z}/{x}/{y}` URL template works). Deezer previews are 30 s clips; full-track
-> playback needs a licensed provider.
+> **Before a public launch:** host your own vector tiles (VersaTiles or any
+> Shortbread-schema tile server; see `MapData.sources` in
+> `lib/map3d/map_data.dart`) instead of relying on the free public service.
+> Deezer previews are 30 s clips; full-track playback needs a licensed provider.
 
 ## Performance (100,000+ cards)
 
@@ -130,7 +159,8 @@ flutter test                     # unit tests incl. 100k-card benchmark
 lib/
   data/        models, Deezer client, catalog crawler, collection store, save file
   game/        game controller, spawns, quests, packs/store catalog, market, IAP, GPS/joystick, audio
-  ui/          app shell, map (+ themes, markers), screens, widgets (cards, glint, stick figure)
+  map3d/       vector-tile decoder, tile processor (isolate), 3D camera, ground renderer, 3D figure, palettes
+  ui/          app shell, map screen (+ themes, markers), screens, widgets (design kit, cards, glint, stick figure)
 packages/tunetrail_core/   shared pure-Dart logic: rarities, RNG, market engine (+ tests)
 server/                    multiplayer market HTTP server (shelf)
 .github/workflows/         CI: tests → Android APKs + Windows exe/installer → GitHub Release

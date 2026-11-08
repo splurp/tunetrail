@@ -174,7 +174,7 @@ class _H extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
-        child: Text(t.toUpperCase(), style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 1.2)),
+        child: Text(t.toUpperCase(), style: const TextStyle(color: kTextTertiary, fontWeight: FontWeight.w600, fontSize: 11, letterSpacing: 1.2)),
       );
 }
 

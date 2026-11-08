@@ -26,7 +26,7 @@ class CardDetailScreen extends StatelessWidget {
         title: Text(s.title, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
-            icon: Icon(card.favorite ? Icons.favorite : Icons.favorite_border, color: card.favorite ? Colors.pinkAccent : null),
+            icon: Icon(card.favorite ? Icons.favorite : Icons.favorite_border, color: card.favorite ? kAccent : null),
             onPressed: () => g.collection.setFavorite(uid, !card.favorite),
           ),
         ],
