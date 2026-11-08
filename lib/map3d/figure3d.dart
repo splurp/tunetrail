@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../ui/widgets/stick_figure.dart';
 import 'camera.dart';
+import 'outfit3d.dart';
 
 /// Idle activities the character can drift into when standing still.
 enum IdleActivity { none, headphones, turntable }
@@ -275,111 +276,182 @@ class Figure3DPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    // Facing relative to camera: faY > 0 = facing away (back visible).
-    final (faX, faY) = cam.worldDirToAligned(fx, fy);
-    final widthF = 0.45 + 0.55 * faY.abs();
-    final kx = 0.1 * s * pxPerM;
-    final ky = (hipP.dy - neckP.dy) / 40;
-
     // Turntable in front of the character: draw before or after depending on
     // whether it's nearer the camera than the body.
     final deckCenter = wl(2.6 * s, 0.4 * s, 0);
-    final deckInFront = depthOf(deckCenter) < depthOf(w(pose.j['hip']!));
-    if (act == IdleActivity.turntable && rise > 0.01 && !deckInFront) _drawTurntable(canvas, cam, wl, deckTop, idle.activityTime);
 
-    void limb(String a, String b, String c) {
-      final p0 = pj(a), p1 = pj(b), p2 = pj(c);
-      if (p0 == null || p1 == null || p2 == null) return;
-      canvas.drawPath(Path()
-        ..moveTo(p0.dx, p0.dy)
-        ..lineTo(p1.dx, p1.dy)
-        ..lineTo(p2.dx, p2.dy), limbPaint);
-    }
+    // ---- Depth-sorted scene: limbs, 3D shirt/backpack faces, head, pet and
+    // turntable are drawn far-to-near so everything occludes correctly.
+    final items = <(double, void Function())>[];
+    final camPos = () {
+      final br = cam.bearing * math.pi / 180, pr = cam.pitch * math.pi / 180;
+      final back = cam.distance * math.cos(pr);
+      return (cam.px - math.sin(br) * back, cam.py - math.cos(br) * back, cam.distance * math.sin(pr));
+    }();
 
-    void backpack() {
-      if (look.backpack == null) return;
-      canvas.save();
-      final shift = look.backpack == 'bag_wings' ? 0.0 : 14 + 16 * faX;
-      canvas.translate(neckP.dx, neckP.dy);
-      canvas.scale(kx * widthF, ky);
-      canvas.translate(shift, -36);
-      StickFigurePainter.drawBackpack(canvas, look.backpack, walk > 0.3, phase);
-      canvas.restore();
-    }
-
-    final backVisible = faY > 0;
-    if (!backVisible) backpack();
-
-    // One consistent colour for every limb (no depth shading).
-    limb('hip', 'kneeL', 'footL');
-    limb('hip', 'kneeR', 'footR');
-    limb('shoulder', 'elbowL', 'handL');
-    limb('shoulder', 'elbowR', 'handR');
-    canvas.drawLine(neckP, hipP, limbPaint);
-    if (look.shirt != null) {
-      canvas.save();
-      canvas.translate(neckP.dx, neckP.dy);
-      final torsoAngle = math.atan2(hipP.dx - neckP.dx, hipP.dy - neckP.dy);
-      canvas.rotate(-torsoAngle);
-      canvas.scale(kx * widthF, ((hipP - neckP).distance) / 40);
-      canvas.translate(0, -36);
-      StickFigurePainter.drawShirt(canvas, look.shirt, const Offset(0, 36), const Offset(0, 76));
-      canvas.restore();
-      for (final side in ['L', 'R']) {
-        final el = pj('elbow$side');
-        if (el != null) StickFigurePainter.drawSleeve(canvas, look.shirt, shP, el, lineW * 1.9);
+    final shirt = look.shirt;
+    final longSleeves = shirt == 'shirt_hoodie' || shirt == 'shirt_tux';
+    void bone(String a, String b) {
+      if (shirt != null) {
+        // The 3D shirt covers the spine and (part of) the upper arms; only
+        // draw the bit of each arm that sticks out of the sleeve.
+        if (a == 'neck') return;
+        if (a == 'shoulder') {
+          if (longSleeves) return;
+          final pa = pose.j[a]!, pb = pose.j[b]!;
+          final from = (pa.$1 + (pb.$1 - pa.$1) * 0.6, pa.$2 + (pb.$2 - pa.$2) * 0.6, pa.$3 + (pb.$3 - pa.$3) * 0.6);
+          final wa = w(from), wb = w(pb);
+          final p0 = proj(wa), p1 = proj(wb);
+          if (p0 == null || p1 == null) return;
+          items.add(((depthOf(wa) + depthOf(wb)) / 2, () => canvas.drawLine(p0, p1, limbPaint)));
+          return;
+        }
+        if (longSleeves && (a == 'elbowL' || a == 'elbowR')) {
+          final pa = pose.j[a]!, pb = pose.j[b]!;
+          final from = (pa.$1 + (pb.$1 - pa.$1) * 0.7, pa.$2 + (pb.$2 - pa.$2) * 0.7, pa.$3 + (pb.$3 - pa.$3) * 0.7);
+          final wa = w(from), wb = w(pb);
+          final p0 = proj(wa), p1 = proj(wb);
+          if (p0 == null || p1 == null) return;
+          items.add(((depthOf(wa) + depthOf(wb)) / 2, () => canvas.drawLine(p0, p1, limbPaint)));
+          return;
+        }
       }
+      final wa = w(pose.j[a]!), wb = w(pose.j[b]!);
+      final p0 = proj(wa), p1 = proj(wb);
+      if (p0 == null || p1 == null) return;
+      items.add(((depthOf(wa) + depthOf(wb)) / 2, () => canvas.drawLine(p0, p1, limbPaint)));
     }
-    if (backVisible) backpack();
+
+    for (final (a, b) in const [
+      ('hip', 'kneeL'), ('kneeL', 'footL'), ('hip', 'kneeR'), ('kneeR', 'footR'), //
+      ('shoulder', 'elbowL'), ('elbowL', 'handL'), ('shoulder', 'elbowR'), ('elbowR', 'handR'), ('neck', 'hip'),
+    ]) {
+      bone(a, b);
+    }
+
+    // 3D clothing and backpack.
+    final outfit = OutfitBuilder();
+    if (look.shirt != null) buildShirt(outfit, look.shirt!, pose.j, s, StickFigurePainter.shirtColor(look.shirt!));
+    if (look.backpack != null) buildBackpack(outfit, look.backpack!, pose.j, s, time, walk > 0.3);
+    const lx = -0.35, ly = 0.45, lz = 0.82; // light from above, slightly to one side
+    for (final t in outfit.tris) {
+      final a = w(t.a), b = w(t.b), c = w(t.c), ctr = w(t.center);
+      final ux = b.$1 - a.$1, uy = b.$2 - a.$2, uz = b.$3 - a.$3;
+      final vx = c.$1 - a.$1, vy = c.$2 - a.$2, vz = c.$3 - a.$3;
+      var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      final nl = math.sqrt(nx * nx + ny * ny + nz * nz);
+      if (nl < 1e-9) continue;
+      nx /= nl;
+      ny /= nl;
+      nz /= nl;
+      final mx = (a.$1 + b.$1 + c.$1) / 3, my = (a.$2 + b.$2 + c.$2) / 3, mz = (a.$3 + b.$3 + c.$3) / 3;
+      if (nx * (mx - ctr.$1) + ny * (my - ctr.$2) + nz * (mz - ctr.$3) < 0) {
+        nx = -nx;
+        ny = -ny;
+        nz = -nz;
+      }
+      if (nx * (camPos.$1 - mx) + ny * (camPos.$2 - my) + nz * (camPos.$3 - mz) <= 0) continue;
+      final pa = proj(a), pb = proj(b), pc = proj(c);
+      if (pa == null || pb == null || pc == null) continue;
+      final k = 0.62 + 0.38 * math.max(0.0, nx * lx + ny * ly + nz * lz);
+      final col = Color.fromARGB(255, (t.color.r * 255 * k).round().clamp(0, 255), (t.color.g * 255 * k).round().clamp(0, 255), (t.color.b * 255 * k).round().clamp(0, 255));
+      final d = (depthOf(a) + depthOf(b) + depthOf(c)) / 3;
+      items.add((
+        d,
+        () => canvas
+          ..drawPath(
+            Path()
+              ..moveTo(pa.dx, pa.dy)
+              ..lineTo(pb.dx, pb.dy)
+              ..lineTo(pc.dx, pc.dy)
+              ..close(),
+            Paint()
+              ..color = col
+              ..isAntiAlias = true
+              // A hairline stroke in the face colour hides seams between faces.
+              ..style = PaintingStyle.fill
+              ..strokeWidth = 0)
+          ..drawPath(
+              Path()
+                ..moveTo(pa.dx, pa.dy)
+                ..lineTo(pb.dx, pb.dy)
+                ..lineTo(pc.dx, pc.dy)
+                ..close(),
+              Paint()
+                ..color = col
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 0.8
+                ..strokeJoin = StrokeJoin.round)
+      ));
+    }
 
     // Head: a sphere drawn as a disc; the eyes live on its surface.
     final headR = 1.4 * s * pxPerM;
-    canvas.drawCircle(headP, headR, Paint()..color = const Color(0xFF0E0E12));
-    canvas.drawCircle(headP, headR, limbPaint);
-    _drawEyes(canvas, cam, headW, headR, pxPerM, color);
-
     final k = headR / 14;
-    if (look.hat != null) {
-      canvas.save();
-      canvas.translate(headP.dx, headP.dy);
-      canvas.scale(k, k);
-      canvas.translate(0, -22);
-      StickFigurePainter.drawHat(canvas, look.hat, const Offset(0, 22), phase);
-      canvas.restore();
-    }
-    // Headphones slide on during the headphones idle.
-    if (act == IdleActivity.headphones && look.hat != 'hat_headphones') {
-      final hp = _ease((idle.blend - 0.45) / 0.45);
-      if (hp > 0) {
-        canvas.save();
-        canvas.translate(headP.dx, headP.dy - (1 - hp) * headR * 1.4);
-        canvas.scale(k, k);
-        canvas.translate(0, -22);
-        canvas.saveLayer(null, Paint()..color = Colors.white.withValues(alpha: hp));
-        _drawHeadphones(canvas, const Offset(0, 22));
-        canvas.restore();
-        canvas.restore();
+    items.add((
+      depthOf(headW),
+      () {
+        canvas.drawCircle(headP, headR, Paint()..color = const Color(0xFF0E0E12));
+        canvas.drawCircle(headP, headR, limbPaint);
+        _drawEyes(canvas, cam, headW, headR, pxPerM, color);
+        if (look.hat != null) {
+          canvas.save();
+          canvas.translate(headP.dx, headP.dy);
+          canvas.scale(k, k);
+          canvas.translate(0, -22);
+          StickFigurePainter.drawHat(canvas, look.hat, const Offset(0, 22), phase);
+          canvas.restore();
+        }
+        // Headphones slide on during the headphones idle.
+        if (act == IdleActivity.headphones && look.hat != 'hat_headphones') {
+          final hp = _ease((idle.blend - 0.45) / 0.45);
+          if (hp > 0) {
+            canvas.save();
+            canvas.translate(headP.dx, headP.dy - (1 - hp) * headR * 1.4);
+            canvas.scale(k, k);
+            canvas.translate(0, -22);
+            canvas.saveLayer(null, Paint()..color = Colors.white.withValues(alpha: hp));
+            _drawHeadphones(canvas, const Offset(0, 22));
+            canvas.restore();
+            canvas.restore();
+          }
+        }
       }
-      _drawNotes(canvas, headP, headR, idle.activityTime, e);
+    ));
+
+    if (act == IdleActivity.turntable && rise > 0.01) {
+      items.add((depthOf(deckCenter), () => _drawTurntable(canvas, cam, wl, deckTop, idle.activityTime)));
     }
 
-    if (act == IdleActivity.turntable && rise > 0.01 && deckInFront) _drawTurntable(canvas, cam, wl, deckTop, idle.activityTime);
-    if (act == IdleActivity.turntable && e > 0.3) _drawNotes(canvas, headP, headR, idle.activityTime * 0.8, (e - 0.3) / 0.7);
-
-    // Pet trots beside the player.
+    // Pet trots beside the player — sorted by depth like everything else, so
+    // it's hidden behind the player when it's on the far side.
     if (look.pet != null) {
       final petW = wl(-1.2 * s, 4.2 * s, 0);
       final pp = proj(petW);
       if (pp != null) {
         final kp = 0.1 * s * cam.focal / depthOf(petW);
-        canvas.save();
-        canvas.translate(pp.dx, pp.dy);
-        canvas.scale(kp, kp * 0.85);
-        canvas.translate(0, -118);
-        StickFigurePainter.drawPet(canvas, look.pet!, phase, walk > 0.3);
-        canvas.restore();
+        items.add((
+          depthOf(wl(-1.2 * s, 4.2 * s, 1.5 * s)),
+          () {
+            canvas.save();
+            canvas.translate(pp.dx, pp.dy);
+            canvas.scale(kp, kp * 0.85);
+            canvas.translate(0, -118);
+            StickFigurePainter.drawPet(canvas, look.pet!, phase, walk > 0.3);
+            canvas.restore();
+          }
+        ));
       }
     }
+
+    items.sort((a, b) => b.$1.compareTo(a.$1));
+    for (final it in items) {
+      it.$2();
+    }
+
+    // Floating notes always sit on top.
+    if (act == IdleActivity.headphones) _drawNotes(canvas, headP, headR, idle.activityTime, e);
+    if (act == IdleActivity.turntable && e > 0.3) _drawNotes(canvas, headP, headR, idle.activityTime * 0.8, (e - 0.3) / 0.7);
   }
 
   /// Eyes are points on the head sphere. Their visibility and width follow
