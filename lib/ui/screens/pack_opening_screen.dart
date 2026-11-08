@@ -43,7 +43,8 @@ class _PackOpeningScreenState extends State<PackOpeningScreen> with TickerProvid
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
-    final cardW = math.min(170.0, (w - 48) / (widget.cards.length > 3 ? 2.2 : 2));
+    final h = MediaQuery.sizeOf(context).height;
+    final cardW = math.min(w > 900 ? 260.0 : 170.0, math.min((w - 48) / (widget.cards.length > 3 ? (w > 900 ? 5.4 : 2.2) : 2), (h - 220) / (w > 900 ? 1.6 : 3.2)));
     final best = widget.cards.map((c) => c.card.rarity.index).reduce(math.max);
     return Scaffold(
       appBar: AppBar(title: Text(widget.pack.name)),
@@ -77,7 +78,7 @@ class _PackOpeningScreenState extends State<PackOpeningScreen> with TickerProvid
                                   alignment: Alignment.center,
                                   transform: Matrix4.identity()..rotateY(math.pi),
                                   child: Stack(children: [
-                                    SongCardView(song: c.song, rarity: c.rarity, shiny: c.shiny, edition: c.edition, width: cardW),
+                                    SongCardView(song: c.song, rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial, width: cardW),
                                     if (pull.duplicate)
                                       Positioned.fill(
                                         child: Container(

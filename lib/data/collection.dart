@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
@@ -14,6 +15,22 @@ class _I64 {
   void add(int v) {
     if (length == data.length) {
       final n = Int64List(data.length * 2)..setRange(0, length, data);
+      data = n;
+    }
+    data[length++] = v;
+  }
+
+  int operator [](int i) => data[i];
+  void operator []=(int i, int v) => data[i] = v;
+  void removeLast() => length--;
+}
+
+class _U16 {
+  Uint16List data = Uint16List(1024);
+  int length = 0;
+  void add(int v) {
+    if (length == data.length) {
+      final n = Uint16List(data.length * 2)..setRange(0, length, data);
       data = n;
     }
     data[length++] = v;
@@ -50,15 +67,16 @@ const int kFlagListed = 0x20; // escrowed on the market (hidden from trades)
 const int kRarityMask = 0x07;
 const int kEditionShift = 6; // bits 6–7: Edition index
 
-/// Key identifying a card variant: song × rarity × shiny × edition. A
-/// player owns at most one card per variant.
+/// Key identifying a card variant: song × rarity × shiny for standard
+/// cards, or song × edition for edition cards (editions are exclusive of
+/// rarity/shininess). A player owns at most one card per variant.
 int variantKey(int songId, Rarity rarity, bool shiny, Edition edition) =>
-    songId << 6 | rarity.index << 3 | (shiny ? 4 : 0) | edition.index;
+    edition == Edition.standard ? songId << 6 | rarity.index << 3 | (shiny ? 4 : 0) : songId << 6 | edition.index;
 
 /// A lightweight view of one owned card.
 class OwnedCard {
   OwnedCard(this.uid, this.song, this.rarity, this.shiny, this.favorite,
-      this.acquiredAt, this.source, [this.edition = Edition.standard]);
+      this.acquiredAt, this.source, [this.edition = Edition.standard, this.serial = 0]);
   final int uid;
   final Song song;
   final Rarity rarity;
@@ -68,6 +86,9 @@ class OwnedCard {
   final CardSource source;
   final Edition edition;
 
+  /// Serial number (#1–#10 Canvas, #1–#5 Sample); 0 = unnumbered.
+  final int serial;
+
   int get variant => variantKey(song.id, rarity, shiny, edition);
 
   CardPayload toPayload() => song.toPayload(
@@ -75,6 +96,7 @@ class OwnedCard {
       rarity: rarity,
       shiny: shiny,
       edition: edition,
+      serial: serial,
       acquiredAt: acquiredAt.millisecondsSinceEpoch);
 }
 
@@ -166,6 +188,7 @@ class CollectionStore extends ChangeNotifier {
   final _acquired = _I64(); // ms since epoch
   final _flags = _U8(); // rarity | shiny | favourite | listed
   final _source = _U8();
+  final _serial = _U16();
   final Map<int, int> _indexOfUid = {};
   final Map<int, int> _songCounts = {};
   final Map<int, int> _variants = {}; // variant key → uid
@@ -186,7 +209,9 @@ class CollectionStore extends ChangeNotifier {
   bool ownsVariant(int songId, Rarity rarity, bool shiny, Edition edition) =>
       _variants.containsKey(variantKey(songId, rarity, shiny, edition));
 
-  int _variantAt(int i) => _songIds[i] << 6 | (_flags[i] & kRarityMask) << 3 | (_flags[i] & kFlagShiny != 0 ? 4 : 0) | _editionBits(_flags[i]);
+  int _variantAt(int i) => _editionBits(_flags[i]) != 0
+      ? _songIds[i] << 6 | _editionBits(_flags[i])
+      : _songIds[i] << 6 | (_flags[i] & kRarityMask) << 3 | (_flags[i] & kFlagShiny != 0 ? 4 : 0);
   static int _editionBits(int f) => (f >> kEditionShift) & 0x3;
 
   /// Ordering of variants: rarity, then edition, then shiny.
@@ -224,25 +249,30 @@ class CollectionStore extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------- persist
-  static const _magic = 0x54544331; // "TTC1"
-  static const _recordSize = 8 + 8 + 8 + 1 + 1;
+  static const _magicV1 = 0x54544331; // "TTC1"
+  static const _magic = 0x54544332; // "TTC2": + serial (u16)
+  static const _recordSizeV1 = 8 + 8 + 8 + 1 + 1;
+  static const _recordSize = _recordSizeV1 + 2;
 
   Future<void> load() async {
     if (!await _file.exists()) return;
     final bytes = await _file.readAsBytes();
     if (bytes.length < 8) return;
     final bd = ByteData.sublistView(bytes);
-    if (bd.getUint32(0, Endian.little) != _magic) return;
+    final magic = bd.getUint32(0, Endian.little);
+    if (magic != _magic && magic != _magicV1) return;
+    final size = magic == _magic ? _recordSize : _recordSizeV1;
     final count = bd.getUint32(4, Endian.little);
     var o = 8;
-    for (var i = 0; i < count && o + _recordSize <= bytes.length; i++) {
+    for (var i = 0; i < count && o + size <= bytes.length; i++) {
       final uid = bd.getInt64(o, Endian.little);
       final song = bd.getInt64(o + 8, Endian.little);
       final acq = bd.getInt64(o + 16, Endian.little);
       final flags = bytes[o + 24];
       final src = bytes[o + 25];
-      o += _recordSize;
-      _append(uid, song, acq, flags, src);
+      final serial = size == _recordSize ? bd.getUint16(o + 26, Endian.little) : 0;
+      o += size;
+      _append(uid, song, acq, flags, src, serial);
     }
     version++;
   }
@@ -261,6 +291,7 @@ class CollectionStore extends ChangeNotifier {
       bd.setInt64(o + 16, _acquired[i], Endian.little);
       bytes[o + 24] = _flags[i];
       bytes[o + 25] = _source[i];
+      bd.setUint16(o + 26, _serial[i], Endian.little);
       o += _recordSize;
     }
     final tmp = File('${_file.path}.tmp');
@@ -287,13 +318,14 @@ class CollectionStore extends ChangeNotifier {
     return DateTime.now().microsecondsSinceEpoch * 1000 + _uidCounter % 1000;
   }
 
-  void _append(int uid, int songId, int acquired, int flags, int source) {
+  void _append(int uid, int songId, int acquired, int flags, int source, [int serial = 0]) {
     _indexOfUid[uid] = _uids.length;
     _uids.add(uid);
     _songIds.add(songId);
     _acquired.add(acquired);
     _flags.add(flags);
     _source.add(source);
+    _serial.add(serial);
     _songCounts[songId] = (_songCounts[songId] ?? 0) + 1;
     rarityCounts[flags & kRarityMask]++;
     editionCounts[_editionBits(flags)]++;
@@ -303,10 +335,12 @@ class CollectionStore extends ChangeNotifier {
 
   /// Adds a new card and returns its uid.
   int add(int songId, Rarity rarity, bool shiny, CardSource source,
-      {int? uid, DateTime? at, bool notify = true, Edition edition = Edition.standard}) {
+      {int? uid, DateTime? at, bool notify = true, Edition edition = Edition.standard, int serial = 0}) {
     final id = uid != null && !_indexOfUid.containsKey(uid) ? uid : newUid();
+    // Editions are exclusive: never shiny.
+    final sh = shiny && edition == Edition.standard;
     _append(id, songId, (at ?? DateTime.now()).millisecondsSinceEpoch,
-        rarity.index | (shiny ? kFlagShiny : 0) | edition.index << kEditionShift, source.index);
+        rarity.index | (sh ? kFlagShiny : 0) | edition.index << kEditionShift, source.index, serial);
     if (notify) _changed();
     return id;
   }
@@ -327,7 +361,7 @@ class CollectionStore extends ChangeNotifier {
 
   int addPayload(CardPayload p, CardSource source) {
     catalog.ensureFromPayload(p);
-    return add(p.songId, p.rarity, p.shiny, source, uid: p.uid, edition: p.edition);
+    return add(p.songId, p.rarity, p.shiny, source, uid: p.uid, edition: p.edition, serial: p.serial);
   }
 
   /// Removes a card (sold, traded, listed). Returns false if not owned.
@@ -354,6 +388,7 @@ class CollectionStore extends ChangeNotifier {
       _acquired[i] = _acquired[last];
       _flags[i] = _flags[last];
       _source[i] = _source[last];
+      _serial[i] = _serial[last];
       _indexOfUid[_uids[i]] = i;
     }
     _uids.removeLast();
@@ -361,6 +396,7 @@ class CollectionStore extends ChangeNotifier {
     _acquired.removeLast();
     _flags.removeLast();
     _source.removeLast();
+    _serial.removeLast();
     _changed();
     return true;
   }
@@ -382,6 +418,7 @@ class CollectionStore extends ChangeNotifier {
     _acquired.length = 0;
     _flags.length = 0;
     _source.length = 0;
+    _serial.length = 0;
     rarityCounts.fillRange(0, 5, 0);
     shinyCount = 0;
     _changed();
@@ -424,6 +461,7 @@ class CollectionStore extends ChangeNotifier {
       DateTime.fromMillisecondsSinceEpoch(_acquired[i]),
       CardSource.values[_source[i].clamp(0, CardSource.values.length - 1)],
       Edition.fromIndex(_editionBits(f)),
+      _serial[i],
     );
   }
 

@@ -75,7 +75,7 @@ class SpawnMarker extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(color: const Color(0xFF0D0D10), shape: BoxShape.circle, border: Border.all(color: Colors.white70, width: 1)),
-                    child: Icon(spawn.edition == Edition.movie ? Icons.movie_outlined : Icons.graphic_eq, size: 11, color: Colors.white),
+                    child: Icon(spawn.edition == Edition.canvas ? Icons.movie_outlined : Icons.graphic_eq, size: 11, color: Colors.white),
                   ),
                 ),
             ]),

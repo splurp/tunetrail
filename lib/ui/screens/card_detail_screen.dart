@@ -35,7 +35,7 @@ class CardDetailScreen extends StatelessWidget {
         ],
       ),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        Center(child: SongCardView(song: s, rarity: card.rarity, shiny: card.shiny, edition: card.edition, width: w.clamp(200, 340) * 0.85)),
+        Center(child: SongCardView(song: s, rarity: card.rarity, shiny: card.shiny, edition: card.edition, serial: card.serial, width: w.clamp(200, 340) * 0.85)),
         const SizedBox(height: 18),
         Wrap(alignment: WrapAlignment.center, spacing: 10, runSpacing: 10, children: [
           if (card.edition == Edition.sample && SampleLibrary.of(s.id) != null)
@@ -68,7 +68,7 @@ class CardDetailScreen extends StatelessWidget {
           CardSource.trade => 'Trade',
           CardSource.debug => 'Debug generator',
         }),
-        _InfoRow('Edition', card.edition.label),
+        _InfoRow('Edition', card.edition == Edition.standard ? 'Standard' : '${card.edition.label}${card.serial > 0 ? ' · #${card.serial} of ${card.edition.maxSerials}' : ''}'),
         _InfoRow('Variants of this song owned', '${g.collection.copiesOf(s.id)}'),
         if (card.edition == Edition.sample && SampleLibrary.of(s.id) != null) ...[
           _InfoRow('Samples', '${SampleLibrary.of(s.id)!.source.title} — ${SampleLibrary.of(s.id)!.source.artistName} (${SampleLibrary.of(s.id)!.sourceYear})'),
@@ -236,29 +236,27 @@ class SampleSyncTuner extends StatefulWidget {
 class _SampleSyncTunerState extends State<SampleSyncTuner> {
   late SampleInfo _s = SampleLibrary.of(widget.songId)!;
 
-  void _set(SampleInfo n) {
+  void _set(double src, double song) {
     final g = GameScope.read(context);
-    setState(() => _s = n);
-    final v = (n.sourceAt, n.songAt, n.rate);
+    final v = (src, song);
     SampleLibrary.overrides[widget.songId] = v;
     g.profile.sampleOverrides[widget.songId] = v;
     g.profile.changed();
+    setState(() => _s = SampleLibrary.of(widget.songId)!);
   }
 
-  Widget _row(String label, double value, double step, String unit, SampleInfo Function(double) apply) => Row(children: [
-        Expanded(child: Text('$label  ${value.toStringAsFixed(unit == '×' ? 3 : 2)}$unit', style: const TextStyle(fontSize: 13))),
-        for (final d in [-10 * step, -step, step, 10 * step])
+  Widget _row(String label, double value, void Function(double) apply) => Row(children: [
+        Expanded(child: Text('$label  ${value >= 0 ? '+' : ''}${(value * 1000).round()} ms', style: const TextStyle(fontSize: 13))),
+        for (final d in [-0.05, -0.005, 0.005, 0.05])
           SizedBox(
             width: 50,
             child: TextButton(
               style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(44, 32)),
-              onPressed: () => _set(apply(value + d)),
-              child: FittedBox(child: Text(d > 0 ? '+${_fmt(d)}' : _fmt(d), maxLines: 1, style: const TextStyle(fontSize: 12))),
+              onPressed: () => apply(value + d),
+              child: FittedBox(child: Text('${d > 0 ? '+' : ''}${(d * 1000).round()}', maxLines: 1, style: const TextStyle(fontSize: 12))),
             ),
           ),
       ]);
-
-  static String _fmt(double d) => d.abs() >= 1 ? d.toStringAsFixed(0) : d.toStringAsFixed(d.abs() < 0.01 ? 3 : 2);
 
   @override
   Widget build(BuildContext context) {
@@ -269,10 +267,10 @@ class _SampleSyncTunerState extends State<SampleSyncTuner> {
       decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(14), border: Border.all(color: kOutline)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Sample sync tuner (debug)', style: TextStyle(fontWeight: FontWeight.w700)),
+        const Text('Shift either preview if the voices don\'t line up on your device.', style: TextStyle(fontSize: 12, color: kTextTertiary)),
         const SizedBox(height: 6),
-        _row('Original passage at', _s.sourceAt, 0.01, 's', (v) => _s.copyWith(sourceAt: v.clamp(0.0, 29.0))),
-        _row('Song passage at', _s.songAt, 0.01, 's', (v) => _s.copyWith(songAt: v.clamp(0.0, 29.0))),
-        _row('Speed', _s.rate, 0.005, '×', (v) => _s.copyWith(rate: v.clamp(0.5, 2.0))),
+        _row('Original', _s.sourceShift, (v) => _set(v.clamp(-2.0, 2.0), _s.songShift)),
+        _row('Song', _s.songShift, (v) => _set(_s.sourceShift, v.clamp(-2.0, 2.0))),
         Row(children: [
           TextButton.icon(onPressed: () => g.samples.play(_s), icon: const Icon(Icons.play_arrow), label: const Text('Audition')),
           const Spacer(),

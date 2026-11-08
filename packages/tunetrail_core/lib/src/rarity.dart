@@ -32,25 +32,36 @@ enum Rarity {
   static Rarity fromIndex(int i) => Rarity.values[i.clamp(0, 4)];
 }
 
-/// Card editions: alternate presentations of a song. Each edition (with
-/// rarity and shininess) is a separate variant — a player owns at most one
-/// copy of each variant.
+/// Card editions: alternate presentations of a song. An edition card is
+/// *only* that edition — editions don't combine with shininess (and are
+/// shown without a rarity). A player owns at most one card per variant.
 enum Edition {
-  standard('Standard', 1.0),
+  standard('Standard', 1.0, 0),
 
-  /// Full-card music-video clip with the details overlaid.
-  movie('Movie', 2.0),
+  /// Full-card music-video clip (or full-bleed cover art) with the details
+  /// overlaid. Serialized #1–#10 per song.
+  canvas('Canvas', 6.0, 10),
 
   /// Waveform breakdown aligned with the song it samples; plays the sample
-  /// first, then fades into the song.
-  sample('Sample', 2.5);
+  /// first, then fades into the song. Serialized #1–#5 per song.
+  sample('Sample', 12.0, 5);
 
-  const Edition(this.label, this.valueMultiplier);
+  const Edition(this.label, this.valueMultiplier, this.maxSerials);
   final String label;
   final double valueMultiplier;
 
+  /// How many numbered copies can ever exist per song (0 = unlimited).
+  final int maxSerials;
+  bool get serialized => maxSerials > 0;
+
   static Edition fromIndex(int i) => Edition.values[i.clamp(0, Edition.values.length - 1)];
 }
+
+/// Chance a wild spawn is a Canvas edition.
+const int kCanvasOdds = 500;
+
+/// Chance a wild spawn is a Sample edition (of a song with sample data).
+const int kSampleOdds = 5000;
 
 /// Chance (1 in N) that any card roll becomes a shiny variant.
 const int kShinyOdds = 128;

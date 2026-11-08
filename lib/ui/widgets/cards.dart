@@ -159,7 +159,9 @@ class SongCardView extends StatelessWidget {
     this.footer,
     this.edition = Edition.standard,
     this.live = true,
+    this.serial = 0,
   });
+  final int serial;
   final Song song;
   final Rarity rarity;
   final bool shiny;
@@ -172,9 +174,13 @@ class SongCardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = rarityColor(rarity);
-    final glow = rarity.index >= Rarity.epic.index;
-    if (edition == Edition.movie) return Glint(enabled: shiny, child: _movie(context, c, glow));
+    // Editions are exclusive of rarity and shininess: they use their own
+    // colour and label.
+    final isEd = edition != Edition.standard;
+    final c = isEd ? editionColor(edition) : rarityColor(rarity);
+    final glow = isEd || rarity.index >= Rarity.epic.index;
+    final shiny = this.shiny && !isEd;
+    if (edition == Edition.canvas) return _canvas(context, c);
     final sample = edition == Edition.sample ? SampleLibrary.of(song.id) : null;
     final card = Container(
       width: width,
@@ -192,15 +198,20 @@ class SongCardView extends StatelessWidget {
         AspectRatio(
           aspectRatio: 1,
           child: sample != null
-              ? ClipRRect(borderRadius: BorderRadius.circular(width * 0.045), child: SampleBreakdownPanel(info: sample))
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(width * 0.045),
+                  child: Stack(children: [
+                    Positioned.fill(child: SampleBreakdownPanel(info: sample)),
+                    if (serial > 0) Positioned(top: width * 0.02, right: width * 0.02, child: SerialBadge(serial, edition, size: width * 0.04)),
+                  ]),
+                )
               : LayoutBuilder(
                   builder: (context, box) => Art(song.cover(500), size: box.maxWidth, radius: width * 0.045, decodeSize: 500),
                 ),
         ),
         SizedBox(height: width * 0.05),
         Row(children: [
-          Expanded(child: RarityLabel(rarity, shiny: shiny, fontSize: width * 0.048)),
-          if (edition != Edition.standard) ...[EditionBadge(edition, size: width * 0.034), SizedBox(width: width * 0.02)],
+          Expanded(child: VariantLabel(rarity: rarity, shiny: shiny, edition: edition, fontSize: width * 0.048)),
           Text(genreName(song.genreId).toUpperCase(), style: TextStyle(color: kTextTertiary, fontSize: width * 0.038, letterSpacing: 0.8)),
         ]),
         SizedBox(height: width * 0.02),
@@ -226,8 +237,10 @@ class SongCardView extends StatelessWidget {
     return Glint(enabled: shiny, child: card);
   }
 
-  /// Movie edition: the music video fills the card; details float on top.
-  Widget _movie(BuildContext context, Color c, bool glow) {
+  /// Canvas edition: the music video (or, without one, the cover art)
+  /// fills the whole card; details float on top.
+  Widget _canvas(BuildContext context, Color c) {
+    const glow = true;
     final h = width * 1.48;
     return Container(
       width: width,
@@ -243,7 +256,7 @@ class SongCardView extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(fit: StackFit.expand, children: [
-        MovieBackdrop(song: song, live: live),
+        CanvasBackdrop(song: song, live: live),
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -259,8 +272,8 @@ class SongCardView extends StatelessWidget {
           right: width * 0.05,
           top: width * 0.05,
           child: Row(children: [
-            Expanded(child: RarityLabel(rarity, shiny: shiny, fontSize: width * 0.048)),
-            EditionBadge(Edition.movie, size: width * 0.034),
+            Expanded(child: VariantLabel(rarity: rarity, shiny: false, edition: Edition.canvas, fontSize: width * 0.048)),
+            if (serial > 0) SerialBadge(serial, Edition.canvas, size: width * 0.04),
           ]),
         ),
         Positioned(
@@ -299,11 +312,13 @@ class CardTile extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.edition = Edition.standard,
+    this.serial = 0,
   });
   final Song song;
   final Rarity rarity;
   final bool shiny;
   final Edition edition;
+  final int serial;
   final bool favorite;
   final bool selected;
   final String? badge;
@@ -312,7 +327,8 @@ class CardTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = rarityColor(rarity);
+    final c = edition != Edition.standard ? editionColor(edition) : rarityColor(rarity);
+    final shiny = this.shiny && edition == Edition.standard;
     Widget tile = Container(
       decoration: BoxDecoration(
         color: kSurface,
@@ -326,6 +342,7 @@ class CardTile extends StatelessWidget {
             builder: (context, box) => Stack(children: [
               Art(song.cover(250), size: box.maxWidth, radius: 0, decodeSize: 160),
               if (edition != Edition.standard) Positioned(left: 5, bottom: 5, child: EditionBadge(edition, size: 8)),
+              if (serial > 0) Positioned(right: 5, top: 5, child: SerialBadge(serial, edition, size: 9)),
               if (favorite) const Positioned(top: 5, right: 5, child: Icon(Icons.favorite, size: 14, color: Colors.white)),
               if (badge != null)
                 Positioned(
@@ -348,7 +365,7 @@ class CardTile extends StatelessWidget {
             Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kTextPrimary)),
             Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: kTextSecondary)),
             const SizedBox(height: 2),
-            RarityLabel(rarity, shiny: shiny, fontSize: 10),
+            VariantLabel(rarity: rarity, shiny: shiny, edition: edition, fontSize: 10),
           ]),
         ),
       ]),
@@ -361,8 +378,9 @@ class CardTile extends StatelessWidget {
 /// Compact row for list layout.
 class CardRow extends StatelessWidget {
   const CardRow(
-      {super.key, required this.song, required this.rarity, required this.shiny, this.trailing, this.onTap, this.subtitle, this.selected = false, this.edition = Edition.standard});
+      {super.key, required this.song, required this.rarity, required this.shiny, this.trailing, this.onTap, this.subtitle, this.selected = false, this.edition = Edition.standard, this.serial = 0});
   final Edition edition;
+  final int serial;
   final Song song;
   final Rarity rarity;
   final bool shiny;
@@ -379,7 +397,7 @@ class CardRow extends StatelessWidget {
         color: selected ? kAccentDim : null,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         child: Row(children: [
-          Glint(enabled: shiny, strength: 0.4, child: Art(song.cover(56), size: 44, radius: 8)),
+          Glint(enabled: shiny && edition == Edition.standard, strength: 0.4, child: Art(song.cover(56), size: 44, radius: 8)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -390,10 +408,9 @@ class CardRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Row(mainAxisSize: MainAxisSize.min, children: [
-            RarityDot(rarity, size: 7),
+            if (edition == Edition.standard) RarityDot(rarity, size: 7) else Icon(editionIcon(edition), size: 12, color: editionColor(edition)),
             const SizedBox(width: 6),
-            SizedBox(width: 84, child: RarityLabel(rarity, shiny: shiny, fontSize: 11)),
-            if (edition != Edition.standard) EditionBadge(edition, size: 8),
+            SizedBox(width: 84, child: VariantLabel(rarity: rarity, shiny: shiny, edition: edition, serial: serial, fontSize: 11)),
           ]),
           ?trailing,
         ]),

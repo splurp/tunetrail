@@ -303,27 +303,51 @@ class AudioService extends ChangeNotifier {
 }
 
 /// Beat analysis on mono samples at [fs] Hz (runs in an isolate).
+///
+/// Onsets are the rises in log energy of three bands — kick/bass
+/// (≈150 Hz low-pass), hi-hats/snare (≈1.5 kHz high-pass) and the full
+/// signal — with a local-mean threshold so only sharp hits count. Bass
+/// lines are often syncopated, so the high band anchors the grid: on test
+/// tracks this lands within ~20 ms of the drum hits, where a bass-only
+/// detector could sit a 16th note off.
 BeatInfo? analyzeBeats((Float32List, int, double) args) {
   final (x, fs, hint) = args;
   if (x.length < fs * 4) return null;
-  const hop = 0.01; // 10 ms frames
+  const hop = 0.005; // 5 ms frames
   final w = (fs * hop).round();
   final n = x.length ~/ w;
-  final env = Float64List(n);
+  final aLo = math.exp(-2 * math.pi * 150 / fs);
+  final aHi = math.exp(-2 * math.pi * 1500 / fs);
+  var lo = 0.0, hiLp = 0.0;
+  final eFull = Float64List(n), eLo = Float64List(n), eHi = Float64List(n);
   for (var i = 0; i < n; i++) {
-    var s = 0.0;
+    var s = 0.0, sl = 0.0, sh = 0.0;
     for (var k = i * w; k < (i + 1) * w; k++) {
-      s += x[k] * x[k];
+      final v = x[k];
+      lo = aLo * lo + (1 - aLo) * v;
+      hiLp = aHi * hiLp + (1 - aHi) * v;
+      final hi = v - hiLp;
+      s += v * v;
+      sl += lo * lo;
+      sh += hi * hi;
     }
-    env[i] = math.log(1e-6 + math.sqrt(s / w));
+    eFull[i] = math.log(1e-5 + math.sqrt(s / w));
+    eLo[i] = math.log(1e-5 + math.sqrt(sl / w));
+    eHi[i] = math.log(1e-5 + math.sqrt(sh / w));
   }
-  // Onset strength: positive change in log energy, lightly smoothed.
-  final on = Float64List(n);
+  final raw = Float64List(n);
   for (var i = 1; i < n; i++) {
-    on[i] = math.max(0, env[i] - env[i - 1]);
+    raw[i] = math.max(0, eLo[i] - eLo[i - 1]) + math.max(0, eHi[i] - eHi[i - 1]) + 0.5 * math.max(0, eFull[i] - eFull[i - 1]);
   }
-  for (var i = n - 1; i > 1; i--) {
-    on[i] = (on[i] + on[i - 1] + on[i - 2]) / 3;
+  // Keep only peaks above the local (100 ms) mean.
+  final k = (0.1 / hop).round();
+  final on = Float64List(n);
+  var acc = 0.0;
+  for (var i = 0; i < n; i++) {
+    acc += raw[i];
+    if (i >= k) acc -= raw[i - k];
+    final c = i - k ~/ 2;
+    if (c >= 0) on[c] = math.max(0, raw[c] - acc / k);
   }
   double bpm = hint;
   var estimated = false;
@@ -333,7 +357,7 @@ BeatInfo? analyzeBeats((Float32List, int, double) args) {
     for (var b = 70.0; b <= 180; b += 0.5) {
       final lag = 60 / b / hop;
       var s = 0.0;
-      for (var i = 0; i + lag.ceil() < n; i++) {
+      for (var i = 0; i + lag.ceil() < n; i += 2) {
         final j = i + lag;
         final f = j - j.floor();
         s += on[i] * (on[j.floor()] * (1 - f) + on[math.min(n - 1, j.ceil())] * f);
@@ -347,10 +371,10 @@ BeatInfo? analyzeBeats((Float32List, int, double) args) {
     estimated = true;
   }
   if (bpm <= 0) return null;
-  // Phase: where a beat grid at this tempo best lines up with onsets.
+  // Phase: where a beat grid at this tempo best lines up with the onsets.
   final period = 60 / bpm / hop;
   var bestPhase = 0.0, bestScore = -1.0;
-  for (var p = 0.0; p < period; p += 0.5) {
+  for (var p = 0.0; p < period; p += 0.25) {
     var s = 0.0;
     for (var t = p; t < n - 1; t += period) {
       final i = t.floor();
@@ -362,5 +386,6 @@ BeatInfo? analyzeBeats((Float32List, int, double) args) {
       bestPhase = p;
     }
   }
-  return BeatInfo(bpm, bestPhase * hop, estimated: estimated);
+  // Energy rises peak slightly before the perceived hit (~15 ms measured).
+  return BeatInfo(bpm, (bestPhase * hop + 0.015) % (60 / bpm), estimated: estimated);
 }

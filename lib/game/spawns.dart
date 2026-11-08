@@ -26,16 +26,12 @@ class Spawn {
   final DateTime expiresAt;
   final Edition edition;
 
+  /// Editions are exclusive: an edition spawn is never shiny.
   Spawn withEdition(Edition e) =>
-      Spawn(id: id, point: point, song: song, rarity: rarity, shiny: shiny, expiresAt: expires, edition: e);
+      Spawn(id: id, point: point, song: song, rarity: rarity, shiny: e == Edition.standard && shiny, expiresAt: expires, edition: e);
   DateTime get expires => expiresAt;
 }
 
-/// Chance a wild spawn is a Movie edition (kept only if a video exists).
-const double kMovieSpawnChance = 0.035;
-
-/// Chance a spawn of a song with known sample data is a Sample edition.
-const double kSampleSpawnChance = 0.3;
 
 /// Deterministic world spawns.
 ///
@@ -104,19 +100,25 @@ class SpawnEngine {
       final genre = catalog.pickGenre(rng, bias: weights);
       final song = catalog.maybeFavorite(rng, rolled, bias: weights) ?? catalog.pickSong(rng, genreId: genre, rarity: rolled);
       if (song == null || exclude.contains(id)) continue;
-      final rarity = catalog.rarityOf(song);
-      final er = rng.nextDouble();
-      final edition = SampleLibrary.has(song.id) && er < kSampleSpawnChance
-          ? Edition.sample
-          : er > 1 - kMovieSpawnChance
-          ? Edition.movie
-          : Edition.standard;
+      // Editions: Canvas 1 in 500 (any song); Sample 1 in 5000 (a song from
+      // the sample library). Editions exclude shininess.
+      final er = rng.nextInt(kSampleOdds * kCanvasOdds);
+      var picked = song;
+      var edition = Edition.standard;
+      final library = SampleLibrary.all.toList();
+      if (er % kSampleOdds == 0 && library.isNotEmpty) {
+        picked = library[(er ~/ kSampleOdds) % library.length].song;
+        edition = Edition.sample;
+      } else if (er % kCanvasOdds == 1) {
+        edition = Edition.canvas;
+      }
+      final rarity = catalog.rarityOf(catalog.songs[picked.id] ?? picked);
       out.add(Spawn(
         id: id,
         point: LatLng(lat, lng),
-        song: song,
+        song: picked,
         rarity: rarity,
-        shiny: shiny,
+        shiny: shiny && edition == Edition.standard,
         expiresAt: expires,
         edition: edition,
       ));

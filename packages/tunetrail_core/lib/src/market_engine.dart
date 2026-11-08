@@ -22,6 +22,26 @@ class MarketEngine {
   final Map<String, Listing> listings = {};
   final Map<String, TradeOffer> offers = {};
   final Map<String, Showcase> showcases = {};
+
+  /// Serial numbers handed out per "songId:edition" (the next number is
+  /// count + 1). Editions have a hard cap per song.
+  final Map<String, int> serials = {};
+
+  /// Claims the next serial number of [edition] for [songId], or null once
+  /// all of them have been claimed.
+  int? claimSerial(int songId, Edition edition) {
+    if (!edition.serialized) return null;
+    final key = '$songId:${edition.index}';
+    final n = serials[key] ?? 0;
+    if (n >= edition.maxSerials) return null;
+    serials[key] = n + 1;
+    onChanged?.call();
+    return n + 1;
+  }
+
+  /// How many serials of [edition] for [songId] are still unclaimed.
+  int serialsLeft(int songId, Edition edition) =>
+      edition.serialized ? edition.maxSerials - (serials['$songId:${edition.index}'] ?? 0) : 0;
   final Map<String, List<InboxItem>> inboxes = {};
   final Map<String, Set<String>> showcaseLikes = {};
   int _counter = 0;
@@ -178,6 +198,7 @@ class MarketEngine {
     if (q.shinyOnly && !c.shiny) return false;
     if (q.normalOnly && c.shiny) return false;
     if (q.editions.isNotEmpty && !q.editions.contains(c.edition.index)) return false;
+    if (q.serials.isNotEmpty && !q.serials.contains(c.serial)) return false;
     if (q.genres.isNotEmpty && !q.genres.contains(c.genreId)) return false;
     if (text.isNotEmpty &&
         !c.title.toLowerCase().contains(text) &&
@@ -352,9 +373,13 @@ class MarketEngine {
           for (final e in showcaseLikes.entries) e.key: e.value.toList()
         },
         'counter': _counter,
+        'serials': serials,
       };
 
   void loadJson(Map<String, dynamic> j) {
+    serials
+      ..clear()
+      ..addAll({for (final e in (j['serials'] as Map<String, dynamic>? ?? const {}).entries) e.key: (e.value as num).toInt()});
     players
       ..clear()
       ..addEntries([

@@ -28,6 +28,10 @@ abstract class MarketBackend {
   Future<List<Showcase>> showcases();
   Future<Showcase> setShowcase(String title, List<CardPayload> cards, List<ShowcasePlaylist> playlists, {List<FavoriteArtist> favoriteArtists = const []});
   Future<int> likeShowcase(String ownerId);
+
+  /// Global serial numbers for Canvas/Sample editions.
+  Future<int?> claimSerial(int songId, Edition edition);
+  Future<int> serialsLeft(int songId, Edition edition);
   void dispose() {}
 }
 
@@ -200,6 +204,26 @@ class LocalMarket extends MarketBackend {
   @override
   Future<List<InboxItem>> claimInbox() async => engine.claimInbox(playerId);
   @override
+  Future<int?> claimSerial(int songId, Edition edition) async {
+    _seedSerials(songId, edition);
+    return engine.claimSerial(songId, edition);
+  }
+
+  @override
+  Future<int> serialsLeft(int songId, Edition edition) async {
+    _seedSerials(songId, edition);
+    return engine.serialsLeft(songId, edition);
+  }
+
+  /// Offline: pretend the NPC world has already found a few copies, so
+  /// serials look like they come from a shared pool.
+  void _seedSerials(int songId, Edition edition) {
+    final key = '$songId:${edition.index}';
+    if (engine.serials.containsKey(key)) return;
+    final h = (songId * 2654435761 + edition.index * 97) & 0x7fffffff;
+    engine.serials[key] = h % (edition.maxSerials ~/ 2 + 1);
+  }
+  @override
   Future<List<Showcase>> showcases() async => engine.browseShowcases();
   @override
   Future<Showcase> setShowcase(String title, List<CardPayload> cards, List<ShowcasePlaylist> playlists, {List<FavoriteArtist> favoriteArtists = const []}) async =>
@@ -295,6 +319,12 @@ class RemoteMarket extends MarketBackend {
   Future<void> declineOffer(String offerId) async => _send('POST', '/offers/$offerId/decline');
   @override
   Future<List<InboxItem>> claimInbox() async => _list(await _send('GET', '/inbox'), InboxItem.fromJson);
+  @override
+  Future<int?> claimSerial(int songId, Edition edition) async =>
+      ((await _send('POST', '/serials/$songId/${edition.index}/claim') as Map)['serial'] as num?)?.toInt();
+  @override
+  Future<int> serialsLeft(int songId, Edition edition) async =>
+      ((await _send('GET', '/serials/$songId/${edition.index}') as Map)['left'] as num).toInt();
   @override
   Future<List<Showcase>> showcases() async => _list(await _send('GET', '/showcases'), Showcase.fromJson);
   @override

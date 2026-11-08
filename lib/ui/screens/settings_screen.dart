@@ -52,6 +52,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             p.changed();
           },
         ),
+        ListTile(
+          title: Text('Catch ring timing  ${p.beatOffsetMs >= 0 ? '+' : ''}${p.beatOffsetMs} ms'),
+          subtitle: Slider(
+            min: -150,
+            max: 150,
+            divisions: 60,
+            value: p.beatOffsetMs.toDouble().clamp(-150, 150),
+            label: '${p.beatOffsetMs} ms',
+            onChanged: (v) {
+              p.beatOffsetMs = v.round();
+              p.changed();
+            },
+          ),
+          trailing: const Tooltip(message: 'If the ring lands before the beat you hear, move this right (later).', child: Icon(Icons.info_outline, size: 18)),
+        ),
         const _Header('Graphics'),
         SwitchListTile(
           title: const Text('Reduce map effects'),

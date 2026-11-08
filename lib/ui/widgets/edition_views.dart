@@ -10,10 +10,67 @@ import '../../data/samples.dart';
 import '../../game/movie_service.dart';
 import '../../game/sample_player.dart';
 import '../app.dart';
+import 'cards.dart' show RarityLabel;
 import 'net_image.dart';
 import 'ui_kit.dart';
 
-/// Small "MOVIE" / "SAMPLE" tag.
+Color editionColor(Edition e) => switch (e) {
+      Edition.canvas => const Color(0xFFFF8A65),
+      Edition.sample => const Color(0xFF4DD0E1),
+      Edition.standard => kTextSecondary,
+    };
+
+IconData editionIcon(Edition e) => switch (e) {
+      Edition.canvas => Icons.movie_outlined,
+      Edition.sample => Icons.graphic_eq,
+      Edition.standard => Icons.music_note,
+    };
+
+/// The card's variant name: an edition's name ("Canvas", "Sample") or, for
+/// standard cards, the rarity (with the shiny glint).
+class VariantLabel extends StatelessWidget {
+  const VariantLabel({super.key, required this.rarity, required this.shiny, required this.edition, this.serial = 0, this.fontSize = 12});
+  final Rarity rarity;
+  final bool shiny;
+  final Edition edition;
+  final int serial;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    if (edition == Edition.standard) return RarityLabel(rarity, shiny: shiny, fontSize: fontSize);
+    return Text(serial > 0 ? '${edition.label} #$serial' : edition.label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: editionColor(edition), fontWeight: FontWeight.w700, fontSize: fontSize, letterSpacing: 0.3));
+  }
+}
+
+/// "#3/10" serial number chip for edition cards.
+class SerialBadge extends StatelessWidget {
+  const SerialBadge(this.serial, this.edition, {super.key, this.size = 10});
+  final int serial;
+  final Edition edition;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: EdgeInsets.symmetric(horizontal: size * 0.55, vertical: size * 0.2),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(size),
+          border: Border.all(color: editionColor(edition).withValues(alpha: 0.9)),
+        ),
+        child: Text.rich(
+          TextSpan(children: [
+            TextSpan(text: '#$serial', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: size)),
+            TextSpan(text: '/${edition.maxSerials}', style: TextStyle(color: Colors.white60, fontSize: size * 0.8)),
+          ]),
+        ),
+      );
+}
+
+/// Small "CANVAS" / "SAMPLE" tag.
 class EditionBadge extends StatelessWidget {
   const EditionBadge(this.edition, {super.key, this.size = 10});
   final Edition edition;
@@ -22,11 +79,7 @@ class EditionBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (edition == Edition.standard) return const SizedBox.shrink();
-    final (icon, color) = switch (edition) {
-      Edition.movie => (Icons.movie_outlined, const Color(0xFFFF8A65)),
-      Edition.sample => (Icons.graphic_eq, const Color(0xFF4DD0E1)),
-      Edition.standard => (Icons.music_note, kTextSecondary),
-    };
+    final icon = editionIcon(edition), color = editionColor(edition);
     return Container(
       padding: EdgeInsets.symmetric(horizontal: size * 0.5, vertical: size * 0.15),
       decoration: BoxDecoration(
@@ -43,18 +96,19 @@ class EditionBadge extends StatelessWidget {
   }
 }
 
-// ------------------------------------------------------------------ movie
-/// Full-bleed music-video backdrop for Movie-edition cards. Plays the
-/// (muted, looping) clip when [live]; otherwise shows a still.
-class MovieBackdrop extends StatefulWidget {
-  const MovieBackdrop({super.key, required this.song, this.live = true});
+// ----------------------------------------------------------------- canvas
+/// Full-bleed backdrop for Canvas-edition cards: the (muted, looping)
+/// music-video clip when one exists and [live], otherwise a still or the
+/// song's cover art filling the card.
+class CanvasBackdrop extends StatefulWidget {
+  const CanvasBackdrop({super.key, required this.song, this.live = true});
   final Song song;
   final bool live;
   @override
-  State<MovieBackdrop> createState() => _MovieBackdropState();
+  State<CanvasBackdrop> createState() => _CanvasBackdropState();
 }
 
-class _MovieBackdropState extends State<MovieBackdrop> {
+class _CanvasBackdropState extends State<CanvasBackdrop> {
   VideoPlayerController? _video;
   MovieClip? _clip;
   bool _failed = false;
@@ -151,7 +205,7 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
     final audio = GameScope.read(context).audio;
     Future<Float32List?> get(int id) async => _cache[id] ??= (await audio.waveform(id)) ?? Float32List(0);
     try {
-      final a = await get(widget.info.source.id);
+      final a = widget.info.decodedSourceEnvelope() ?? await get(widget.info.source.id);
       final b = await get(widget.info.song.id);
       if (mounted) {
         setState(() {
@@ -217,7 +271,7 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
                   padding: EdgeInsets.symmetric(horizontal: w * 0.02, vertical: w * 0.005),
                   decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(w * 0.03)),
                   child: Text(
-                    stage ?? (pb.loading && mine ? 'Loading…' : _transformLabel(s)),
+                    stage ?? (pb.loading && mine ? 'Loading…' : (pb.error != null && pb.songId == s.song.id ? pb.error! : 'Sampled ${s.sourceYear}')),
                     style: TextStyle(fontSize: w * 0.034, color: Colors.white, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -228,12 +282,6 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
       },
     );
   }
-
-  static String _transformLabel(SampleInfo s) => switch (s.transform) {
-        SampleTransform.none => 'Sampled',
-        SampleTransform.speed => s.rate > 1 ? 'Sped up' : 'Slowed down',
-        SampleTransform.chopped => 'Chopped',
-      };
 }
 
 class _WavePainter extends CustomPainter {
@@ -244,14 +292,14 @@ class _WavePainter extends CustomPainter {
   final double? playhead;
   final Color color;
 
-  // The panel's x axis is modern-song time; [span] seconds are shown,
-  // centred on where the sample comes in.
-  static const span = 14.0;
+  // Shared x axis: source-preview time; the song row is shifted so the
+  // sampled audio lines up vertically (Tracklib-style).
+  static const span = 17.0;
+  double get _x0 => info.alignSource - span * 0.62;
+  double get _songOffset => info.alignSong - info.alignSource;
 
-  double get _x0 => info.songAt - span * 0.4;
-
-  /// Track time → modern-song time (the shared axis).
-  double _toAxis(double t) => isSource ? info.songAt + (t - info.sourceAt) / info.rate : t;
+  /// Track time → axis time.
+  double _toAxis(double t) => isSource ? t : t - _songOffset;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -259,10 +307,9 @@ class _WavePainter extends CustomPainter {
     final mid = size.height * (isSource ? 0.62 : 0.38);
     final amp = size.height * 0.3;
     double xOf(double axisT) => (axisT - _x0) / span * size.width;
-    // Highlight the sampled passage.
-    final beat = 60 / (info.bpm > 0 ? info.bpm : 95);
-    final passA = xOf(info.songAt), passB = xOf(info.songAt + 8 * beat);
-    canvas.drawRect(Rect.fromLTRB(passA, 0, passB, size.height), Paint()..color = color.withValues(alpha: 0.08));
+    // Mark where the sampled audio sits.
+    final passA = xOf(info.alignSource), passB = xOf(info.alignSource + 1.45);
+    canvas.drawRect(Rect.fromLTRB(passA, 0, passB, size.height), Paint()..color = color.withValues(alpha: 0.10));
     canvas.drawLine(Offset(passA, 0), Offset(passA, size.height), Paint()..color = color.withValues(alpha: 0.5));
     if (w != null && w.isNotEmpty) {
       const perSec = 40.0;
@@ -270,12 +317,11 @@ class _WavePainter extends CustomPainter {
       final bars = (size.width / 2.5).floor();
       for (var i = 0; i < bars; i++) {
         final axisT = _x0 + i / bars * span;
-        final t = isSource ? info.sourceAt + (axisT - info.songAt) * info.rate : axisT;
+        final t = isSource ? axisT : axisT + _songOffset;
         final k = (t * perSec).round();
         if (k < 0 || k >= w.length) continue;
         final h = math.max(1.0, w[k] * amp);
-        final x = i / bars * size.width;
-        path.addRect(Rect.fromLTWH(x, mid - h, 1.6, h * 2));
+        path.addRect(Rect.fromLTWH(i / bars * size.width, mid - h, 1.6, h * 2));
       }
       canvas.drawPath(path, Paint()..color = color.withValues(alpha: 0.85));
     }
@@ -283,9 +329,12 @@ class _WavePainter extends CustomPainter {
     if (p != null) {
       final x = xOf(_toAxis(p));
       if (x >= 0 && x <= size.width) {
-        canvas.drawLine(Offset(x, 0), Offset(x, size.height), Paint()
-          ..color = Colors.white
-          ..strokeWidth = 2);
+        canvas.drawLine(
+            Offset(x, 0),
+            Offset(x, size.height),
+            Paint()
+              ..color = Colors.white
+              ..strokeWidth = 2);
       }
     }
   }

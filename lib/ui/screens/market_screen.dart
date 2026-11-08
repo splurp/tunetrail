@@ -92,6 +92,7 @@ class _BrowseState extends State<_Browse> {
         tradesOnly: _q.tradesOnly,
         normalOnly: _q.normalOnly,
         editions: _q.editions,
+        serials: _q.serials,
         genres: _q.genres,
         sort: _q.sort,
         offset: _items.length,
@@ -117,13 +118,14 @@ class _BrowseState extends State<_Browse> {
     _reload();
   }
 
-  ListingQuery _copy({String? text, Set<int>? rarities, bool? shiny, bool? normal, Set<int>? editions, Set<int>? genres, bool? trades, ListingSort? sort}) =>
+  ListingQuery _copy({String? text, Set<int>? rarities, bool? shiny, bool? normal, Set<int>? editions, Set<int>? serials, Set<int>? genres, bool? trades, ListingSort? sort}) =>
       ListingQuery(
         text: text ?? _q.text,
         rarities: rarities ?? _q.rarities,
         shinyOnly: shiny ?? _q.shinyOnly,
         normalOnly: normal ?? _q.normalOnly,
         editions: editions ?? _q.editions,
+        serials: serials ?? _q.serials,
         genres: genres ?? _q.genres,
         tradesOnly: trades ?? _q.tradesOnly,
         sort: sort ?? _q.sort,
@@ -148,12 +150,13 @@ class _BrowseState extends State<_Browse> {
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
         child: FilterDropdown(
-          activeCount: (_q.rarities.isEmpty ? 0 : 1) + (_q.shinyOnly || _q.normalOnly || _q.editions.isNotEmpty ? 1 : 0) + (_q.genres.isEmpty ? 0 : 1) + (_q.tradesOnly ? 1 : 0),
+          activeCount: (_q.rarities.isEmpty ? 0 : 1) + (_q.shinyOnly || _q.normalOnly || _q.editions.isNotEmpty ? 1 : 0) + (_q.serials.isEmpty ? 0 : 1) + (_q.genres.isEmpty ? 0 : 1) + (_q.tradesOnly ? 1 : 0),
           summary: [
             if (_q.rarities.isNotEmpty) [for (final r in Rarity.values) if (_q.rarities.contains(r.index)) r.label].join(', '),
             if (_q.shinyOnly) 'Shiny',
             if (_q.normalOnly) 'Not shiny',
             if (_q.editions.isNotEmpty) [for (final e in Edition.values) if (_q.editions.contains(e.index)) e.label].join(', '),
+            if (_q.serials.isNotEmpty) 'Serial ${(_q.serials.toList()..sort()).map((n) => '#$n').join(' ')}',
             if (_q.genres.isNotEmpty) _q.genres.length == 1 ? genreName(_q.genres.first) : '${_q.genres.length} genres',
             if (_q.tradesOnly) 'Trades',
           ].join(' · '),
@@ -190,6 +193,23 @@ class _BrowseState extends State<_Browse> {
                       final s = {..._q.editions};
                       s.contains(e.index) ? s.remove(e.index) : s.add(e.index);
                       _set(_copy(editions: s));
+                    },
+                  ),
+              ],
+            ),
+            FilterSection(
+              title: 'Serial number',
+              onClear: () => _set(_copy(serials: {})),
+              options: [
+                for (var n = 1; n <= Edition.canvas.maxSerials; n++)
+                  FilterOption(
+                    label: '#$n',
+                    selected: _q.serials.contains(n),
+                    onTap: () {
+                      final s = {..._q.serials};
+                      s.contains(n) ? s.remove(n) : s.add(n);
+                      // Serials only exist on edition cards.
+                      _set(_copy(serials: s, editions: s.isNotEmpty && _q.editions.isEmpty ? {Edition.canvas.index, Edition.sample.index} : null));
                     },
                   ),
               ],
@@ -360,7 +380,7 @@ class _ListingTileState extends State<ListingTile> {
               song: Song.fromPayload(it.card),
               rarity: it.card.rarity,
               shiny: it.card.shiny,
-              edition: it.card.edition,
+              edition: it.card.edition, serial: it.card.serial,
               onTap: () => g.audio.playOne(it.card.songId),
               trailing: Padding(
                 padding: const EdgeInsets.only(left: 8),
@@ -623,7 +643,7 @@ class _OfferCard extends StatelessWidget {
           if (o.note.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('“${o.note}”', style: const TextStyle(color: kTextSecondary, fontSize: 13))),
           const SizedBox(height: 6),
           for (final c in o.offeredCards)
-            CardRow(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition),
+            CardRow(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial),
           if (o.offeredCoins > 0) Padding(padding: const EdgeInsets.all(6), child: Text('+ ${formatNumber(o.offeredCoins)} coins', style: const TextStyle(color: kCoinColor))),
           Text('Offer value ≈ ${formatNumber(o.offeredValue)} · requested ≈ ${formatNumber(o.requestedValue)}', style: const TextStyle(fontSize: 12, color: kTextTertiary)),
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [
@@ -690,7 +710,7 @@ class _ShowcasesState extends State<_Showcases> {
                           for (final c in s.cards.take(8))
                             Padding(
                               padding: const EdgeInsets.only(right: 8),
-                              child: SizedBox(width: 78, child: CardTile(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition)),
+                              child: SizedBox(width: 78, child: CardTile(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial)),
                             ),
                         ]),
                       ),
@@ -741,7 +761,7 @@ class ShowcaseView extends StatelessWidget {
           itemCount: s.cards.length,
           itemBuilder: (_, i) {
             final c = s.cards[i];
-            return CardTile(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, onTap: () => g.audio.playOne(c.songId));
+            return CardTile(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial, onTap: () => g.audio.playOne(c.songId));
           },
         ),
         for (final p in s.playlists) ...[
@@ -758,7 +778,7 @@ class ShowcaseView extends StatelessWidget {
               },
             ),
           ]),
-          for (final c in p.cards) CardRow(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition),
+          for (final c in p.cards) CardRow(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial),
         ],
       ]),
     );
@@ -816,7 +836,7 @@ class _ShowcaseEditorState extends State<ShowcaseEditor> {
                 song: c.song,
                 rarity: c.rarity,
                 shiny: c.shiny,
-                edition: c.edition,
+                edition: c.edition, serial: c.serial,
                 onLongPress: () {
                   p.showcaseCards.remove(c.uid);
                   p.changed();

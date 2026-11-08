@@ -24,7 +24,7 @@ void main() {
     final col = CollectionStore(cat, dir);
     await col.load();
     if (!col.ownsVariant(s.song.id, Rarity.epic, false, Edition.sample)) col.add(s.song.id, Rarity.epic, false, CardSource.debug, edition: Edition.sample);
-    col.add(stronger.id, Rarity.legendary, true, CardSource.debug, edition: Edition.movie, at: DateTime.now().subtract(const Duration(seconds: 5)));
+    col.add(stronger.id, Rarity.legendary, true, CardSource.debug, edition: Edition.canvas, at: DateTime.now().subtract(const Duration(seconds: 5)));
     await col.save();
   }, skip: path == null);
 }

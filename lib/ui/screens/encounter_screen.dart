@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/collection.dart';
+import '../../data/samples.dart';
+import '../../game/audio_service.dart';
 import '../../game/game.dart';
 import '../../game/spawns.dart';
 import '../app.dart';
@@ -36,6 +39,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
 
   /// Coins credited when the caught variant was already owned.
   int _dupCoins = 0;
+  String? _catchNote;
   bool _busy = false;
   bool _playing = false;
   bool _perfect = false;
@@ -70,7 +74,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   /// no video.
   Edition get _edition {
     final s = widget.spawn;
-    if (s.edition == Edition.movie && _game?.movies.hasMovie(s.song.id) == false) return Edition.standard;
+    if (s.edition == Edition.canvas && _game?.movies.hasMovie(s.song.id) == false) return Edition.standard;
     return s.edition;
   }
 
@@ -83,7 +87,11 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final g = GameScope.read(context);
       _game = g;
-      if (g.profile.playOnEncounter) {
+      final sample = widget.spawn.edition == Edition.sample ? SampleLibrary.of(widget.spawn.song.id) : null;
+      if (g.profile.playOnEncounter && sample != null) {
+        _playing = true;
+        _startWithSample(g, sample);
+      } else if (g.profile.playOnEncounter) {
         _playing = true;
         _startSynced(g);
       } else {
@@ -97,18 +105,58 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   /// that hasn't happened within 5 seconds.
   Future<void> _startSynced(Game g) async {
     final id = widget.spawn.song.id;
+    final req = ++_startReq;
     Future<void>.delayed(const Duration(seconds: 5), () {
-      if (mounted && _waiting) _startUnsynced();
+      if (mounted && _waiting && req == _startReq) _startUnsynced();
     });
     final beatsF = g.audio.beatInfo(id).catchError((Object _) => null);
     await g.audio.playOne(id);
+    _pos = () async => g.audio.exactPosition;
+    await _syncTo(g, beatsF, req, const Duration(seconds: 4));
+  }
+
+  /// Sample editions: the breakdown plays (and animates on the card) while
+  /// the ring waits; the minigame starts on the beat once the song itself
+  /// comes in. "Skip" jumps straight to the song.
+  Future<void> _startWithSample(Game g, SampleInfo info) async {
+    final req = ++_startReq;
+    setState(() => _inBreakdown = true);
+    final beatsF = g.audio.beatInfo(info.song.id).catchError((Object _) => null);
+    unawaited(g.samples.play(info));
+    _pos = g.samples.songPosition;
+    // Fallback if the previews never load.
+    Future<void>.delayed(const Duration(seconds: 8), () {
+      if (mounted && _waiting && req == _startReq && (g.samples.value.error != null || g.samples.elapsed == null)) _skipBreakdown();
+    });
+    await _syncTo(g, beatsF, req, Duration(milliseconds: ((info.length + 10) * 1000).round()));
+  }
+
+  void _skipBreakdown() {
+    final g = _game;
+    if (g == null || !_waiting) return;
+    g.samples.stop();
+    setState(() => _inBreakdown = false);
+    _startSynced(g);
+  }
+
+  int _startReq = 0;
+  bool _inBreakdown = false;
+  Future<double?> Function() _pos = () async => null;
+
+  /// Seconds of output latency between the engine's reported position and
+  /// what's actually heard (plus the player's calibration from Settings).
+  double get _latency => 0.045 + (_game?.profile.beatOffsetMs ?? 0) / 1000;
+
+  /// Waits for the song to be audibly playing, then locks the ring to its
+  /// beat grid so the ring meets the target on every beat.
+  Future<void> _syncTo(Game g, Future<BeatInfo?> beatsF, int req, Duration timeout) async {
     final beats = await beatsF;
-    if (!mounted || !_waiting || beats == null) return;
-    // Wait until the playback position is actually advancing.
-    final until = DateTime.now().add(const Duration(seconds: 4));
-    while (mounted && _waiting && DateTime.now().isBefore(until)) {
-      final p = g.audio.exactPosition;
+    if (!mounted || !_waiting || beats == null || req != _startReq) return;
+    final until = DateTime.now().add(timeout);
+    while (mounted && _waiting && req == _startReq && DateTime.now().isBefore(until)) {
+      final p = await _pos();
       if (p != null && p > 0.02) {
+        _inBreakdown = false;
         var period = beats.period;
         // Very fast songs: one ring per two beats keeps it playable.
         while (period < 0.42) {
@@ -117,10 +165,12 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
         _beat
           ..reset()
           ..start();
-        _clockOffset = p;
+        _clockOffset = p - _latency;
+        _beatPeriod = beats.period;
+        _beatPhase = beats.phase;
         _periodUs = (period * 1e6).round();
         // Ring reaches the target exactly on a beat.
-        _ringZero = beats.phase - (1 - _target) * period;
+        _ringZero = beats.phase; // ring cycles end exactly on beats
         setState(() {
           _waiting = false;
           _synced = true;
@@ -151,15 +201,30 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   /// Keeps the beat clock locked to the audio clock (which only advances in
   /// buffer-sized steps, so it is smoothed rather than read directly).
   void _tick() {
-    if (!_synced) return;
-    final p = _game?.audio.exactPosition;
-    if (p == null) return; // clip ended: keep extrapolating
-    final err = p - (_beat.elapsedMicroseconds / 1e6 + _clockOffset);
-    if (err.abs() > 0.08) {
-      _clockOffset += err; // seek / stall: snap
-    } else {
-      _clockOffset += err * 0.04;
-    }
+    if (!_synced || _ticking) return;
+    _ticking = true;
+    _pos().then((raw) {
+      _ticking = false;
+      if (raw == null || !_synced) return; // clip ended: keep extrapolating
+      final p = raw - _latency;
+      final err = p - (_beat.elapsedMicroseconds / 1e6 + _clockOffset);
+      if (err.abs() > 0.08) {
+        _clockOffset += err; // seek / stall: snap
+      } else {
+        _clockOffset += err * 0.04;
+      }
+    });
+  }
+
+  bool _ticking = false;
+  double _beatPeriod = 0, _beatPhase = 0;
+
+  /// 1 right on a heard beat, decaying to 0 — drives the beat pulse.
+  double get _beatPulse {
+    if (!_synced || _beatPeriod <= 0) return 0;
+    final t = _beat.elapsedMicroseconds / 1e6 + _clockOffset - _beatPhase;
+    final u = (t % _beatPeriod) / _beatPeriod;
+    return math.pow(1 - u, 6).toDouble();
   }
 
   @override
@@ -167,7 +232,10 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     // However the screen is dismissed (close button, back gesture…), make
     // sure a preview that's still loading or playing doesn't outlive it.
     final g = _game;
-    if (g != null && _playing && (!_caught || !g.profile.keepPlayingAfterCatch)) g.audio.stop();
+    if (g != null && _playing && (!_caught || !g.profile.keepPlayingAfterCatch)) {
+      g.audio.stop();
+      g.samples.stop();
+    }
     _ring.dispose();
     _fx.dispose();
     _spin.dispose();
@@ -187,17 +255,23 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     return (99 * (1 - (diff - perfectWindow) / 0.29)).floor().clamp(0, 99);
   }
 
-  /// Ring position at this exact moment (0 = outer, matches the painter).
-  double get _ringFracNow {
+  /// Progress through the current ring cycle (0 just after a beat, → 1 at
+  /// the next beat).
+  double get _cycleNow {
     final t = _beat.elapsedMicroseconds / 1e6 + _clockOffset - _ringZero;
     final period = _periodUs / 1e6;
-    final u = (t % period) / period;
-    return 1.0 - u;
+    return (t % period) / period;
   }
+
+  /// Each ring starts at the outer edge right after a beat and lands on the
+  /// target exactly on the next beat.
+  double get _ringFracNow => _target + (1 - _target) * (1 - _cycleNow);
 
   void _tap() {
     if (_busy || _caught || _fled || _waiting) return;
-    final diff = (_ringFracNow - _target).abs();
+    // Timing error as a fraction of a beat (to the nearest beat).
+    final u = _cycleNow;
+    final diff = math.min(u, 1 - u);
     final acc = accuracyFor(diff);
     final hit = acc == 100
         ? _Hit.perfect
@@ -233,12 +307,14 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
       };
       _busy = true;
     });
-    Future<void>.delayed(Duration(milliseconds: hit == _Hit.perfect ? 900 : 650), () {
+    Future<void>.delayed(Duration(milliseconds: hit == _Hit.perfect ? 900 : 650), () async {
       if (!mounted) return;
       final g = GameScope.read(context);
       if (success) {
-        _card = g.catchSpawn(widget.spawn, perfect: _perfect);
+        _card = await g.catchSpawn(widget.spawn, perfect: _perfect);
+        if (!mounted) return;
         _dupCoins = _card == null ? g.lastDuplicateCoins : 0;
+        _catchNote = g.lastCatchNote;
         if (!g.profile.keepPlayingAfterCatch && _playing) g.audio.stop();
         HapticFeedback.heavyImpact();
         _fx.forward(from: 0);
@@ -315,7 +391,8 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     final s = widget.spawn;
     final c = rarityColor(r);
     final size = MediaQuery.sizeOf(context);
-    final cardW = math.min(230.0, size.width * 0.5);
+    // Scale with the window: small on phones, much larger on PC screens.
+    final cardW = math.min(size.width * 0.5, (size.height - 300) / 1.55).clamp(190.0, 440.0);
     return Scaffold(
       backgroundColor: Colors.black.withValues(alpha: 0.88),
       body: Container(
@@ -349,8 +426,13 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                           opacity: _fled ? 0 : 1,
                           duration: const Duration(milliseconds: 600),
                           child: AnimatedBuilder(
-                            animation: _spin,
-                            builder: (context, child) => Transform(alignment: Alignment.center, transform: _spinMatrix(_spin.value), child: child),
+                            animation: Listenable.merge([_spin, _ring]),
+                            // The card thumps gently on every beat while catching.
+                            builder: (context, child) => Transform(
+                              alignment: Alignment.center,
+                              transform: _spinMatrix(_spin.value)..scaleByDouble(1 + (_caught ? 0 : 0.035 * _beatPulse), 1 + (_caught ? 0 : 0.035 * _beatPulse), 1, 1),
+                              child: child,
+                            ),
                             child: SongCardView(song: s.song, rarity: s.rarity, shiny: s.shiny || _perfect, edition: _edition, width: cardW),
                           ),
                         ),
@@ -361,7 +443,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                             animation: _ring,
                             builder: (context, _) => CustomPaint(
                               size: Size.square(math.min(size.width, size.height * 0.6) * 1.05),
-                              painter: _BeatRingPainter(_ringFracNow, _target, c),
+                              painter: _BeatRingPainter(_ringFracNow, _target, c, _cycleNow),
                             ),
                           ),
                         ),
@@ -391,7 +473,12 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                             '${_accuracy == null ? '' : '$_accuracy% timing  ·  '}+${s.rarity.catchCoins * (s.shiny || _perfect ? 3 : 1)} coins  ·  +${s.rarity.catchXp * (s.shiny || _perfect ? 3 : 1)} XP',
                             style: const TextStyle(color: kTextSecondary, fontWeight: FontWeight.w500),
                           ),
+                          if (_catchNote != null) ...[
+                            const SizedBox(height: 6),
+                            Text(_catchNote!, textAlign: TextAlign.center, style: const TextStyle(color: kTextSecondary, fontSize: 13)),
+                          ],
                           if (_dupCoins > 0) ...[
+
                             const SizedBox(height: 6),
                             Text(
                               'You already own this variant — sent to the scrapyard for $_dupCoins coins',
@@ -454,11 +541,15 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                           AnimatedSwitcher(
                             duration: const Duration(milliseconds: 150),
                             child: Text(
-                              _waiting ? 'Waiting for the music…' : (_feedback ?? 'Tap on the beat when the rings line up!'),
+                              _waiting
+                                  ? (_inBreakdown ? 'Listen to the sample…' : 'Waiting for the music…')
+                                  : (_feedback ?? 'Tap on the beat as the ring lands!'),
                               key: ValueKey('$_feedback$_attempts'),
                               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: _feedback == null ? Colors.white : _feedbackColor),
                             ),
                           ),
+                          if (_waiting && _inBreakdown)
+                            TextButton.icon(onPressed: _skipBreakdown, icon: const Icon(Icons.skip_next), label: const Text('Skip to the song')),
                           const SizedBox(height: 6),
                           Text(
                             '${_synced ? '${_bpm!.round()} BPM · ' : (_waiting ? '' : 'Not synced · ')}Catch chance ${(_baseCatch[r.index] * 100).round()}% · a flawless 100% beat makes it shiny${_alreadyOwned ? '\nYou already own this variant — a catch is auto-scrapped unless it turns shiny' : ''}',
@@ -477,20 +568,37 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
 }
 
 class _BeatRingPainter extends CustomPainter {
-  _BeatRingPainter(this.frac, this.target, this.color);
+  _BeatRingPainter(this.frac, this.target, this.color, this.cycle);
   final double frac;
   final double target;
   final Color color;
+
+  /// 0 right after a beat → 1 at the next beat.
+  final double cycle;
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
     final maxR = size.width / 2;
+    // The target flashes on every beat (when the ring lands on it).
+    final flash = math.pow(1 - cycle, 8).toDouble();
     final targetPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 10
-      ..color = color.withValues(alpha: 0.35);
+      ..strokeWidth = 10 + flash * 8
+      ..color = color.withValues(alpha: 0.35 + flash * 0.55)
+      ..maskFilter = MaskFilter.blur(BlurStyle.solid, 1 + flash * 10);
     canvas.drawCircle(c, maxR * target, targetPaint);
+    // The ring that just landed bursts outward as it fades.
+    if (cycle < 0.25) {
+      final k = cycle / 0.25;
+      canvas.drawCircle(
+          c,
+          maxR * target * (1 + k * 0.12),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 4 * (1 - k)
+            ..color = Colors.white.withValues(alpha: 0.8 * (1 - k)));
+    }
     canvas.drawCircle(
       c,
       maxR * target,
@@ -506,13 +614,14 @@ class _BeatRingPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 4 + near * 6
-        ..color = Color.lerp(Colors.white, color, near)!
+        // Fade the new ring in from the edge so the jump back isn't a "hit".
+        ..color = Color.lerp(Colors.white, color, near)!.withValues(alpha: (cycle / 0.15).clamp(0.0, 1.0))
         ..maskFilter = MaskFilter.blur(BlurStyle.solid, 2 + near * 8),
     );
   }
 
   @override
-  bool shouldRepaint(_BeatRingPainter old) => old.frac != frac;
+  bool shouldRepaint(_BeatRingPainter old) => old.frac != frac || old.cycle != cycle;
 }
 
 class _ConfettiPainter extends CustomPainter {

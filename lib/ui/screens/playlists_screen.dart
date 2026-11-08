@@ -112,7 +112,7 @@ class PlaylistScreen extends StatelessWidget {
                   song: c.song,
                   rarity: c.rarity,
                   shiny: c.shiny,
-                  edition: c.edition,
+                  edition: c.edition, serial: c.serial,
                   onTap: () => g.playPlaylist(p, start: i),
                 ),
               );

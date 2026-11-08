@@ -80,6 +80,13 @@ Router buildRouter(MarketEngine m) {
     }
   }
 
+  r.get('/serials/<song>/<edition>', (Request req, String song, String edition) => guard(() async => ok({
+        'left': m.serialsLeft(int.parse(song), Edition.fromIndex(int.parse(edition))),
+      })));
+  r.post('/serials/<song>/<edition>/claim', (Request req, String song, String edition) => guard(() async {
+        pid(req);
+        return ok({'serial': m.claimSerial(int.parse(song), Edition.fromIndex(int.parse(edition)))});
+      }));
   r.get('/health', (Request req) => ok({'ok': true, 'listings': m.listings.length}));
 
   r.get('/listings', (Request req) => guard(() async {

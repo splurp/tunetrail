@@ -96,7 +96,7 @@ class Game extends ChangeNotifier {
     mapData.addListener(_onMapData);
     mapData.ensureAround(location.position.latitude, location.position.longitude);
     collection.addListener(notifyListeners);
-    movies.addListener(_applyMovieResults);
+
     SampleLibrary.overrides
       ..clear()
       ..addAll(profile.sampleOverrides);
@@ -181,7 +181,8 @@ class Game extends ChangeNotifier {
   /// for its coin value instead. Returns the new card, or null for a
   /// duplicate (the coins credited are in [lastDuplicateCoins]).
   OwnedCard? acquire(int songId, Rarity rarity, bool shiny, Edition edition, CardSource source,
-      {int? uid, bool notify = true, bool announce = true}) {
+      {int? uid, bool notify = true, bool announce = true, int serial = 0}) {
+    if (edition != Edition.standard) shiny = false;
     if (collection.ownsVariant(songId, rarity, shiny, edition)) {
       final song = catalog.songs[songId];
       final coins = scrapValue(rarity, shiny, song?.rank ?? 0, edition: edition);
@@ -193,19 +194,22 @@ class Game extends ChangeNotifier {
       return null;
     }
     lastDuplicateCoins = 0;
-    final id = collection.add(songId, rarity, shiny, source, uid: uid, notify: notify, edition: edition);
+    final id = collection.add(songId, rarity, shiny, source, uid: uid, notify: notify, edition: edition, serial: serial);
     return collection.byUid(id);
   }
 
   int lastDuplicateCoins = 0;
 
+  /// Extra information about the last catch (e.g. serials ran out).
+  String? lastCatchNote;
+
   OwnedCard? acquirePayload(CardPayload p, CardSource source, {bool keepUid = true}) {
     catalog.ensureFromPayload(p);
-    return acquire(p.songId, p.rarity, p.shiny, p.edition, source, uid: keepUid ? p.uid : null);
+    return acquire(p.songId, p.rarity, p.shiny, p.edition, source, uid: keepUid ? p.uid : null, serial: p.serial);
   }
 
   static String variantLabel(Rarity r, bool shiny, Edition e) =>
-      [if (shiny) 'shiny', r.label, if (e != Edition.standard) e.label].join(' ');
+      e != Edition.standard ? e.label : [if (shiny) 'shiny', r.label].join(' ');
 
   /// Lists a folder of owned cards: uid → price. Cards move into escrow.
   Future<void> listCards(Map<int, int> prices, {int? folderPrice, String note = '', bool trades = false}) async {
@@ -360,19 +364,34 @@ class Game extends ChangeNotifier {
     debugSpawns.removeWhere((d) => d.expiresAt.isBefore(now) || profile.spentSpawns.containsKey(d.id));
     spawns = [...spawnEngine.around(location.position, exclude: profile.spentSpawns.keys.toSet()), ...debugSpawns];
     zoneHere = zones.sample(location.position.latitude, location.position.longitude);
-    _applyMovieResults();
+    _applyEditionAvailability();
   }
 
-  /// Movie editions only exist for songs with a music video: unknown songs
-  /// are looked up, and spawns whose song has none revert to Standard.
-  void _applyMovieResults() {
+  /// Serials left per "songId:edition" (cached from the market backend).
+  final Map<String, int> _serialsLeft = {};
+  final Set<String> _serialsPending = {};
+
+  int? serialsLeft(int songId, Edition e) => _serialsLeft['$songId:${e.index}'];
+
+  /// Edition spawns only stand while numbered copies remain: once every
+  /// serial of a song's Canvas/Sample edition is claimed it spawns as a
+  /// standard card instead.
+  void _applyEditionAvailability() {
     var changed = false;
     final out = <Spawn>[];
     for (final s in spawns) {
-      if (s.edition == Edition.movie) {
-        final has = movies.hasMovie(s.song.id);
-        if (has == null) unawaited(movies.clipFor(s.song));
-        if (has == false) {
+      if (s.edition != Edition.standard) {
+        final key = '${s.song.id}:${s.edition.index}';
+        final left = _serialsLeft[key];
+        if (left == null && _serialsPending.add(key)) {
+          unawaited(market.serialsLeft(s.song.id, s.edition).then((n) {
+            _serialsLeft[key] = n;
+            _applyEditionAvailability();
+          }).catchError((_) {}).whenComplete(() {
+            _serialsPending.remove(key);
+          }));
+        }
+        if (left == 0) {
           out.add(s.withEdition(Edition.standard));
           changed = true;
           continue;
@@ -398,11 +417,36 @@ class Game extends ChangeNotifier {
   /// Catches a spawn. A 100% perfect catch makes any song shiny.
   /// Returns the new card, or null if that variant was already owned (it is
   /// then auto-scrapped; see [lastDuplicateCoins]).
-  OwnedCard? catchSpawn(Spawn s, {bool perfect = false}) {
+  ///
+  /// Edition spawns claim the next global serial number; if they've all
+  /// gone in the meantime the catch becomes a standard card.
+  Future<OwnedCard?> catchSpawn(Spawn s, {bool perfect = false}) async {
     catalog.addSongs([s.song]);
-    final shiny = s.shiny || perfect;
-    final edition = s.edition == Edition.movie && movies.hasMovie(s.song.id) == false ? Edition.standard : s.edition;
-    final card = acquire(s.song.id, s.rarity, shiny, edition, CardSource.wild, announce: false);
+    var edition = s.edition;
+    var serial = 0;
+    lastCatchNote = null;
+    if (edition != Edition.standard) {
+      if (collection.ownsVariant(s.song.id, s.rarity, false, edition)) {
+        // Already own this edition: don't burn a serial on a duplicate.
+      } else {
+        int? n;
+        try {
+          n = await market.claimSerial(s.song.id, edition);
+        } catch (_) {}
+        final key = '${s.song.id}:${edition.index}';
+        if (n == null) {
+          lastCatchNote = 'Every ${edition.label} edition of this song has been claimed — you caught a standard card.';
+          _serialsLeft[key] = 0;
+          edition = Edition.standard;
+        } else {
+          serial = n;
+          _serialsLeft[key] = edition.maxSerials - n;
+        }
+      }
+    }
+    // Editions are exclusive: a perfect catch only turns standard cards shiny.
+    final shiny = edition == Edition.standard && (s.shiny || perfect);
+    final card = acquire(s.song.id, s.rarity, shiny, edition, CardSource.wild, announce: false, serial: serial);
     profile.coins += s.rarity.catchCoins * (shiny ? 3 : 1);
     profile.xp += s.rarity.catchXp * (shiny ? 3 : 1);
     profile.totalCaught++;
@@ -455,7 +499,7 @@ class Game extends ChangeNotifier {
     final out = <PackPull>[];
     for (final r in rolls) {
       // Songs with known sample data sometimes come as Sample editions.
-      final ed = SampleLibrary.has(r.$1.id) && rng.chance(4) ? Edition.sample : Edition.standard;
+      const ed = Edition.standard;
       final card = acquire(r.$1.id, r.$2, r.$3, ed, CardSource.pack, notify: false, announce: false);
       out.add(PackPull(card ?? OwnedCard(-1, r.$1, r.$2, r.$3, false, DateTime.now(), CardSource.pack, ed), card == null ? lastDuplicateCoins : 0));
     }

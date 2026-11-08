@@ -238,10 +238,12 @@ void main() {
     addTearDown(col.dispose);
     col.add(1, Rarity.rare, false, CardSource.wild);
     col.add(1, Rarity.rare, true, CardSource.wild);
-    col.add(1, Rarity.rare, false, CardSource.wild, edition: Edition.movie);
+    col.add(1, Rarity.rare, false, CardSource.wild, edition: Edition.canvas);
     col.add(1, Rarity.rare, false, CardSource.wild, edition: Edition.sample);
     expect(col.ownsVariant(1, Rarity.rare, false, Edition.standard), isTrue);
-    expect(col.ownsVariant(1, Rarity.rare, true, Edition.movie), isFalse);
+    // Editions are exclusive of rarity/shininess: one Canvas per song.
+    expect(col.ownsVariant(1, Rarity.common, true, Edition.canvas), isTrue);
+    expect(col.ownsVariant(2, Rarity.rare, false, Edition.canvas), isFalse);
     expect(col.editionCounts, [2, 1, 1]);
     // Duplicates from older saves are folded away (earliest kept).
     col.add(1, Rarity.rare, false, CardSource.pack, at: DateTime(2020));
@@ -262,7 +264,7 @@ void main() {
     expect(again.ownsVariant(1, Rarity.rare, false, Edition.sample), isTrue);
     // Payload round trip keeps the edition.
     final p = CardPayload.fromJson(again.byUid(again.uidAt(again.query(const CollectionQuery(editionMask: 2)).first))!.toPayload().toJson());
-    expect(p.edition, Edition.movie);
+    expect(p.edition, Edition.canvas);
   });
 
   test('beat analysis finds tempo and phase of a click track', () {

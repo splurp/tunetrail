@@ -322,7 +322,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
             song: card.song,
             rarity: card.rarity,
             shiny: card.shiny,
-            edition: card.edition,
+            edition: card.edition, serial: card.serial,
             favorite: card.favorite,
             selected: _picked.contains(card.uid),
             badge: _q.uniqueSongs && c.copiesOf(card.song.id) > 1 ? '×${c.copiesOf(card.song.id)}' : null,
@@ -343,7 +343,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
             song: card.song,
             rarity: card.rarity,
             shiny: card.shiny,
-            edition: card.edition,
+            edition: card.edition, serial: card.serial,
             selected: _picked.contains(card.uid),
             onTap: () => _open(c, rows[i]),
           );
