@@ -99,17 +99,16 @@ class _GlintPainter extends CustomPainter {
 
 /// Rarity name; shiny cards get an animated glint across the text.
 class RarityLabel extends StatelessWidget {
-  const RarityLabel(this.rarity, {super.key, this.shiny = false, this.fontSize = 12, this.showStar = true});
+  const RarityLabel(this.rarity, {super.key, this.shiny = false, this.fontSize = 12});
   final Rarity rarity;
   final bool shiny;
   final double fontSize;
-  final bool showStar;
 
   @override
   Widget build(BuildContext context) {
     final color = rarityColor(rarity);
     final text = Text(
-      shiny && showStar ? '✦ Shiny ${rarity.label}' : rarity.label,
+      rarity.label,
       style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: fontSize, letterSpacing: 0.2),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
@@ -348,7 +347,9 @@ class CurrencyChip extends StatelessWidget {
 }
 
 String formatNumber(int v) {
-  if (v.abs() >= 10000000) return '${(v / 1000000).toStringAsFixed(1)}M';
+  String trim(String x) => x.contains('.') ? x.replaceFirst(RegExp(r'\.?0+$'), '') : x;
+  if (v.abs() >= 1000000000) return '${trim((v / 1e9).toStringAsFixed(2))}b';
+  if (v.abs() >= 1000000) return '${trim((v / 1e6).toStringAsFixed(2))}m';
   if (v.abs() >= 100000) return '${(v / 1000).toStringAsFixed(0)}k';
   final s = v.toString();
   final b = StringBuffer();

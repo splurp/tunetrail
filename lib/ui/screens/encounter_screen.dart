@@ -40,9 +40,22 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
 
   /// Precise beat clock: taps are judged against real elapsed time rather
   /// than the last rendered frame, so the 100% window can be very tight.
+  /// In synced mode the clock is locked to the song's playback position.
   final Stopwatch _beat = Stopwatch();
   Game? _game;
   int _periodUs = 1;
+
+  /// Waiting for the music to start (the ring appears once it does).
+  bool _waiting = true;
+  bool _synced = false;
+  double? _bpm;
+
+  /// Song seconds = stopwatch seconds + [_clockOffset] (synced mode).
+  double _clockOffset = 0;
+
+  /// Song time (seconds) at which the ring is at the outer edge.
+  double _ringZero = 0;
+  late final AnimationController _spin = AnimationController(vsync: this, duration: const Duration(milliseconds: 1700));
 
   static const _baseCatch = [0.92, 0.78, 0.62, 0.48, 0.34];
   static const _fleeChance = [0.03, 0.06, 0.1, 0.15, 0.2];
@@ -53,21 +66,87 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   @override
   void initState() {
     super.initState();
-    final ms = [1700, 1500, 1300, 1100, 900][r.index];
-    _ring = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: ms),
-    )..repeat();
-    _periodUs = ms * 1000;
-    _beat.start();
+    _ring = AnimationController(vsync: this, duration: const Duration(seconds: 1))..addListener(_tick);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final g = GameScope.read(context);
       _game = g;
       if (g.profile.playOnEncounter) {
         _playing = true;
-        g.audio.playOne(widget.spawn.song.id);
+        _startSynced(g);
+      } else {
+        _startUnsynced();
       }
     });
+  }
+
+  /// Plays the song, works out its beat grid and starts the ring on the
+  /// beat once the music is audible. Falls back to a free-running ring if
+  /// that hasn't happened within 5 seconds.
+  Future<void> _startSynced(Game g) async {
+    final id = widget.spawn.song.id;
+    Future<void>.delayed(const Duration(seconds: 5), () {
+      if (mounted && _waiting) _startUnsynced();
+    });
+    final beatsF = g.audio.beatInfo(id).catchError((Object _) => null);
+    await g.audio.playOne(id);
+    final beats = await beatsF;
+    if (!mounted || !_waiting || beats == null) return;
+    // Wait until the playback position is actually advancing.
+    final until = DateTime.now().add(const Duration(seconds: 4));
+    while (mounted && _waiting && DateTime.now().isBefore(until)) {
+      final p = g.audio.exactPosition;
+      if (p != null && p > 0.02) {
+        var period = beats.period;
+        // Very fast songs: one ring per two beats keeps it playable.
+        while (period < 0.42) {
+          period *= 2;
+        }
+        _beat
+          ..reset()
+          ..start();
+        _clockOffset = p;
+        _periodUs = (period * 1e6).round();
+        // Ring reaches the target exactly on a beat.
+        _ringZero = beats.phase - (1 - _target) * period;
+        setState(() {
+          _waiting = false;
+          _synced = true;
+          _bpm = beats.bpm;
+        });
+        _ring.repeat();
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 8));
+    }
+  }
+
+  void _startUnsynced() {
+    final ms = [1700, 1500, 1300, 1100, 900][r.index];
+    _periodUs = ms * 1000;
+    _clockOffset = 0;
+    _ringZero = 0;
+    _beat
+      ..reset()
+      ..start();
+    setState(() {
+      _waiting = false;
+      _synced = false;
+    });
+    _ring.repeat();
+  }
+
+  /// Keeps the beat clock locked to the audio clock (which only advances in
+  /// buffer-sized steps, so it is smoothed rather than read directly).
+  void _tick() {
+    if (!_synced) return;
+    final p = _game?.audio.exactPosition;
+    if (p == null) return; // clip ended: keep extrapolating
+    final err = p - (_beat.elapsedMicroseconds / 1e6 + _clockOffset);
+    if (err.abs() > 0.08) {
+      _clockOffset += err; // seek / stall: snap
+    } else {
+      _clockOffset += err * 0.04;
+    }
   }
 
   @override
@@ -78,6 +157,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     if (g != null && _playing && (!_caught || !g.profile.keepPlayingAfterCatch)) g.audio.stop();
     _ring.dispose();
     _fx.dispose();
+    _spin.dispose();
     super.dispose();
   }
 
@@ -95,10 +175,15 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   }
 
   /// Ring position at this exact moment (0 = outer, matches the painter).
-  double get _ringFracNow => 1.0 - (_beat.elapsedMicroseconds % _periodUs) / _periodUs;
+  double get _ringFracNow {
+    final t = _beat.elapsedMicroseconds / 1e6 + _clockOffset - _ringZero;
+    final period = _periodUs / 1e6;
+    final u = (t % period) / period;
+    return 1.0 - u;
+  }
 
   void _tap() {
-    if (_busy || _caught || _fled) return;
+    if (_busy || _caught || _fled || _waiting) return;
     final diff = (_ringFracNow - _target).abs();
     final acc = accuracyFor(diff);
     final hit = acc == 100
@@ -143,6 +228,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
         if (!g.profile.keepPlayingAfterCatch && _playing) g.audio.stop();
         HapticFeedback.heavyImpact();
         _fx.forward(from: 0);
+        _spin.forward(from: 0);
         setState(() {
           _caught = true;
           _busy = false;
@@ -160,6 +246,48 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
         });
       }
     });
+  }
+
+  /// Catch animation: a fast spin while pumping towards the viewer, then a
+  /// slow settle back to the head-on view.
+  static Matrix4 _spinMatrix(double t) {
+    if (t <= 0 || t >= 1) return Matrix4.identity();
+    const spinEnd = 0.32;
+    double angle, scale;
+    if (t < spinEnd) {
+      final u = Curves.easeInOutCubic.transform(t / spinEnd);
+      angle = u * math.pi * 2;
+      scale = 1 + 0.45 * math.sin(u * math.pi * 0.5);
+    } else {
+      final u = Curves.easeOutCubic.transform((t - spinEnd) / (1 - spinEnd));
+      angle = math.sin(u * math.pi * 2) * 0.12 * (1 - u);
+      scale = 1 + 0.45 * (1 - u);
+    }
+    return Matrix4.identity()
+      ..setEntry(3, 2, 0.0014)
+      ..scaleByDouble(scale, scale, scale, 1)
+      ..rotateY(angle);
+  }
+
+  Future<void> _quicksell() async {
+    final card = _card, g = _game;
+    if (card == null || g == null) return;
+    final value = g.scrapValueOf(card);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Quicksell?'),
+        content: Text('Send ${card.song.title} to the scrapyard for $value coins.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Quicksell')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final coins = g.scrap([card.uid]);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scrapped for $coins coins')));
+    Navigator.of(context).pop();
   }
 
   void _close() {
@@ -206,10 +334,18 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                         child: AnimatedOpacity(
                           opacity: _fled ? 0 : 1,
                           duration: const Duration(milliseconds: 600),
-                          child: SongCardView(song: s.song, rarity: s.rarity, shiny: s.shiny || _perfect, width: cardW),
+                          child: AnimatedBuilder(
+                            animation: _spin,
+                            builder: (context, child) => Transform(
+                              alignment: Alignment.center,
+                              transform: _spinMatrix(_spin.value),
+                              child: child,
+                            ),
+                            child: SongCardView(song: s.song, rarity: s.rarity, shiny: s.shiny || _perfect, width: cardW),
+                          ),
                         ),
                       ),
-                      if (!_caught && !_fled)
+                      if (!_caught && !_fled && !_waiting)
                         IgnorePointer(
                           child: AnimatedBuilder(
                             animation: _ring,
@@ -253,13 +389,18 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                             children: [
                               OutlinedButton.icon(
                                 icon: const Icon(Icons.sell_outlined, size: 18),
-                                label: const Text('Quick list'),
+                                label: const Text('List for sale'),
                                 onPressed: _card == null
                                     ? null
                                     : () async {
                                         final listed = await showQuickListSheet(context, _card!.uid);
                                         if (listed && context.mounted) Navigator.of(context).pop();
                                       },
+                              ),
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.recycling, size: 18),
+                                label: Text(_card == null ? 'Quicksell' : 'Quicksell · ${_game?.scrapValueOf(_card!) ?? 0}c'),
+                                onPressed: _card == null ? null : _quicksell,
                               ),
                               OutlinedButton(
                                 onPressed: () {
@@ -292,14 +433,14 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                           AnimatedSwitcher(
                             duration: const Duration(milliseconds: 150),
                             child: Text(
-                              _feedback ?? 'Tap when the rings line up!',
+                              _waiting ? 'Waiting for the music…' : (_feedback ?? 'Tap on the beat when the rings line up!'),
                               key: ValueKey('$_feedback$_attempts'),
                               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: _feedback == null ? Colors.white : _feedbackColor),
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Catch chance ${(_baseCatch[r.index] * 100).round()}% · a flawless 100% beat makes it shiny',
+                            '${_synced ? '${_bpm!.round()} BPM · ' : (_waiting ? '' : 'Not synced · ')}Catch chance ${(_baseCatch[r.index] * 100).round()}% · a flawless 100% beat makes it shiny',
                             style: const TextStyle(color: Colors.white54, fontSize: 12),
                           ),
                         ],

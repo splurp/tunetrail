@@ -200,24 +200,25 @@ const kMatrix = MapPalette(
 );
 
 const kArctic = MapPalette(
-  ground: Color(0xFFE8F1F6),
-  field: Color(0xFFF2F7FA),
-  forest: Color(0xFFD6E6EE),
-  park: Color(0xFFDDEBF2),
-  sand: Color(0xFFF4F4F0),
-  campus: Color(0xFFE2ECF2),
-  parking: Color(0xFFD5E2EA),
-  plaza: Color(0xFFDDE7EE),
-  water: Color(0xFF9CC9E0),
-  roadMinor: Color(0xFFFFFFFF),
-  roadMajor: Color(0xFFC4DCEA),
-  roadHighway: Color(0xFF8FBAD3),
-  buildingWall: Color(0xFFB4CCDA),
-  buildingRoof: Color(0xFFF7FBFD),
+  // Deep glacial blues so white snowfall stands out clearly.
+  ground: Color(0xFF3E5A6E),
+  field: Color(0xFF46647A),
+  forest: Color(0xFF34505F),
+  park: Color(0xFF3A5A68),
+  sand: Color(0xFF55707F),
+  campus: Color(0xFF425E72),
+  parking: Color(0xFF384F60),
+  plaza: Color(0xFF4A6577),
+  water: Color(0xFF1D3447),
+  roadMinor: Color(0xFF8FB0C4),
+  roadMajor: Color(0xFFA9C8DA),
+  roadHighway: Color(0xFFC9E2EF),
+  buildingWall: Color(0xFF6F8EA3),
+  buildingRoof: Color(0xFFB9D2E0),
   buildingEdge: Color(0x66FFFFFF),
-  skyTop: Color(0xFFB9D7E8),
-  skyBottom: Color(0xFFEFF6FA),
-  accent: Color(0xFF3FA7D6),
+  skyTop: Color(0xFF4F7189),
+  skyBottom: Color(0xFF9DB9CA),
+  accent: Color(0xFF7FD3FF),
 );
 
 const kMagma = MapPalette(
@@ -282,3 +283,15 @@ const kSakura = MapPalette(
   skyBottom: Color(0xFFFFF4F8),
   accent: Color(0xFFD45D8C),
 );
+
+/// A colour that stands out clearly against [p]'s ground (used for idle
+/// props like headphones and music notes): opposite lightness to the
+/// ground, and a hue complementary to it (or the accent's, on greyish
+/// grounds).
+Color contrastColor(MapPalette p) {
+  final g = HSLColor.fromColor(p.ground);
+  final a = HSLColor.fromColor(p.accent);
+  final hue = g.saturation > 0.18 ? (g.hue + 180) % 360 : a.hue;
+  final light = g.lightness > 0.5 ? 0.32 : 0.7;
+  return HSLColor.fromAHSL(1, hue, 0.9, light).toColor();
+}

@@ -147,7 +147,7 @@ void main() {
     expect(c.rarityOf(c.songs[40]!), Rarity.rare);
   });
 
-  test('favourite artists spawn ~10x more often per song', () async {
+  test('favourite artists spawn ~10x more often as a whole', () async {
     // Realistically sized pools: 24k songs, 600 artists × 40 songs.
     final cat = Catalog(DeezerApi(), dir);
     await cat.load();
@@ -184,6 +184,36 @@ void main() {
     final ratio = (after / n2) / (before / n1);
     expect(ratio, greaterThan(6));
     expect(ratio, lessThan(14));
+
+    // Many favourites: the *list* is ~10x as likely, not each artist, and
+    // picks are spread across the listed artists.
+    final many = {for (var a = 100; a < 130; a++) a};
+    var favN = 0, total = 0;
+    final hits = <int, int>{};
+    cat.favoriteArtists = {};
+    for (var w = 0; w < 300; w++) {
+      for (final s in e.around(const LatLng(40.758, -73.9855), now: DateTime(2026, 1, 1).add(Duration(minutes: 15 * w)))) {
+        total++;
+        if (many.contains(s.song.artistId)) favN++;
+      }
+    }
+    final baseShare = favN / total;
+    cat.favoriteArtists = many;
+    favN = 0;
+    total = 0;
+    for (var w = 0; w < 300; w++) {
+      for (final s in e.around(const LatLng(40.758, -73.9855), now: DateTime(2026, 1, 1).add(Duration(minutes: 15 * w)))) {
+        total++;
+        if (many.contains(s.song.artistId)) {
+          favN++;
+          hits[s.song.artistId] = (hits[s.song.artistId] ?? 0) + 1;
+        }
+      }
+    }
+    final boosted = favN / total;
+    final expected = 10 * baseShare / (1 + 9 * baseShare);
+    expect(boosted / expected, inInclusiveRange(0.7, 1.3));
+    expect(hits.length, greaterThan(20));
   });
 
   test('song json round trip and cdn urls', () {

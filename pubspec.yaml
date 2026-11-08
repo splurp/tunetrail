@@ -39,11 +39,12 @@ dependencies:
   http: ^1.6.0
   path_provider: ^2.1.6
   geolocator: ^14.1.2
-  audioplayers: ^6.8.1
   in_app_purchase: ^3.3.1
   tunetrail_core:
     path: packages/tunetrail_core
   dart_earcut: ^1.2.0
+  ffi: ^2.2.0
+  flutter_soloud: ^5.2.3
 
 dev_dependencies:
   flutter_test:

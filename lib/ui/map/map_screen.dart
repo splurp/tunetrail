@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -10,7 +12,10 @@ import '../../data/profile.dart';
 import '../../game/game.dart';
 import '../../game/genre_zones.dart';
 import '../../game/spawns.dart';
+import '../../map3d/palette.dart';
+import '../../map3d/props3d.dart';
 import '../../map3d/camera.dart';
+import '../../platform/pointer_lock.dart';
 import '../../map3d/figure3d.dart';
 import '../../map3d/footsteps_painter.dart';
 import '../../map3d/router.dart';
@@ -75,7 +80,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _clock.value = d.inMicroseconds / 1e6;
     if (!mounted) return;
     final g = GameScope.read(context);
-    _idle.update(_clock.value - _lastT, g.location.moving);
+    // Idle activities pause while the player is moving or adjusting the camera.
+    final cameraBusy = DateTime.now().difference(_lastCameraInput) < const Duration(milliseconds: 1500) || _guide.isAnimating;
+    _idle.update(_clock.value - _lastT, g.location.moving || cameraBusy);
     _lastT = _clock.value;
     final (tx, ty) = g.mapData.toWorld(g.location.position.latitude, g.location.position.longitude);
     var changed = false;
@@ -92,12 +99,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
     _cam.px = _wx;
     _cam.py = _wy;
-    if (g.location.moving) {
-      _targetFacing = g.location.heading;
-    } else if (_idle.activity != IdleActivity.none && _idle.blend > 0) {
-      // Turn to a three-quarter view towards the camera for idle activities.
-      _targetFacing = (_cam.bearing + 180 + 28) % 360;
-    }
+    if (g.location.moving) _targetFacing = g.location.heading;
     final df = ((_targetFacing - _facing + 540) % 360) - 180;
     _facing = (_facing + df * 0.2 + 360) % 360;
     if (g.mapData.version != _mapVersion || _cam.bearing != _lastBearing || _cam.distance != _lastDistance) changed = true;
@@ -117,23 +119,59 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (changed) _groundDirty.value++;
   }
 
-  /// Rotates the view by how far the finger travels *around* the player, so
-  /// horizontal and vertical swipes both turn it. The map follows the
-  /// finger: swiping right (above the player) turns the view
-  /// counter-clockwise.
+  /// Drag-to-turn. A rightward swipe always turns the view the same way
+  /// (the map rotates counter-clockwise), wherever on screen it happens.
+  /// Vertical swipes also turn it: down on the right side of the player or
+  /// up on the left side matches a rightward swipe.
   void _rotateBy(Offset focal, Offset delta) {
     _cam.update();
-    final c = Offset(_cam.cx, _cam.cy);
-    final cur = focal - c, prev = focal - delta - c;
-    if (cur.distance < 48 || prev.distance < 48) {
-      _cam.bearing = (_cam.bearing - delta.dx * 0.35) % 360;
+    final side = (focal.dx - _cam.cx).abs() < 40 ? 0.0 : (focal.dx > _cam.cx ? 1.0 : -1.0);
+    _cam.bearing = (_cam.bearing + (delta.dx + delta.dy * side) * 0.35) % 360;
+    _cameraTouched();
+  }
+
+  DateTime _lastCameraInput = DateTime.fromMillisecondsSinceEpoch(0);
+
+  // ---------------------------------------------------------- mouse look
+  /// Desktop: Alt toggles a captured, hidden cursor; moving the mouse turns
+  /// the camera like a PC game (no click-and-drag needed).
+  bool _mouseLook = false;
+  bool _skipHover = false;
+  static bool get _isDesktop => !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+
+  void _setMouseLook(bool on) {
+    if (on == _mouseLook) return;
+    setState(() => _mouseLook = on);
+    if (on) _recenterCursor(null);
+  }
+
+  void _recenterCursor(Offset? local) {
+    final ctl = CursorControl.instance;
+    final pos = ctl?.position();
+    if (ctl == null || pos == null || !mounted) return;
+    final size = MediaQuery.sizeOf(context);
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final center = Offset(size.width / 2, size.height / 2);
+    final cur = local ?? center;
+    ctl.warp((pos.$1 - (cur.dx - center.dx) * dpr).round(), (pos.$2 - (cur.dy - center.dy) * dpr).round());
+    _skipHover = local != null;
+  }
+
+  void _onHover(PointerHoverEvent e) {
+    if (!_mouseLook) return;
+    if (_skipHover) {
+      // The synthetic move produced by our own warp.
+      _skipHover = false;
       return;
     }
-    var d = math.atan2(cur.dy, cur.dx) - math.atan2(prev.dy, prev.dx);
-    if (d > math.pi) d -= 2 * math.pi;
-    if (d < -math.pi) d += 2 * math.pi;
-    _cam.bearing = (_cam.bearing - d * 180 / math.pi) % 360;
+    _cam.bearing = (_cam.bearing + e.delta.dx * 0.22) % 360;
+    _cam.pitch = (_cam.pitch - e.delta.dy * 0.08).clamp(28.0, 58.0);
+    _cameraTouched();
+    final size = MediaQuery.sizeOf(context);
+    if ((e.localPosition - Offset(size.width / 2, size.height / 2)).distance > 90) _recenterCursor(e.localPosition);
   }
+
+  void _cameraTouched() => _lastCameraInput = DateTime.now();
 
   @override
   void dispose() {
@@ -226,12 +264,29 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (e is KeyUpEvent) _keys.remove(e.logicalKey);
     if (!_mapHasKeyboard) {
       if (_keyboardDriving) _releaseKeys();
+      if (_mouseLook) _setMouseLook(false);
       return false;
+    }
+    if (_isDesktop && e is KeyDownEvent) {
+      if (e.logicalKey == LogicalKeyboardKey.altLeft || e.logicalKey == LogicalKeyboardKey.altRight) {
+        _setMouseLook(!_mouseLook);
+        return true;
+      }
+      if (e.logicalKey == LogicalKeyboardKey.escape && _mouseLook) {
+        _setMouseLook(false);
+        return true;
+      }
     }
     final g = GameScope.read(context);
     if (e is KeyDownEvent || e is KeyRepeatEvent) {
-      if (e.logicalKey == LogicalKeyboardKey.keyQ) _cam.bearing = (_cam.bearing - 8) % 360;
-      if (e.logicalKey == LogicalKeyboardKey.keyE) _cam.bearing = (_cam.bearing + 8) % 360;
+      if (e.logicalKey == LogicalKeyboardKey.keyQ) {
+        _cam.bearing = (_cam.bearing - 8) % 360;
+        _cameraTouched();
+      }
+      if (e.logicalKey == LogicalKeyboardKey.keyE) {
+        _cam.bearing = (_cam.bearing + 8) % 360;
+        _cameraTouched();
+      }
     }
     if (!g.location.joystickMode) return false;
     _applyKeys(g);
@@ -298,100 +353,132 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final theme = themeById(p.activeTheme);
     final look = FigureLook(color: Color(p.figureColor), hat: p.hat, shirt: p.shirt, pet: p.pet, backpack: p.backpack);
 
-    return Listener(
-      onPointerSignal: (e) {
-        if (e is PointerScrollEvent) {
-          _cam.distance = (_cam.distance * (1 + e.scrollDelta.dy / 600)).clamp(120.0, 460.0);
-        }
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onScaleStart: (_) {
-          _guide.stop();
-          _cam.pitch = Camera3D.basePitch;
-          _scaleStartDistance = _cam.distance.clamp(120.0, 460.0);
-        },
-        onScaleUpdate: (d) {
-          if (d.pointerCount >= 2) {
-            _cam.distance = (_scaleStartDistance / d.scale).clamp(120.0, 460.0);
-          } else {
-            _rotateBy(d.localFocalPoint, d.focalPointDelta);
+    return MouseRegion(
+      cursor: _mouseLook ? SystemMouseCursors.none : MouseCursor.defer,
+      onHover: _onHover,
+      child: Listener(
+        onPointerSignal: (e) {
+          if (e is PointerScrollEvent) {
+            _cam.distance = (_cam.distance * (1 + e.scrollDelta.dy / 600)).clamp(120.0, 460.0);
           }
-          if (_joyX != null) _setJoystick(g, _joyX!, _joyY!);
         },
-        onDoubleTap: () => _cam.distance = 230,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Sky (world-anchored sun/stars/aurora) behind the ground.
-            RepaintBoundary(
-              child: ValueListenableBuilder<double>(
-                valueListenable: _clock,
-                builder: (context, t, _) => CustomPaint(painter: SkyPainter(camera: _cam, palette: theme.palette, decor: theme.sky, time: t)),
-              ),
-            ),
-            RepaintBoundary(
-              child: CustomPaint(
-                painter: GroundPainter(
-                  camera: _cam,
-                  map: g.mapData,
-                  palette: theme.palette,
-                  catchRadius: Game.catchRangeMeters,
-                  repaint: _groundDirty,
-                ),
-              ),
-            ),
-            // Footstep trail on the ground.
-            IgnorePointer(
-              child: ValueListenableBuilder<int>(
-                valueListenable: _groundDirty,
-                builder: (context, _, _) => CustomPaint(
-                  painter: FootstepsPainter(camera: _cam, prints: _prints, reveal: _trailReveal.value, opacity: 1, color: theme.accent),
-                ),
-              ),
-            ),
-            // Songs behind the player, then the player, then songs in front.
-            ValueListenableBuilder<double>(
-              valueListenable: _clock,
-              builder: (context, t, _) => _SpawnLayer(cam: _cam, game: g, clock: _clock, front: false, onTap: (s) => _tapSpawn(g, s)),
-            ),
-            IgnorePointer(
-              child: RepaintBoundary(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onScaleStart: (_) {
+            _guide.stop();
+            _cam.pitch = Camera3D.basePitch;
+            _scaleStartDistance = _cam.distance.clamp(120.0, 460.0);
+          },
+          onScaleUpdate: (d) {
+            if (d.pointerCount >= 2) {
+              _cam.distance = (_scaleStartDistance / d.scale).clamp(120.0, 460.0);
+            } else {
+              _rotateBy(d.localFocalPoint, d.focalPointDelta);
+            }
+            if (_joyX != null) _setJoystick(g, _joyX!, _joyY!);
+          },
+          onDoubleTap: () => _cam.distance = 230,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Sky (world-anchored sun/stars/aurora) behind the ground.
+              RepaintBoundary(
                 child: ValueListenableBuilder<double>(
                   valueListenable: _clock,
                   builder: (context, t, _) => CustomPaint(
-                    painter: Figure3DPainter(camera: _cam, look: look, time: t, idle: _idle, facing: _facing, accent: theme.accent),
+                    painter: SkyPainter(camera: _cam, palette: theme.palette, decor: theme.sky, time: t),
                   ),
                 ),
               ),
-            ),
-            ValueListenableBuilder<double>(
-              valueListenable: _clock,
-              builder: (context, t, _) => _SpawnLayer(cam: _cam, game: g, clock: _clock, front: true, onTap: (s) => _tapSpawn(g, s)),
-            ),
-            IgnorePointer(
-              child: RepaintBoundary(
-                child: ValueListenableBuilder<double>(
-                  valueListenable: _clock,
-                  builder: (context, t, _) => CustomPaint(painter: MapEffectPainter(theme, t, reduce: p.reduceEffects)),
+              RepaintBoundary(
+                child: CustomPaint(
+                  painter: GroundPainter(
+                    camera: _cam,
+                    map: g.mapData,
+                    palette: theme.palette,
+                    catchRadius: Game.catchRangeMeters,
+                    repaint: _groundDirty,
+                  ),
                 ),
               ),
-            ),
-            ValueListenableBuilder<int>(
-              valueListenable: _groundDirty,
-              builder: (context, _, _) => _Hud(
-                g: g,
-                cam: _cam,
-                onJoystick: (x, y) => _setJoystick(g, x, y),
-                onJoystickEnd: () {
-                  _joyX = _joyY = null;
-                  g.location.setJoystick(0, 0);
-                },
-                onNearby: () => _showNearby(g),
-                onCompass: () => _cam.bearing = 0,
+              // Low-poly 3D props standing on the ground (theme-specific).
+              if (theme.props != PropSet.none)
+                IgnorePointer(
+                  child: RepaintBoundary(
+                    child: ValueListenableBuilder<int>(
+                      valueListenable: _groundDirty,
+                      builder: (context, _, _) => CustomPaint(
+                        painter: PropsPainter(camera: _cam, set: theme.props, fog: theme.palette.skyBottom),
+                      ),
+                    ),
+                  ),
+                ),
+              // Footstep trail on the ground.
+              IgnorePointer(
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _groundDirty,
+                  builder: (context, _, _) => CustomPaint(
+                    painter: FootstepsPainter(camera: _cam, prints: _prints, reveal: _trailReveal.value, opacity: 1, color: theme.accent),
+                  ),
+                ),
               ),
-            ),
-          ],
+              // Songs behind the player, then the player, then songs in front.
+              ValueListenableBuilder<double>(
+                valueListenable: _clock,
+                builder: (context, t, _) => _SpawnLayer(cam: _cam, game: g, clock: _clock, front: false, onTap: (s) => _tapSpawn(g, s)),
+              ),
+              IgnorePointer(
+                child: RepaintBoundary(
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _clock,
+                    builder: (context, t, _) => CustomPaint(
+                      painter: Figure3DPainter(camera: _cam, look: look, time: t, idle: _idle, facing: _facing, accent: theme.accent, contrast: contrastColor(theme.palette)),
+                    ),
+                  ),
+                ),
+              ),
+              ValueListenableBuilder<double>(
+                valueListenable: _clock,
+                builder: (context, t, _) => _SpawnLayer(cam: _cam, game: g, clock: _clock, front: true, onTap: (s) => _tapSpawn(g, s)),
+              ),
+              IgnorePointer(
+                child: RepaintBoundary(
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _clock,
+                    builder: (context, t, _) => CustomPaint(painter: MapEffectPainter(theme, t, reduce: p.reduceEffects)),
+                  ),
+                ),
+              ),
+              if (_mouseLook)
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 96,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Glass(
+                        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                        child: Text('Mouse look · move the mouse to turn · Alt or Esc to release', style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  ),
+                ),
+              ValueListenableBuilder<int>(
+                valueListenable: _groundDirty,
+                builder: (context, _, _) => _Hud(
+                  g: g,
+                  cam: _cam,
+                  onJoystick: (x, y) => _setJoystick(g, x, y),
+                  onJoystickEnd: () {
+                    _joyX = _joyY = null;
+                    g.location.setJoystick(0, 0);
+                  },
+                  onNearby: () => _showNearby(g),
+                  onCompass: () => _cam.bearing = 0,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

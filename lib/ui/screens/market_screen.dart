@@ -715,8 +715,8 @@ class ShowcaseView extends StatelessWidget {
       body: ListView(padding: const EdgeInsets.all(12), children: [
         Text('by ${s.playerName}', style: const TextStyle(color: kTextSecondary)),
         if (s.favoriteArtists.isNotEmpty) ...[
-          const SectionLabel('Favourite artists'),
-          FavoriteArtistsRow(artists: s.favoriteArtists),
+          const SizedBox(height: 12),
+          FavoriteArtistsTab(artists: s.favoriteArtists),
         ],
         const SizedBox(height: 10),
         GridView.builder(

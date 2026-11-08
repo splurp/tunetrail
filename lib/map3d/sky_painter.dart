@@ -151,80 +151,8 @@ class SkyPainter extends CustomPainter {
       }
       canvas.restore();
     }
-    // A giant marble bust looming over the horizon.
-    final bx = _x(cam, 215);
-    if (bx != null) {
-      final h = _deg(cam, 17);
-      _bust(canvas, Offset(bx, horizon + h * 0.05), h);
-    }
-    // Floating pastel columns / palm silhouettes for surreal flavour.
-    for (final (az, elev) in [(30.0, 4.0), (330.0, 6.0), (75.0, 2.5)]) {
-      final x = _x(cam, az);
-      if (x == null) continue;
-      final h = _deg(cam, 6);
-      final base = Offset(x, _y(cam, horizon, elev) + math.sin(time * 0.6 + az) * h * 0.04);
-      _column(canvas, base, h);
-    }
-  }
-
-  /// A stylised classical bust in profile (original drawing), with a soft
-  /// cyan/pink chromatic offset.
-  void _bust(Canvas canvas, Offset bottom, double h) {
-    Path shape(Offset o) {
-      final u = h / 100;
-      Offset q(double x, double y) => Offset(o.dx + x * u, o.dy - y * u);
-      return Path()
-        ..moveTo(q(-34, 0).dx, q(-34, 0).dy)
-        // Shoulders and chest.
-        ..cubicTo(q(-36, 14).dx, q(-36, 14).dy, q(-22, 22).dx, q(-22, 22).dy, q(-12, 26).dx, q(-12, 26).dy)
-        // Back of the neck.
-        ..cubicTo(q(-14, 36).dx, q(-14, 36).dy, q(-16, 44).dx, q(-16, 44).dy, q(-20, 52).dx, q(-20, 52).dy)
-        // Back of the head with curls.
-        ..cubicTo(q(-30, 60).dx, q(-30, 60).dy, q(-30, 80).dx, q(-30, 80).dy, q(-20, 90).dx, q(-20, 90).dy)
-        ..cubicTo(q(-12, 99).dx, q(-12, 99).dy, q(4, 101).dx, q(4, 101).dy, q(12, 94).dx, q(12, 94).dy)
-        // Brow, nose, lips, chin.
-        ..cubicTo(q(17, 89).dx, q(17, 89).dy, q(17, 82).dx, q(17, 82).dy, q(18, 78).dx, q(18, 78).dy)
-        ..lineTo(q(24, 68).dx, q(24, 68).dy)
-        ..lineTo(q(19, 66).dx, q(19, 66).dy)
-        ..quadraticBezierTo(q(21, 62).dx, q(21, 62).dy, q(18, 60).dx, q(18, 60).dy)
-        ..quadraticBezierTo(q(20, 57).dx, q(20, 57).dy, q(17, 55).dx, q(17, 55).dy)
-        ..cubicTo(q(18, 50).dx, q(18, 50).dy, q(14, 46).dx, q(14, 46).dy, q(8, 46).dx, q(8, 46).dy)
-        // Front of the neck down to the chest.
-        ..cubicTo(q(6, 40).dx, q(6, 40).dy, q(8, 32).dx, q(8, 32).dy, q(14, 26).dx, q(14, 26).dy)
-        ..cubicTo(q(26, 20).dx, q(26, 20).dy, q(34, 12).dx, q(34, 12).dy, q(34, 0).dx, q(34, 0).dy)
-        ..close();
-    }
-
-    final rect = Rect.fromLTWH(bottom.dx - h * 0.4, bottom.dy - h, h * 0.8, h);
-    canvas.drawPath(shape(bottom + Offset(-h * 0.012, 0)), Paint()..color = const Color(0x5548DBFB));
-    canvas.drawPath(shape(bottom + Offset(h * 0.012, 0)), Paint()..color = const Color(0x55FF6EC7));
-    canvas.drawPath(
-        shape(bottom),
-        Paint()
-          ..shader = const LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft, colors: [Color(0xFFF7F3FA), Color(0xFFD9CDEA), Color(0xFFBBA9DA)])
-              .createShader(rect));
-    // A few curl highlights on the hair.
-    final curl = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = h * 0.012
-      ..color = const Color(0x66FFFFFF);
-    for (final (x, y) in [(-18.0, 86.0), (-8.0, 93.0), (2.0, 95.0), (-24.0, 74.0)]) {
-      canvas.drawCircle(Offset(bottom.dx + x * h / 100, bottom.dy - y * h / 100), h * 0.035, curl);
-    }
-  }
-
-  void _column(Canvas canvas, Offset base, double h) {
-    final w = h * 0.22;
-    final body = Rect.fromLTWH(base.dx - w / 2, base.dy - h, w, h);
-    canvas.drawRect(body, Paint()..shader = const LinearGradient(colors: [Color(0xFFF2EAF7), Color(0xFFC9B8E2)]).createShader(body));
-    final flute = Paint()
-      ..color = const Color(0x33A58BD0)
-      ..strokeWidth = w * 0.06;
-    for (var i = 1; i < 4; i++) {
-      canvas.drawLine(Offset(body.left + w * i / 4, body.top), Offset(body.left + w * i / 4, body.bottom), flute);
-    }
-    canvas.drawRect(Rect.fromLTWH(base.dx - w * 0.7, base.dy - h - w * 0.25, w * 1.4, w * 0.25), Paint()..color = const Color(0xFFF7F3FA));
-    canvas.drawRect(Rect.fromLTWH(base.dx - w * 0.7, base.dy, w * 1.4, w * 0.25), Paint()..color = const Color(0xFFF7F3FA));
+    // The marble bust and columns are real 3D props standing on the
+    // distant ground (see props3d.dart).
   }
 
   @override

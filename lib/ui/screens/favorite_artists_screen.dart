@@ -7,7 +7,7 @@ import '../widgets/cards.dart';
 import '../widgets/net_image.dart';
 import 'artist_screen.dart';
 
-/// Pick up to 10 favourite artists. They're shown on your profile and
+/// Pick any number of favourite artists. They're shown on your profile and
 /// showcase, and their songs spawn 10× more often for you.
 class FavoriteArtistsScreen extends StatefulWidget {
   const FavoriteArtistsScreen({super.key});
@@ -52,7 +52,7 @@ class _FavoriteArtistsScreenState extends State<FavoriteArtistsScreen> {
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
         const Text('Shown on your profile for other players. Songs by your favourites spawn 10× more often for you.',
             style: TextStyle(color: kTextSecondary, fontSize: 13)),
-        SectionLabel('Your favourites  ${favs.length}/$kMaxFavoriteArtists'),
+        SectionLabel('Your favourites  ${favs.length}'),
         if (favs.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('None yet — search below.', style: TextStyle(color: kTextTertiary))),
         for (final a in favs)
           ListTile(
@@ -97,46 +97,74 @@ class _FavoriteArtistsScreenState extends State<FavoriteArtistsScreen> {
   }
 }
 
-/// Horizontal row of favourite artist avatars.
-class FavoriteArtistsRow extends StatelessWidget {
-  const FavoriteArtistsRow({super.key, required this.artists, this.onAdd});
+/// Collapsible "Favourite artists" tab: a header with the count that opens
+/// into a scrollable list of every favourite.
+class FavoriteArtistsTab extends StatefulWidget {
+  const FavoriteArtistsTab({super.key, required this.artists, this.onEdit, this.initiallyOpen = false});
   final List<FavoriteArtist> artists;
-  final VoidCallback? onAdd;
+  final VoidCallback? onEdit;
+  final bool initiallyOpen;
+  @override
+  State<FavoriteArtistsTab> createState() => _FavoriteArtistsTabState();
+}
+
+class _FavoriteArtistsTabState extends State<FavoriteArtistsTab> {
+  late bool _open = widget.initiallyOpen;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 92,
-      child: ListView(scrollDirection: Axis.horizontal, children: [
-        for (final a in artists)
-          GestureDetector(
-            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ArtistScreen(artistId: a.id, name: a.name))),
-            child: SizedBox(
-              width: 76,
-              child: Column(children: [
-                Art(artistPicUrl(a.picMd5), size: 58, circle: true),
-                const SizedBox(height: 6),
-                Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: kTextSecondary)),
-              ]),
-            ),
+    final a = widget.artists;
+    return Container(
+      decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(16), border: Border.all(color: kOutline)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+            child: Row(children: [
+              const Icon(Icons.favorite, size: 18, color: kAccent),
+              const SizedBox(width: 10),
+              const Text('Favourite artists', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(width: 8),
+              Text('${a.length}', style: const TextStyle(color: kTextTertiary)),
+              const Spacer(),
+              if (widget.onEdit != null) TextButton(onPressed: widget.onEdit, child: Text(a.isEmpty ? 'Add' : 'Edit')),
+              AnimatedRotation(
+                turns: _open ? 0.5 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: const Icon(Icons.expand_more, color: kTextSecondary),
+              ),
+            ]),
           ),
-        if (onAdd != null)
-          GestureDetector(
-            onTap: onAdd,
-            child: SizedBox(
-              width: 76,
-              child: Column(children: [
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: kSurface2, border: Border.all(color: kOutline)),
-                  child: const Icon(Icons.add, color: kTextSecondary),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: !_open
+              ? const SizedBox(width: double.infinity)
+              : a.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.fromLTRB(14, 0, 14, 14),
+                  child: Align(alignment: Alignment.centerLeft, child: Text('No favourites yet.', style: TextStyle(color: kTextTertiary))),
+                )
+              : ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 340),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: 6),
+                    itemCount: a.length,
+                    itemBuilder: (context, i) => ListTile(
+                      dense: true,
+                      leading: Art(artistPicUrl(a[i].picMd5), size: 36, circle: true),
+                      title: Text(a[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      trailing: const Icon(Icons.chevron_right, size: 18, color: kTextTertiary),
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ArtistScreen(artistId: a[i].id, name: a[i].name))),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 6),
-                Text(artists.isEmpty ? 'Add' : 'Edit', style: const TextStyle(fontSize: 11, color: kTextSecondary)),
-              ]),
-            ),
-          ),
+        ),
       ]),
     );
   }

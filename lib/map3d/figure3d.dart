@@ -27,7 +27,7 @@ class IdleDirector {
   /// Head yaw relative to the body, degrees (look-around).
   double lookYaw = 0;
 
-  double _stillFor = 0, _nextIdleAt = 5, _activityLength = 16, _lookTarget = 0, _lookTimer = 2;
+  double _stillFor = 0, _nextIdleAt = 10, _activityLength = 16, _lookTarget = 0, _lookTimer = 2;
   bool _ending = false;
   IdleActivity _last = IdleActivity.turntable;
 
@@ -62,7 +62,8 @@ class IdleDirector {
         activity = IdleActivity.none;
         _ending = false;
         _stillFor = 0;
-        _nextIdleAt = 6 + _r.nextDouble() * 6;
+        // Roughly half as frequent as before: 12–24 s of standing between idles.
+        _nextIdleAt = 12 + _r.nextDouble() * 12;
       }
     }
 
@@ -112,6 +113,7 @@ class Figure3DPainter extends CustomPainter {
     required this.idle,
     required this.facing,
     required this.accent,
+    required this.contrast,
   });
 
   final Camera3D camera;
@@ -120,6 +122,9 @@ class Figure3DPainter extends CustomPainter {
   final IdleDirector idle;
   final double facing; // degrees clockwise from north
   final Color accent;
+
+  /// Colour for idle props (headphones, notes) that contrasts with the map.
+  final Color contrast;
 
   /// Figure scale: deliberately oversized (Pokémon-Go style).
   static const s = 3.6;
@@ -351,7 +356,7 @@ class Figure3DPainter extends CustomPainter {
         canvas.scale(k, k);
         canvas.translate(0, -22);
         canvas.saveLayer(null, Paint()..color = Colors.white.withValues(alpha: hp));
-        StickFigurePainter.drawHat(canvas, 'hat_headphones', const Offset(0, 22), phase);
+        _drawHeadphones(canvas, const Offset(0, 22));
         canvas.restore();
         canvas.restore();
       }
@@ -410,6 +415,25 @@ class Figure3DPainter extends CustomPainter {
   }
 
   /// Little music notes floating up from the character.
+  /// Idle headphones in the theme's contrast colour, with an outline so
+  /// they read on any ground.
+  void _drawHeadphones(Canvas canvas, Offset head) {
+    final outline = HSLColor.fromColor(contrast).lightness > 0.5 ? const Color(0xFF101014) : Colors.white;
+    final band = Paint()
+      ..color = outline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round;
+    final arc = Rect.fromCircle(center: head, radius: 17);
+    canvas.drawArc(arc, math.pi * 1.05, math.pi * 0.9, false, band);
+    canvas.drawArc(arc, math.pi * 1.05, math.pi * 0.9, false, band..color = contrast..strokeWidth = 3.5);
+    for (final dx in [-16.0, 16.0]) {
+      final cup = RRect.fromRectAndRadius(Rect.fromCenter(center: head + Offset(dx, 2), width: 9, height: 15), const Radius.circular(4.5));
+      canvas.drawRRect(cup.inflate(1.5), Paint()..color = outline);
+      canvas.drawRRect(cup, Paint()..color = contrast);
+    }
+  }
+
   void _drawNotes(Canvas canvas, Offset head, double headR, double t, double strength) {
     if (strength <= 0) return;
     for (var k = 0; k < 6; k++) {
@@ -419,21 +443,31 @@ class Figure3DPainter extends CustomPainter {
       final y = head.dy - headR * 0.2 - age * headR * 4.2;
       final a = strength * (age < 0.15 ? age / 0.15 : 1 - (age - 0.15) / 0.85);
       final sz = headR * (0.42 + 0.12 * (k % 3));
-      final paint = Paint()..color = accent.withValues(alpha: a.clamp(0.0, 1.0));
+      final alpha = a.clamp(0.0, 1.0);
+      final outline = (HSLColor.fromColor(contrast).lightness > 0.5 ? const Color(0xFF101014) : Colors.white).withValues(alpha: alpha * 0.85);
       canvas.save();
       canvas.translate(x, y);
       canvas.rotate(math.sin(t * 2 + k) * 0.25);
-      // Note head + stem (+ flag on alternating notes).
-      canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: sz * 0.62, height: sz * 0.46), paint);
-      canvas.drawRect(Rect.fromLTWH(sz * 0.22, -sz * 1.15, sz * 0.1, sz * 1.15), paint);
-      if (k % 3 != 0) {
-        canvas.drawPath(
-            Path()
-              ..moveTo(sz * 0.32, -sz * 1.15)
-              ..quadraticBezierTo(sz * 0.75, -sz * 0.9, sz * 0.55, -sz * 0.45)
-              ..lineTo(sz * 0.32, -sz * 0.8)
-              ..close(),
-            paint);
+      // Note head + stem (+ flag on alternating notes): outlined, then filled.
+      for (final paint in [
+        Paint()
+          ..color = outline
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1.5, sz * 0.12)
+          ..strokeJoin = StrokeJoin.round,
+        Paint()..color = contrast.withValues(alpha: alpha),
+      ]) {
+        canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: sz * 0.62, height: sz * 0.46), paint);
+        canvas.drawRect(Rect.fromLTWH(sz * 0.22, -sz * 1.15, sz * 0.1, sz * 1.15), paint);
+        if (k % 3 != 0) {
+          canvas.drawPath(
+              Path()
+                ..moveTo(sz * 0.32, -sz * 1.15)
+                ..quadraticBezierTo(sz * 0.75, -sz * 0.9, sz * 0.55, -sz * 0.45)
+                ..lineTo(sz * 0.32, -sz * 0.8)
+                ..close(),
+              paint);
+        }
       }
       canvas.restore();
     }

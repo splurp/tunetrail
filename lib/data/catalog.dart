@@ -222,59 +222,65 @@ class Catalog extends ChangeNotifier {
   /// genre → rarity → favourite-artist song ids within that pool.
   final Map<int, List<List<int>>> _favPools = {};
 
+  /// favourite artist → rarity → their song ids.
+  final Map<int, List<List<int>>> _favByArtist = {};
+
   void _ensureFavorites() {
     _ensureRarity();
     if (_favVersion == version && _favKey.length == favoriteArtists.length && _favKey.containsAll(favoriteArtists)) return;
     _favPools.clear();
+    _favByArtist.clear();
     for (final e in _rarityPools.entries) {
       _favPools[e.key] = [
         for (final pool in e.value) [for (final id in pool) if (favoriteArtists.contains(songs[id]!.artistId)) id]
       ];
+      for (var k = 0; k < 5; k++) {
+        for (final id in _favPools[e.key]![k]) {
+          (_favByArtist[songs[id]!.artistId] ??= List.generate(5, (_) => <int>[]))[k].add(id);
+        }
+      }
     }
     _favVersion = version;
     _favKey = {...favoriteArtists};
   }
 
-  /// Makes every favourite-artist song [favoriteBoost]× as likely to spawn
-  /// as it normally would. A spawn normally picks a genre (weighted by
-  /// [bias]: zones, time of day) and then a song from that genre's pool of
-  /// the rolled rarity, so each song's normal chance is computed exactly and
-  /// the favourites' combined share is scaled up accordingly. Returns a
-  /// favourite song, or null to fall back to the normal pick.
+  /// Makes a spawn [favoriteBoost]× as likely as normal to be by *one of*
+  /// the player's favourite artists (however many they have — the boost is
+  /// for the list as a whole, not per artist). The normal chance is
+  /// computed exactly from how a spawn picks a genre (weighted by [bias])
+  /// and then a song of the rolled rarity. When the boost fires, one
+  /// favourite artist is picked uniformly at random and one of their songs
+  /// nearest the rolled rarity is returned; otherwise null (normal pick).
   Song? maybeFavorite(Rng rng, Rarity rarity, {Map<int, double> bias = const {}}) {
     if (favoriteArtists.isEmpty) return null;
     _ensureFavorites();
+    if (_favByArtist.isEmpty) return null;
     final r = rarity.index;
     final available = [for (final g in kGenres) if (poolFor(g.id).isNotEmpty) g];
     final totalW = available.fold<double>(0, (a, g) => a + g.weight * (bias[g.id] ?? 1.0));
     if (totalW <= 0) return null;
-    final contrib = <(int, double)>[];
-    var f = 0.0; // normal probability that this spawn is a favourite song
-    final chosen = <int, int>{}; // genre → rarity pool actually used
+    var f = 0.0; // normal probability that this spawn is a favourite's song
     for (final g in available) {
       // Same nearest-rarity fallback as [pickSong] when a pool is empty.
       final k = _nearestPool(g.id, r);
       if (k == null) continue;
-      final pool = _rarityPools[g.id]![k];
       final favs = _favPools[g.id]?[k] ?? const [];
       if (favs.isEmpty) continue;
-      final c = g.weight * (bias[g.id] ?? 1.0) / totalW * favs.length / pool.length;
-      chosen[g.id] = k;
-      contrib.add((g.id, c));
-      f += c;
+      f += g.weight * (bias[g.id] ?? 1.0) / totalW * favs.length / _rarityPools[g.id]![k].length;
     }
-    if (f <= 0 || f >= 1) return null;
+    // Even favourites with no song at this rarity get a (fallback) chance.
+    f = math.max(f, 1e-4);
+    if (f >= 1) return null;
     final target = favoriteBoost * f / (1 + (favoriteBoost - 1) * f);
     // The normal pick can still land on a favourite (probability f), so only
     // the difference needs to be forced here.
     final q = ((target - f) / (1 - f)).clamp(0.0, 1.0);
     if (rng.nextDouble() >= q) return null;
-    var roll = rng.nextDouble() * f;
-    for (final (gid, c) in contrib) {
-      roll -= c;
-      if (roll <= 0 || gid == contrib.last.$1) {
-        final favs = _favPools[gid]![chosen[gid]!];
-        return songs[favs[rng.nextInt(favs.length)]];
+    final artists = _favByArtist.keys.toList();
+    final pools = _favByArtist[artists[rng.nextInt(artists.length)]]!;
+    for (var d = 0; d < 5; d++) {
+      for (final k in d == 0 ? [r] : [r - d, r + d]) {
+        if (k >= 0 && k < 5 && pools[k].isNotEmpty) return songs[pools[k][rng.nextInt(pools[k].length)]];
       }
     }
     return null;

@@ -4,13 +4,15 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../map3d/palette.dart';
+import '../../map3d/props3d.dart';
 import '../../map3d/sky_painter.dart';
 
 enum MapEffect { none, grid, rain, snow, embers, petals, digitalRain, aurora, dust, stars }
 
 /// A visual style for the 3D world: palette + an animated screen overlay.
 class MapThemeDef {
-  const MapThemeDef({required this.id, required this.palette, this.effect = MapEffect.none, this.vignette = const Color(0x55000000), this.sky = SkyDecor.none});
+  const MapThemeDef({required this.id, required this.palette, this.effect = MapEffect.none, this.vignette = const Color(0x55000000), this.sky = SkyDecor.none, this.props = PropSet.none});
+  final PropSet props;
   final String id;
   final SkyDecor sky;
   final MapPalette palette;
@@ -23,14 +25,14 @@ const Map<String, MapThemeDef> kMapThemes = {
   'theme_classic': MapThemeDef(id: 'theme_classic', palette: kObsidian, vignette: Color(0x66000000)),
   'theme_midnight': MapThemeDef(id: 'theme_midnight', palette: kMidnight, sky: SkyDecor.stars),
   'theme_synthwave': MapThemeDef(id: 'theme_synthwave', palette: kSynthwave, sky: SkyDecor.synthSun, vignette: Color(0x66200030)),
-  'theme_vaporwave': MapThemeDef(id: 'theme_vaporwave', palette: kVaporwave, sky: SkyDecor.vaporBust, vignette: Color(0x2200D2D3)),
+  'theme_vaporwave': MapThemeDef(id: 'theme_vaporwave', palette: kVaporwave, sky: SkyDecor.vaporBust, props: PropSet.vaporMonuments, vignette: Color(0x2200D2D3)),
   'theme_noir': MapThemeDef(id: 'theme_noir', palette: kNoir, effect: MapEffect.rain, vignette: Color(0x99000000)),
   'theme_vinyl': MapThemeDef(id: 'theme_vinyl', palette: kVinyl, effect: MapEffect.dust, vignette: Color(0x884E342E)),
   'theme_matrix': MapThemeDef(id: 'theme_matrix', palette: kMatrix, effect: MapEffect.digitalRain, vignette: Color(0x99000000)),
   'theme_arctic': MapThemeDef(id: 'theme_arctic', palette: kArctic, effect: MapEffect.snow, vignette: Color(0x22004466)),
   'theme_lava': MapThemeDef(id: 'theme_lava', palette: kMagma, effect: MapEffect.embers, vignette: Color(0x88300000)),
   'theme_aurora': MapThemeDef(id: 'theme_aurora', palette: kAurora, sky: SkyDecor.aurora),
-  'theme_sakura': MapThemeDef(id: 'theme_sakura', palette: kSakura, effect: MapEffect.petals, vignette: Color(0x22F06292)),
+  'theme_sakura': MapThemeDef(id: 'theme_sakura', palette: kSakura, effect: MapEffect.petals, props: PropSet.sakuraTrees, vignette: Color(0x22F06292)),
 };
 
 MapThemeDef themeById(String id) => kMapThemes[id] ?? kMapThemes['theme_classic']!;
@@ -53,7 +55,7 @@ class MapEffectPainter extends CustomPainter {
         case MapEffect.rain:
           _rain(canvas, size);
         case MapEffect.snow:
-          _fall(canvas, size, 70, Colors.white, 2.4, 28, wobble: 18);
+          _fall(canvas, size, 90, Colors.white, 2.8, 28, wobble: 18);
         case MapEffect.embers:
           _rise(canvas, size);
         case MapEffect.petals:
@@ -106,11 +108,17 @@ class MapEffectPainter extends CustomPainter {
 
   void _fall(Canvas canvas, Size size, int n, Color c, double r, double speed, {double wobble = 10}) {
     final p = Paint()..color = c;
+    // A soft dark halo keeps white flakes readable on pale ground.
+    final halo = Paint()
+      ..color = const Color(0x55203848)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.2);
     for (var i = 0; i < n; i++) {
       final sp = speed * (0.6 + _rand(i, 4));
       final x = (_rand(i, 5) * size.width + math.sin(t * 0.8 + i) * wobble) % size.width;
       final y = (_rand(i, 6) * size.height + t * sp) % (size.height + 10) - 5;
-      canvas.drawCircle(Offset(x, y), r * (0.5 + _rand(i, 7)), p);
+      final rr = r * (0.5 + _rand(i, 7));
+      canvas.drawCircle(Offset(x, y), rr + 1.6, halo);
+      canvas.drawCircle(Offset(x, y), rr, p);
     }
   }
 

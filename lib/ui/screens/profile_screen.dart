@@ -105,11 +105,9 @@ class ProfileScreen extends StatelessWidget {
           ),
         ]),
         const SizedBox(height: 16),
-        const Text('Favourite artists', style: TextStyle(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        FavoriteArtistsRow(
+        FavoriteArtistsTab(
           artists: p.favoriteArtists,
-          onAdd: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FavoriteArtistsScreen())),
+          onEdit: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FavoriteArtistsScreen())),
         ),
         const SizedBox(height: 12),
         _Stats(p: p, cards: g.collection.length, unique: g.collection.uniqueSongCount),

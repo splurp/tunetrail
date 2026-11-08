@@ -175,8 +175,9 @@ class FavoriteArtist {
       FavoriteArtist(id: (j['id'] as num).toInt(), name: j['name'] as String? ?? '', picMd5: j['pic'] as String? ?? '');
 }
 
-/// Maximum favourite artists per player.
-const int kMaxFavoriteArtists = 10;
+/// Sanity limit on favourite artists per player (effectively unlimited;
+/// only guards the server against absurd payloads).
+const int kMaxFavoriteArtists = 100000;
 
 /// A public display of a player's favourite cards, playlists and artists.
 class Showcase {

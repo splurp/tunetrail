@@ -550,10 +550,6 @@ class Game extends ChangeNotifier {
     if (isFavoriteArtist(id)) {
       profile.favoriteArtists.removeWhere((a) => a.id == id);
     } else {
-      if (profile.favoriteArtists.length >= kMaxFavoriteArtists) {
-        toast('You can pick up to $kMaxFavoriteArtists favourite artists');
-        return;
-      }
       profile.favoriteArtists.add(FavoriteArtist(id: id, name: name, picMd5: picMd5));
       // Make sure their songs are in the catalogue so they can spawn.
       try {
