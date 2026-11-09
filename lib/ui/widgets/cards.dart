@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../data/samples.dart';
 import 'edition_views.dart';
 import 'net_image.dart';
+import 'store_links.dart';
 import 'ui_kit.dart';
 
 export 'ui_kit.dart';
@@ -231,7 +232,11 @@ class SongCardView extends StatelessWidget {
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.052, color: kTextSecondary, fontWeight: FontWeight.w500)),
           ),
         ]),
-        Text(song.albumTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.043, color: kTextTertiary)),
+        // Album line, with the Apple Music / Spotify buttons in the corner.
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Expanded(child: Text(song.albumTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.043, color: kTextTertiary))),
+          if (width >= 110) StoreLinks(song: song, size: math.max(16.0, width * 0.08), gap: width * 0.02),
+        ]),
         ?footer,
       ]),
     );
@@ -298,7 +303,10 @@ class SongCardView extends StatelessWidget {
                 style: TextStyle(fontSize: width * 0.078, fontWeight: FontWeight.w800, color: Colors.white, height: 1.1, shadows: const [Shadow(blurRadius: 8)])),
             SizedBox(height: width * 0.012),
             Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.052, color: Colors.white, fontWeight: FontWeight.w500)),
-            Text(song.albumTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.042, color: Colors.white70)),
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(child: Text(song.albumTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.042, color: Colors.white70))),
+              if (width >= 110) StoreLinks(song: song, size: math.max(16.0, width * 0.08), gap: width * 0.02),
+            ]),
             ?footer,
           ]),
         ),

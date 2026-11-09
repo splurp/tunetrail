@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/animation.dart';
@@ -72,9 +71,9 @@ class _SoLoudVoice extends _Voice {
 /// Source previews the audio engine can't decode (Apple AAC) play through
 /// the platform media player instead.
 class _MediaVoice extends _Voice {
-  _MediaVoice(this.file);
-  final File file;
-  late final VideoPlayerController c = VideoPlayerController.file(file, videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true));
+  _MediaVoice(this.url);
+  final String url;
+  late final VideoPlayerController c = VideoPlayerController.networkUrl(Uri.parse(url), videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true));
 
   @override
   Future<void> prepare(double from) async {
@@ -132,28 +131,22 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
   double? get elapsed => _clock.isRunning ? _clock.elapsedMicroseconds / 1e6 : null;
 
   // ------------------------------------------------------------- sources
-  final Map<int, File> _itunesFiles = {};
+  final Map<int, String> _itunesUrls = {};
 
-  Future<File?> _itunesPreview(int trackId) async {
-    final cached = _itunesFiles[trackId];
-    if (cached != null && await cached.exists()) return cached;
-    final dir = Directory('${Directory.systemTemp.path}/tunetrail_samples');
-    await dir.create(recursive: true);
-    final f = File('${dir.path}/itunes_$trackId.m4a');
-    if (await f.exists() && await f.length() > 10000) return _itunesFiles[trackId] = f;
+  /// The Apple preview's stream URL (the audio is streamed, never saved).
+  Future<String?> _itunesPreview(int trackId) async {
+    final cached = _itunesUrls[trackId];
+    if (cached != null) return cached;
     final look = await _http.get(Uri.https('itunes.apple.com', '/lookup', {'id': '$trackId'})).timeout(const Duration(seconds: 12));
     final url = ((jsonDecode(look.body)['results'] as List).firstOrNull as Map?)?['previewUrl'] as String?;
     if (url == null) return null;
-    final res = await _http.get(Uri.parse(url)).timeout(const Duration(seconds: 30));
-    if (res.statusCode != 200) return null;
-    await f.writeAsBytes(res.bodyBytes, flush: true);
-    return _itunesFiles[trackId] = f;
+    return _itunesUrls[trackId] = url;
   }
 
   Future<_Voice?> _voiceFor(SampleInfo s, SampleTrack t) async {
     if (t == SampleTrack.source && s.sourceItunesId != null) {
-      final f = await _itunesPreview(s.sourceItunesId!);
-      return f == null ? null : _MediaVoice(f);
+      final u = await _itunesPreview(s.sourceItunesId!);
+      return u == null ? null : _MediaVoice(u);
     }
     final src = await audio.loadSource(t == SampleTrack.source ? s.source.id : s.song.id);
     if (src == null) return null;

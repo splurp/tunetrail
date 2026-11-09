@@ -1,0 +1,6 @@
+*
+!packages/tunetrail_core/
+!server/
+packages/tunetrail_core/.dart_tool/
+server/.dart_tool/
+server/*.json

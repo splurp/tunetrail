@@ -135,9 +135,8 @@ class _CanvasBackdropState extends State<CanvasBackdrop> {
     }
     setState(() => _clip = clip);
     if (!widget.live) return;
-    final file = await movies.videoFile(MovieService.keyFor(widget.song.id, live: lf), clip);
-    if (!mounted || file == null) return;
-    final v = VideoPlayerController.file(file, videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true));
+    // Streamed straight from the provider; nothing is saved on the device.
+    final v = VideoPlayerController.networkUrl(Uri.parse(clip.videoUrl), videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true));
     _video = v;
     try {
       await v.initialize();

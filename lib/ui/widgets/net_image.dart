@@ -1,20 +1,16 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:tunetrail_core/tunetrail_core.dart';
 
-/// Network image with a persistent on-disk cache (works on every platform
-/// without native plugins). Album/artist art is immutable, so cached files
-/// never need revalidation.
+/// Network image, streamed: nothing is written to disk (album art is kept
+/// only in Flutter's in-memory image cache while the app runs).
 class NetImage extends ImageProvider<NetImage> {
   const NetImage(this.url);
   final String url;
 
-  static Directory? cacheDir;
   static final http.Client _client = http.Client();
   static int _active = 0;
   static final List<Completer<void>> _queue = [];
@@ -38,19 +34,12 @@ class NetImage extends ImageProvider<NetImage> {
   }
 
   Future<Uint8List> _bytes() async {
-    final dir = cacheDir;
-    final name = (hashString(url) & 0x7FFFFFFFFFFFFFFF).toRadixString(36);
-    final f = dir == null ? null : File('${dir.path}/$name');
-    if (f != null && await f.exists()) {
-      return f.readAsBytes();
-    }
     await _acquire();
     try {
       final res = await _client.get(Uri.parse(url)).timeout(const Duration(seconds: 20));
       if (res.statusCode != 200 || res.bodyBytes.isEmpty) {
         throw StateError('image ${res.statusCode}');
       }
-      if (f != null) unawaited(f.writeAsBytes(res.bodyBytes));
       return res.bodyBytes;
     } finally {
       _release();

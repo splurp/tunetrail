@@ -55,3 +55,4 @@ server/market.json.tmp
 android/key.properties
 *.jks
 *.keystore
+deploy/.env

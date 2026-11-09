@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
@@ -16,6 +18,7 @@ import '../data/samples.dart';
 import '../map3d/map_data.dart';
 import '../map3d/props3d.dart';
 import 'genre_zones.dart';
+import 'google_auth.dart';
 import 'movie_service.dart';
 import 'sample_player.dart';
 import 'audio_service.dart';
@@ -143,8 +146,9 @@ class Game extends ChangeNotifier {
 
   // ---------------------------------------------------------------- market
   Future<void> _connectMarket() async {
+    profile.applyBuiltInServer();
     if (profile.marketMode == MarketMode.online) {
-      market = RemoteMarket(profile.serverUrl, profile.playerId, profile.name);
+      market = RemoteMarket(profile.serverUrl, profile.playerId, profile.name, token: profile.authToken);
       try {
         await market.register(profile.playerId, profile.name);
         return;
@@ -155,6 +159,41 @@ class Game extends ChangeNotifier {
     final local = LocalMarket(dir, catalog, profile.playerId, profile.name);
     await local.init();
     market = local;
+  }
+
+  /// Signs in with Google through the game server; the account then owns
+  /// this player's market activity on every device.
+  Future<String?> signInWithGoogle() async {
+    try {
+      final idToken = await GoogleAuth.idToken();
+      final base = profile.serverUrl.endsWith('/') ? profile.serverUrl.substring(0, profile.serverUrl.length - 1) : profile.serverUrl;
+      final res = await http.post(Uri.parse('$base/auth/google'), headers: {'content-type': 'application/json'}, body: jsonEncode({'idToken': idToken})).timeout(const Duration(seconds: 15));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode != 200) return j['error'] as String? ?? 'Sign-in failed (${res.statusCode})';
+      profile
+        ..authToken = j['token'] as String
+        ..playerId = j['playerId'] as String
+        ..accountName = j['name'] as String? ?? ''
+        ..marketMode = MarketMode.online;
+      profile.changed();
+      market.dispose();
+      await _connectMarket();
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return '$e'.replaceFirst('Bad state: ', '');
+    }
+  }
+
+  Future<void> signOut() async {
+    await GoogleAuth.signOut();
+    profile
+      ..authToken = ''
+      ..accountName = '';
+    profile.changed();
+    market.dispose();
+    await _connectMarket();
+    notifyListeners();
   }
 
   Future<void> setMarketMode(MarketMode mode, String url) async {

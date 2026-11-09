@@ -1,0 +1,28 @@
+# Tunetrail server + automatic HTTPS (Caddy / Let's Encrypt) on one VM.
+#   cp .env.example .env   (fill it in)
+#   docker compose up -d --build
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file: .env
+    restart: unless-stopped
+    expose:
+      - "8080"
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - server
+volumes:
+  caddy_data:
+  caddy_config:

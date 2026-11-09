@@ -6,6 +6,8 @@ import '../../data/profile.dart';
 import '../app.dart';
 import 'card_detail_screen.dart';
 import '../widgets/ui_kit.dart';
+import '../../game/google_auth.dart';
+import 'copyright_screen.dart';
 import 'debug_screen.dart';
 import 'listing_composer.dart';
 
@@ -131,6 +133,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
        ],
        [
+        const _Header('Account'),
+        if (p.authToken.isNotEmpty)
+          ListTile(
+            leading: const Icon(Icons.verified_user, color: kAccent),
+            title: Text('Signed in${p.accountName.isEmpty ? '' : ' as ${p.accountName}'}'),
+            subtitle: const Text('Google account · your market activity follows you to any device'),
+            trailing: TextButton(onPressed: () => g.signOut(), child: const Text('Sign out')),
+          )
+        else
+          ListTile(
+            leading: const Icon(Icons.account_circle_outlined),
+            title: const Text('Sign in with Google'),
+            subtitle: Text(GoogleAuth.available
+                ? 'Needed to trade on the online market'
+                : 'Not configured in this build (see docs/multiplayer-setup.md) — playing as a guest'),
+            enabled: GoogleAuth.available,
+            onTap: () async {
+              final err = await g.signInWithGoogle();
+              g.toast(err ?? 'Signed in');
+            },
+          ),
         const _Header('Market'),
         ListTile(
           title: const Text('Quick-list presets'),
@@ -175,6 +198,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DebugScreen())),
           ),
         const _Header('About'),
+        ListTile(
+          leading: const Icon(Icons.copyright),
+          title: const Text('Copyright & DMCA'),
+          subtitle: const Text('How music appears in the game · notices and opt-outs: $kCopyrightEmail'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CopyrightScreen())),
+        ),
         const ListTile(
           title: Text('Tunetrail — developer build'),
           subtitle: Text('Song data, artwork & previews: Deezer API. Maps: © OpenStreetMap contributors. Geocoding: Nominatim.'),

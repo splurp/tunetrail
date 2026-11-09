@@ -37,6 +37,11 @@ class MovieService extends ChangeNotifier {
   File get _file => File('${dir.path}/movies.json');
 
   Future<void> load() async {
+    // Older versions saved video files; video is streamed now.
+    try {
+      final old = Directory('${dir.path}/movies');
+      if (await old.exists()) await old.delete(recursive: true);
+    } catch (_) {}
     try {
       if (!await _file.exists()) return;
       final j = jsonDecode(await _file.readAsString()) as Map<String, dynamic>;
@@ -96,32 +101,6 @@ class MovieService extends ChangeNotifier {
     });
   }
 
-  final Map<int, Future<File?>> _downloads = {};
-
-  /// Downloads (once) and caches a clip's video file locally, so playback
-  /// doesn't depend on the player's own network stack.
-  Future<File?> videoFile(int songId, MovieClip clip) => _downloads[songId] ??= () async {
-        final d = Directory('${dir.path}/movies');
-        final f = File('${d.path}/$songId.m4v');
-        if (await f.exists() && await f.length() > 1000) return f;
-        try {
-          await d.create(recursive: true);
-          final res = await _client.get(Uri.parse(clip.videoUrl)).timeout(const Duration(seconds: 40));
-          if (res.statusCode != 200 && res.statusCode != 206) return null;
-          final tmp = File('${f.path}.part');
-          await tmp.writeAsBytes(res.bodyBytes, flush: true);
-          await tmp.rename(f.path);
-          return f;
-        } catch (e) {
-          debugPrint('movie download: $e');
-          return null;
-        } finally {
-          // Allow a retry after a failure.
-          Future<void>.delayed(const Duration(seconds: 1), () async {
-            if (!await f.exists()) _downloads.remove(songId);
-          });
-        }
-      }();
 
   static bool _isAlt(String name) {
     final n = name.toLowerCase();

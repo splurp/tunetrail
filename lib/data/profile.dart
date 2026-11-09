@@ -102,6 +102,22 @@ class PlayerProfile extends ChangeNotifier {
   double speedMultiplier = 1.0;
   MarketMode marketMode = MarketMode.local;
   String serverUrl = 'http://localhost:8080';
+
+  /// The game server built into this version (--dart-define=TUNETRAIL_SERVER).
+  static const builtInServer = String.fromEnvironment('TUNETRAIL_SERVER');
+
+  /// Points a fresh install (still on the placeholder URL) at the built-in
+  /// server, online.
+  void applyBuiltInServer() {
+    if (builtInServer.isEmpty || serverUrl != 'http://localhost:8080') return;
+    serverUrl = builtInServer;
+    marketMode = MarketMode.online;
+  }
+
+  /// Signed-in account (Google): the server's session token, account id
+  /// and the Google display name. Empty when playing as a guest.
+  String authToken = '';
+  String accountName = '';
   String tileUrl = '';
 
   /// Last.fm API key (optional) for play-count based rarity. Defaults to the
@@ -239,6 +255,8 @@ class PlayerProfile extends ChangeNotifier {
         'speed': speedMultiplier,
         'marketMode': marketMode.index,
         'server': serverUrl,
+        'authToken': authToken,
+        'accountName': accountName,
         'tileUrl': tileUrl,
         'lastFmKey': lastFmKey,
         'volume': volume,
@@ -323,6 +341,8 @@ class PlayerProfile extends ChangeNotifier {
     speedMultiplier = (j['speed'] as num?)?.toDouble() ?? 1.0;
     marketMode = MarketMode.values[((j['marketMode'] as num?)?.toInt() ?? 0).clamp(0, 1)];
     serverUrl = j['server'] as String? ?? serverUrl;
+    authToken = j['authToken'] as String? ?? '';
+    accountName = j['accountName'] as String? ?? '';
     tileUrl = j['tileUrl'] as String? ?? '';
     lastFmKey = j['lastFmKey'] as String? ?? '';
     volume = (j['volume'] as num?)?.toDouble() ?? volume;

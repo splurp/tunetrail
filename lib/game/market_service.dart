@@ -274,8 +274,11 @@ class LocalMarket extends MarketBackend {
 // ==================================================================== remote
 /// Online market: talks to `server/bin/server.dart`.
 class RemoteMarket extends MarketBackend {
-  RemoteMarket(this.baseUrl, this.playerId, this.playerName);
+  RemoteMarket(this.baseUrl, this.playerId, this.playerName, {this.token = ''});
   final String baseUrl;
+
+  /// Session token from Google sign-in (empty: guest).
+  final String token;
   final String playerId;
   final String playerName;
   final http.Client _c = http.Client();
@@ -287,6 +290,7 @@ class RemoteMarket extends MarketBackend {
         'content-type': 'application/json',
         'x-player-id': playerId,
         'x-player-name': Uri.encodeComponent(playerName),
+        if (token.isNotEmpty) 'authorization': 'Bearer $token',
       };
 
   Uri _u(String path, [Map<String, String>? q]) {
