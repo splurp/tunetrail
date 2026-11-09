@@ -554,6 +554,56 @@ class Game extends ChangeNotifier {
     return out;
   }
 
+  // ------------------------------------------------------ artist blind box
+  /// Bits for an artist's blind box: 5 for small artists up to 100 for the
+  /// biggest (log scale of Deezer fans).
+  static int blindBoxPrice(int fans) {
+    final t = (math.log(math.max(fans, 1)) / math.ln10 - 4) / (math.log(30000000) / math.ln10 - 4);
+    return (5 + 95 * t.clamp(0.0, 1.0)).round();
+  }
+
+  /// Opens an Artist Blind Box: one of the artist's songs, always shiny,
+  /// with every rarity they have equally likely — or, 1 time in 100, a
+  /// Canvas edition instead (if serials remain). Returns the pull.
+  Future<PackPull> openArtistBlindBox(ArtistInfo artist) async {
+    final price = blindBoxPrice(artist.fans);
+    if (profile.bits < price) throw MarketException('Not enough bits');
+    final tracks = await api.artistTop(artist.id, limit: 100);
+    if (tracks.isEmpty) throw MarketException('No songs found for ${artist.name}');
+    catalog.addSongs(tracks);
+    profile.bits -= price;
+    profile.changed();
+    final rng = math.Random();
+    final byRarity = <Rarity, List<Song>>{};
+    for (final t in tracks) {
+      final s = catalog.songs[t.id] ?? t;
+      (byRarity[catalog.rarityOf(s)] ??= []).add(s);
+    }
+    final rarities = byRarity.keys.toList();
+    final rarity = rarities[rng.nextInt(rarities.length)];
+    final pool = byRarity[rarity]!;
+    final song = pool[rng.nextInt(pool.length)];
+    var edition = Edition.standard;
+    var serial = 0;
+    if (rng.nextInt(100) == 0 && !collection.ownsVariant(song.id, rarity, false, Edition.canvas)) {
+      try {
+        final n = await market.claimSerial(song.id, Edition.canvas);
+        if (n != null) {
+          edition = Edition.canvas;
+          serial = n;
+        }
+      } catch (_) {}
+    }
+    final card = acquire(song.id, rarity, edition == Edition.standard, edition, CardSource.pack, announce: false, serial: serial);
+    profile.packsOpened++;
+    profile.changed();
+    notifyListeners();
+    return PackPull(
+      card ?? OwnedCard(-1, song, rarity, edition == Edition.standard, false, DateTime.now(), CardSource.pack, edition, serial),
+      card == null ? lastDuplicateCoins : 0,
+    );
+  }
+
   // ------------------------------------------------------------- purchases
   Future<PurchaseResult> purchase(Product p) async {
     if (p.kind != ProductKind.bits && profile.owned.contains(p.id)) {

@@ -230,14 +230,25 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
           Widget row(Song song, String sub, Float32List? wave, bool top) => SizedBox(
                 height: rowH,
                 child: Stack(children: [
+                  // At rest the waveforms sit small in the middle of the card;
+                  // when the breakdown plays they open out to the full width.
                   Positioned.fill(
-                    child: CustomPaint(
-                      painter: _WavePainter(
-                        wave: wave,
-                        info: s,
-                        isSource: top,
-                        playhead: mine ? (top ? pb.sourcePos : pb.songPos) : null,
-                        color: top ? const Color(0xFFFFB74D) : const Color(0xFF4DD0E1),
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(end: mine && pb.active ? 1.0 : 0.0),
+                      duration: const Duration(milliseconds: 900),
+                      curve: Curves.easeInOutCubic,
+                      builder: (context, t, child) => Align(
+                        alignment: top ? const Alignment(0, 0.35) : const Alignment(0, -0.35),
+                        child: FractionallySizedBox(widthFactor: 0.46 + 0.54 * t, heightFactor: 0.6 + 0.4 * t, child: child),
+                      ),
+                      child: CustomPaint(
+                        painter: _WavePainter(
+                          wave: wave,
+                          info: s,
+                          isSource: top,
+                          playhead: mine ? (top ? pb.sourcePos : pb.songPos) : null,
+                          color: top ? const Color(0xFFFFB74D) : const Color(0xFF4DD0E1),
+                        ),
                       ),
                     ),
                   ),
