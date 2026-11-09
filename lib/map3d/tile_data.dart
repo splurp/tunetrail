@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dart_earcut/dart_earcut.dart';
 
+import 'buildings3d.dart';
 import 'mvt.dart';
 
 /// Zoom level of the vector tiles used for the world (≈1.8 km tiles at
@@ -83,7 +84,11 @@ class WorldTile {
   /// ranges into the triangle array, as [start, end, minX, minY, maxX, maxY].
   final Map<GroundLayer, Float32List> buckets;
 
-  final List<MegaBuilding> buildings;
+  /// Big landmark buildings from the base map (drawn when the full city
+  /// buildings layer is off), in the same form as city buildings.
+  final List<CityBuilding> buildings;
+
+  late final CityBuildingTile buildingTile = CityBuildingTile(buildings);
 
   /// Walkable road centre-lines [x0,y0,x1,y1,...] in metres (for routing).
   final List<Float32List> roads;
@@ -99,16 +104,6 @@ class WorldTile {
   String get key => '$z/$x/$y';
 }
 
-class MegaBuilding {
-  MegaBuilding(this.ring, this.roof, this.height);
-
-  /// Outer ring [x0,y0,...] in metres (closed implicitly).
-  final Float32List ring;
-
-  /// Roof triangles [x0,y0,...].
-  final Float32List roof;
-  final double height;
-}
 
 /// Input for [processTile] (sent to a background isolate).
 class TileJob {
@@ -145,7 +140,7 @@ WorldTile processTile(TileJob j) {
   double wy(double py, int ext) => (latOf(py, ext) - j.originLat) * mPerDegLat;
 
   final out = <GroundLayer, List<double>>{for (final l in GroundLayer.values) l: <double>[]};
-  final buildings = <MegaBuilding>[];
+  final buildings = <CityBuilding>[];
   final roads = <Float32List>[];
   final flags = Uint32List(kZoneGrid * kZoneGrid);
   final counts = {for (final c in ZoneCount.values) c: Uint16List(kZoneGrid * kZoneGrid)};
@@ -419,20 +414,16 @@ WorldTile processTile(TileJob j) {
             final area = ringArea(m).abs();
             if (area < kMegaBuildingArea) continue;
             rasterPolygon([outer], ZoneFlag.megaBuilding);
-            final h = (f.number('height') ?? 12).clamp(8, 30).toDouble();
+            // Real heights where the map has them (no more 30 m cap).
+            final h = (f.number('render_height') ?? f.number('height') ?? 15).clamp(6, 600).toDouble();
             final verts = <double>[];
             var len = m.length;
             if (m[0] == m[len - 2] && m[1] == m[len - 1]) len -= 2;
             for (var i = 0; i < len; i++) {
               verts.add(m[i]);
             }
-            final idx = Earcut.triangulateRaw(verts);
-            final roof = Float32List(idx.length * 2);
-            for (var i = 0; i < idx.length; i++) {
-              roof[i * 2] = verts[idx[i] * 2];
-              roof[i * 2 + 1] = verts[idx[i] * 2 + 1];
-            }
-            buildings.add(MegaBuilding(Float32List.fromList(verts), roof, h));
+            final b = cityBuildingFromOutline(verts, h);
+            if (b != null) buildings.add(b);
             if (area > 20000) {
               final ci = cellAt(cx / cnt, cy / cnt);
               if (ci != null) counts[ZoneCount.industry]![ci] += 1;

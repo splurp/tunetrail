@@ -40,7 +40,7 @@ class _CanvasCheckerScreenState extends State<CanvasCheckerScreen> {
       _error = null;
     });
     try {
-      final r = await g.api.searchTracks(q, limit: 30);
+      final r = await g.api.searchSongs(q, limit: 30);
       if (!mounted) return;
       setState(() {
         _results = r;

@@ -106,29 +106,56 @@ CityBuildingTile processBuildingTile(TileJob j) {
         }
         if (rad < 2) continue;
         if (cnt > 65535) continue;
-        final idx = Earcut.triangulateRaw(verts);
-        var area = 0.0;
-        for (var i = 0, k = cnt - 1; i < cnt; k = i++) {
-          area += (verts[k * 2] - verts[i * 2]) * (verts[k * 2 + 1] + verts[i * 2 + 1]);
-        }
-        final sign = area > 0 ? 1.0 : -1.0;
-        final normals = Float32List(cnt * 2), shade = Float32List(cnt);
-        for (var i = 0; i < cnt; i++) {
-          final k = (i + 1) % cnt;
-          var nx = (verts[k * 2 + 1] - verts[i * 2 + 1]) * sign, ny = -(verts[k * 2] - verts[i * 2]) * sign;
-          final nl = math.sqrt(nx * nx + ny * ny);
-          if (nl < 0.01) continue;
-          nx /= nl;
-          ny /= nl;
-          normals[i * 2] = nx;
-          normals[i * 2 + 1] = ny;
-          shade[i] = 0.55 + 0.45 * ((nx * 0.55 + ny * 0.83) * 0.5 + 0.5);
-        }
-        out.add(CityBuilding(Float32List.fromList(verts), Uint16List.fromList(idx), h, cx, cy, rad, normals, shade));
+        out.add(_fromOutline(verts, h, cx, cy, rad));
       }
     }
   }
   return CityBuildingTile(out);
+}
+
+/// A [CityBuilding] from an outline in metres (x,y pairs, no closing
+/// point) and a height — used for the map's own landmark buildings too.
+CityBuilding? cityBuildingFromOutline(List<double> verts, double h) {
+  final cnt = verts.length ~/ 2;
+  if (cnt < 3 || cnt > 65535) return null;
+  var cx = 0.0, cy = 0.0;
+  for (var i = 0; i < cnt; i++) {
+    cx += verts[i * 2];
+    cy += verts[i * 2 + 1];
+  }
+  cx /= cnt;
+  cy /= cnt;
+  var rad = 0.0;
+  for (var i = 0; i < cnt; i++) {
+    rad = math.max(rad, math.sqrt(math.pow(verts[i * 2] - cx, 2) + math.pow(verts[i * 2 + 1] - cy, 2)));
+  }
+  if (rad < 2) return null;
+  return _fromOutline(verts, h, cx, cy, rad);
+}
+
+/// Builds a [CityBuilding] from an outline (x,y pairs, no closing point):
+/// roof triangulation, outward wall normals and their light factors.
+CityBuilding _fromOutline(List<double> verts, double h, double cx, double cy, double rad) {
+  final cnt = verts.length ~/ 2;
+  final idx = Earcut.triangulateRaw(verts);
+  var area = 0.0;
+  for (var i = 0, k = cnt - 1; i < cnt; k = i++) {
+    area += (verts[k * 2] - verts[i * 2]) * (verts[k * 2 + 1] + verts[i * 2 + 1]);
+  }
+  final sign = area > 0 ? 1.0 : -1.0;
+  final normals = Float32List(cnt * 2), shade = Float32List(cnt);
+  for (var i = 0; i < cnt; i++) {
+    final k = (i + 1) % cnt;
+    var nx = (verts[k * 2 + 1] - verts[i * 2 + 1]) * sign, ny = -(verts[k * 2] - verts[i * 2]) * sign;
+    final nl = math.sqrt(nx * nx + ny * ny);
+    if (nl < 0.01) continue;
+    nx /= nl;
+    ny /= nl;
+    normals[i * 2] = nx;
+    normals[i * 2 + 1] = ny;
+    shade[i] = 0.55 + 0.45 * ((nx * 0.55 + ny * 0.83) * 0.5 + 0.5);
+  }
+  return CityBuilding(Float32List.fromList(verts), Uint16List.fromList(idx), h, cx, cy, rad, normals, shade);
 }
 
 /// Draws city buildings as flat-shaded low-poly blocks: far-to-near per
@@ -208,6 +235,7 @@ class CityBuildingRenderer {
     final eb = cam.eyeBack, eu = cam.eyeUp, ed = cam.eyeDist, f = cam.focal, ccx = cam.cx, ccy = cam.cy;
     final dd = ed * ed;
     var np = 0, nc = 0; // floats / colours written
+    var bx0 = double.infinity, by0 = double.infinity, bx1 = -double.infinity, by1 = -double.infinity;
     void ensure(int verts) {
       if ((nc + verts) > _col.length) {
         final grow = math.max(_col.length * 2, nc + verts);
@@ -216,7 +244,7 @@ class CityBuildingRenderer {
       }
     }
 
-    for (final (d, b, alpha) in visible) {
+    void emit(double d, CityBuilding b) {
       final r = b.ring, cnt = r.length ~/ 2, h = b.height;
       if (_gx.length < cnt) {
         _gx = Float32List(cnt * 2);
@@ -233,10 +261,16 @@ class CityBuildingRenderer {
         final z0 = (ya * eb + dd) / ed;
         final hc = eu > 0 ? math.min(h, (z0 - 2) * ed / eu) : h;
         final zh = z0 - hc * eu / ed;
-        _gx[i] = ccx + f * xa / z0;
-        _gy[i] = ccy - f * (ya * eu / ed) / z0;
-        _tx[i] = ccx + f * xa / zh;
-        _ty[i] = ccy - f * ((ya * eu + hc * eb) / ed) / zh;
+        final gx = ccx + f * xa / z0, gy = ccy - f * (ya * eu / ed) / z0;
+        final tx = ccx + f * xa / zh, ty = ccy - f * ((ya * eu + hc * eb) / ed) / zh;
+        _gx[i] = gx;
+        _gy[i] = gy;
+        _tx[i] = tx;
+        _ty[i] = ty;
+        bx0 = math.min(bx0, math.min(gx, tx));
+        bx1 = math.max(bx1, math.max(gx, tx));
+        by0 = math.min(by0, math.min(gy, ty));
+        by1 = math.max(by1, math.max(gy, ty));
       }
       final fogT = ((d - 300) / (maxDistance * 1.2)).clamp(0.0, 0.75);
       final nrm = b.normals, shade = b.shade;
@@ -247,7 +281,7 @@ class CityBuildingRenderer {
         final k = i + 1 == cnt ? 0 : i + 1;
         // Back-face cull: the wall faces away from the camera.
         if (nx * (camX - (r[i * 2] + r[k * 2]) / 2) + ny * (camY - (r[i * 2 + 1] + r[k * 2 + 1]) / 2) <= 0) continue;
-        final c = argb(wall, shade[i], fogT, alpha);
+        final c = argb(wall, shade[i], fogT, 1);
         _pos[np++] = _gx[i];
         _pos[np++] = _gy[i];
         _pos[np++] = _gx[k];
@@ -264,7 +298,7 @@ class CityBuildingRenderer {
           _col[nc++] = c;
         }
       }
-      final rc = argb(roofC, 1, fogT, alpha);
+      final rc = argb(roofC, 1, fogT, 1);
       final idx = b.roofIdx;
       for (var i = 0; i < idx.length; i++) {
         final v = idx[i];
@@ -273,9 +307,33 @@ class CityBuildingRenderer {
         _col[nc++] = rc;
       }
     }
-    if (nc == 0) return;
-    final v = ui.Vertices.raw(VertexMode.triangles, Float32List.sublistView(_pos, 0, np), colors: Int32List.sublistView(_col, 0, nc));
-    canvas.drawVertices(v, BlendMode.dst, Paint());
-    v.dispose();
+
+    void flush() {
+      if (nc == 0) return;
+      final v = ui.Vertices.raw(VertexMode.triangles, Float32List.sublistView(_pos, 0, np), colors: Int32List.sublistView(_col, 0, nc));
+      canvas.drawVertices(v, BlendMode.dst, Paint());
+      v.dispose();
+      np = nc = 0;
+    }
+
+    // Vertex colours are always opaque (per-vertex alpha renders
+    // differently across platforms — on Windows it made every building
+    // see-through). Fully visible buildings go in one batch; the few
+    // fading out near the player are drawn per fade step through a layer.
+    for (final (d, b, alpha) in visible) {
+      if (alpha >= 0.97) emit(d, b);
+    }
+    flush();
+    for (var step = 1; step <= 3; step++) {
+      bx0 = by0 = double.infinity;
+      bx1 = by1 = -double.infinity;
+      for (final (d, b, alpha) in visible) {
+        if (alpha < 0.97 && (alpha * 3).ceil().clamp(1, 3) == step) emit(d, b);
+      }
+      if (nc == 0) continue;
+      canvas.saveLayer(Rect.fromLTRB(bx0 - 2, by0 - 2, bx1 + 2, by1 + 2), Paint()..color = Color.fromRGBO(0, 0, 0, step / 3.5));
+      flush();
+      canvas.restore();
+    }
   }
 }

@@ -340,7 +340,7 @@ class _SpawnSongScreenState extends State<SpawnSongScreen> {
       _error = null;
     });
     try {
-      final tracks = await g.api.searchTracks(q, limit: 40);
+      final tracks = await g.api.searchSongs(q, limit: 40);
       // Also surface the top songs of a matching artist.
       final artists = await g.api.searchArtists(q, limit: 1);
       final extra = artists.isEmpty || artists.first.name.toLowerCase() != q.toLowerCase()

@@ -200,6 +200,47 @@ class DeezerApi {
     return [for (final t in _data(j)) ?Song.fromDeezer(t)];
   }
 
+  /// Song search that also finds originals Deezer's track search buries
+  /// under covers and remixes (e.g. "I Write Sins Not Tragedies" returns
+  /// live versions and covers but not the album track). The artists who
+  /// show up in the results are checked too: any of their top tracks with
+  /// the same title is added. Originals come first, then by popularity.
+  Future<List<Song>> searchSongs(String q, {int limit = 40}) async {
+    final tracks = await searchTracks(q, limit: limit);
+    String core(String t) => t
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s*[\(\[][^\)\]]*[\)\]]'), '')
+        .replaceAll(RegExp(r'\s+-\s+.*$'), '')
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '');
+    final wanted = {for (final t in tracks) core(t.title)}..removeWhere((c) => c.isEmpty);
+    // The best-known artists among the results (by their best rank).
+    final best = <int, int>{};
+    for (final t in tracks) {
+      if (t.artistId > 0) best[t.artistId] = (best[t.artistId] ?? 0) > t.rank ? best[t.artistId]! : t.rank;
+    }
+    final artists = (best.keys.toList()..sort((a, b) => best[b]!.compareTo(best[a]!))).take(4);
+    final extra = <Song>[];
+    await Future.wait([
+      for (final a in artists)
+        artistTop(a, limit: 50).then((top) {
+          for (final s in top) {
+            if (wanted.contains(core(s.title))) extra.add(s);
+          }
+        }).catchError((_) {}),
+    ]);
+    final seen = <int>{};
+    final all = [for (final s in [...extra, ...tracks]) if (seen.add(s.id)) s];
+    bool plain(Song s) => !RegExp(r'[\(\[]|\s-\s').hasMatch(s.title);
+    final isExtra = {for (final s in extra) s.id};
+    all.sort((a, b) {
+      // Plain-titled tracks found among their artist's top tracks first.
+      final pa = isExtra.contains(a.id) && plain(a), pb = isExtra.contains(b.id) && plain(b);
+      if (pa != pb) return pa ? -1 : 1;
+      return b.rank.compareTo(a.rank);
+    });
+    return all;
+  }
+
   Future<List<ArtistInfo>> searchArtists(String q, {int limit = 25}) async {
     final j = await getJson('/search/artist', query: {'q': q, 'limit': '$limit'});
     return [

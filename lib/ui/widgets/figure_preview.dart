@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -47,8 +48,38 @@ class _Figure3DPreviewState extends State<Figure3DPreview> with SingleTickerProv
     super.dispose();
   }
 
+  /// Still previews rendered once into images (keyed by look and pixel
+  /// size): drawing an image is far cheaper than re-rasterising the figure
+  /// every frame, which renderers without a raster cache (Impeller) do.
+  static final Map<String, ui.Image> _stills = {};
+
+  static String _key(FigureLook l, int w, int h) => '${l.color.toARGB32()}|${l.hat}|${l.shirt}|${l.pet}|${l.backpack}|${w}x$h';
+
+  ui.Image _still(BuildContext context) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final w = (widget.size * 0.8 * dpr).round(), h = (widget.size * dpr).round();
+    final key = _key(widget.look, w, h);
+    final hit = _stills[key];
+    if (hit != null) return hit;
+    final rec = ui.PictureRecorder();
+    final canvas = Canvas(rec)..scale(dpr);
+    _PreviewPainter(widget.look, 1.2, IdleDirector(1), false).paint(canvas, Size(widget.size * 0.8, widget.size));
+    final img = rec.endRecording().toImageSync(w, h);
+    // (Old entries are dropped, not disposed: another preview may still
+    // be showing the same image.)
+    if (_stills.length > 200) _stills.remove(_stills.keys.first);
+    return _stills[key] = img;
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!widget.animate) {
+      return SizedBox(
+        width: widget.size * 0.8,
+        height: widget.size,
+        child: RawImage(image: _still(context), fit: BoxFit.contain, filterQuality: FilterQuality.medium),
+      );
+    }
     return SizedBox(
       width: widget.size * 0.8,
       height: widget.size,

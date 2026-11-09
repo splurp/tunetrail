@@ -90,7 +90,7 @@ class GroundPainter extends CustomPainter {
     if (map.buildingsEnabled) {
       CityBuildingRenderer.paint(canvas, cam, map.buildingTiles.values, palette);
     } else {
-      _buildings(canvas, cam);
+      CityBuildingRenderer.paint(canvas, cam, [for (final t in map.tiles.values) t.buildingTile], palette, maxDistance: 1100);
     }
 
   }
@@ -242,85 +242,6 @@ class GroundPainter extends CustomPainter {
           ..color = palette.accent.withValues(alpha: 0.35)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.2);
-  }
-
-  void _buildings(Canvas canvas, Camera3D cam) {
-    final faces = <(double, Path, Color)>[];
-    const light = (0.55, 0.83); // light direction (east, north), normalised-ish
-    for (final t in map.tiles.values) {
-      for (final b in t.buildings) {
-        final r = b.ring;
-        final cnt = r.length ~/ 2;
-        if (cnt < 3) continue;
-        // Skip if any vertex is behind the near plane or the building is far.
-        var ok = true;
-        var minYa = double.infinity;
-        for (var i = 0; i < cnt; i++) {
-          final ya = cam.alignY(r[i * 2], r[i * 2 + 1]);
-          minYa = math.min(minYa, ya);
-          if (ya < cam.yNear) ok = false;
-        }
-        if (!ok || minYa > cam.yFar) continue;
-        Offset p(double x, double y, double z) {
-          final xa = cam.alignX(x, y), ya = cam.alignY(x, y);
-          final zc = cam.depth(ya, z);
-          return Offset(cam.sx(xa, zc), cam.sy(ya, z, zc));
-        }
-
-        final h = b.height;
-        // Orientation of the ring (for outward normals).
-        var area = 0.0;
-        for (var i = 0, j = cnt - 1; i < cnt; j = i++) {
-          area += (r[j * 2] - r[i * 2]) * (r[j * 2 + 1] + r[i * 2 + 1]);
-        }
-        final sign = area > 0 ? 1.0 : -1.0;
-        for (var i = 0; i < cnt; i++) {
-          final j = (i + 1) % cnt;
-          final ax = r[i * 2], ay = r[i * 2 + 1], bx = r[j * 2], by = r[j * 2 + 1];
-          var nx = (by - ay) * sign, ny = -(bx - ax) * sign;
-          final nl = math.sqrt(nx * nx + ny * ny);
-          if (nl < 0.01) continue;
-          nx /= nl;
-          ny /= nl;
-          final shade = 0.55 + 0.45 * ((nx * light.$1 + ny * light.$2) * 0.5 + 0.5);
-          final mx = (ax + bx) / 2, my = (ay + by) / 2;
-          final depth = cam.depth(cam.alignY(mx, my), h / 2);
-          final path = Path()
-            ..moveTo(p(ax, ay, 0).dx, p(ax, ay, 0).dy)
-            ..lineTo(p(bx, by, 0).dx, p(bx, by, 0).dy)
-            ..lineTo(p(bx, by, h).dx, p(bx, by, h).dy)
-            ..lineTo(p(ax, ay, h).dx, p(ax, ay, h).dy)
-            ..close();
-          faces.add((depth, path, Color.lerp(Colors.black, palette.buildingWall, shade)!));
-        }
-        final roof = Path();
-        final rt = b.roof;
-        for (var i = 0; i + 5 < rt.length; i += 6) {
-          final a = p(rt[i], rt[i + 1], h), bb = p(rt[i + 2], rt[i + 3], h), c = p(rt[i + 4], rt[i + 5], h);
-          roof
-            ..moveTo(a.dx, a.dy)
-            ..lineTo(bb.dx, bb.dy)
-            ..lineTo(c.dx, c.dy)
-            ..close();
-        }
-        var cxm = 0.0, cym = 0.0;
-        for (var i = 0; i < cnt; i++) {
-          cxm += r[i * 2];
-          cym += r[i * 2 + 1];
-        }
-        faces.add((cam.depth(cam.alignY(cxm / cnt, cym / cnt), h) - 0.01, roof, palette.buildingRoof));
-      }
-    }
-    faces.sort((a, b) => b.$1.compareTo(a.$1));
-    final paint = Paint()..isAntiAlias = true;
-    final edge = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.8
-      ..color = palette.buildingEdge;
-    for (final f in faces) {
-      canvas.drawPath(f.$2, paint..color = f.$3);
-      canvas.drawPath(f.$2, edge);
-    }
   }
 
   @override

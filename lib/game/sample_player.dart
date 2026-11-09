@@ -175,7 +175,7 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
         final v = await _voiceFor(s, c.track);
         if (v == null) throw StateError('preview unavailable');
         _voices.add(v);
-        await v.prepare(c.from + (c.track == SampleTrack.source ? s.sourceShift : s.songShift));
+        await v.prepare(c.from + (c.track == SampleTrack.source ? s.sourceShift : s.songShift) - _preroll(c, v));
         prepared.add((c, v));
       }
     } catch (e) {
@@ -203,19 +203,23 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
 
     for (final (c, v) in prepared) {
       final shift = c.track == SampleTrack.source ? s.sourceShift : s.songShift;
-      at(c.at, () async {
+      // Platform media players take a moment to get going after play():
+      // they start early, muted, and the sync check (and any seek) happens
+      // during that silent lead-in, so the audible start has no hitch.
+      final pre = _preroll(c, v);
+      at(c.at - pre, () async {
         v.start();
-        _fade(v, 0, c.volume, c.fadeIn);
         if (c.track == SampleTrack.song) _songVoice = v;
-        // Sync check: once running, compare where the voice is with where
-        // the script says it should be and correct a late start.
-        await Future<void>.delayed(const Duration(milliseconds: 150));
+        await Future<void>.delayed(Duration(milliseconds: pre > 0 ? (pre * 450).round() : 150));
         if (token != _token) return;
         final p = await v.position();
         if (p == null) return;
         final ideal = c.from + shift + (_clock.elapsedMicroseconds / 1e6 - c.at);
-        if ((p - ideal).abs() > 0.025) await v.seek(ideal + (v is _MediaVoice ? 0.02 : 0));
+        // Only correct while still silent (a seek in audible audio hitches).
+        final silent = _clock.elapsedMicroseconds / 1e6 < c.at - 0.05;
+        if ((p - ideal).abs() > 0.02 && (silent || (p - ideal).abs() > 0.12)) await v.seek(ideal + (v is _MediaVoice ? 0.02 : 0));
       });
+      at(c.at, () => _fade(v, 0, c.volume, c.fadeIn));
       at(c.end - c.fadeOut, () => _fade(v, c.volume, 0, c.fadeOut));
       at(c.end + 0.05, () => v.setVolume(0));
     }
@@ -249,6 +253,10 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
       value = SamplePlayback(songId: s.song.id, stage: stage, stages: s.stages, sourcePos: srcPos, songPos: songPos);
     });
   }
+
+  /// Silent lead-in before a clip: media-player voices need one (their
+  /// start latency varies); engine voices start sample-accurately.
+  static double _preroll(SampleClip c, _Voice v) => v is _MediaVoice ? math.min(0.35, math.min(c.from, c.at)) : 0;
 
   void _fade(_Voice v, double from, double to, double secs) {
     if (secs <= 0.01) {
