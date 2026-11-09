@@ -1,0 +1,50 @@
+name: Copy settings to another repository
+
+# Copies this repository's Actions variables and secrets into another
+# repository without anyone seeing the secret values. Needs a short-lived
+# fine-grained token saved here as the secret MIGRATE_TOKEN with access to the
+# target repository (Secrets: read and write, Variables: read and write).
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target repository (owner/name)'
+        required: true
+        default: 'splurp/tunetrail'
+
+permissions:
+  contents: read
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Copy variables and secrets
+        env:
+          GH_TOKEN: ${{ secrets.MIGRATE_TOKEN }}
+          TARGET: ${{ github.event.inputs.target }}
+          V_TUNETRAIL_SERVER: ${{ vars.TUNETRAIL_SERVER }}
+          V_GOOGLE_SERVER_CLIENT_ID: ${{ vars.GOOGLE_SERVER_CLIENT_ID }}
+          V_GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+          V_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.GOOGLE_DESKTOP_CLIENT_ID }}
+          V_FIREBASE_API_KEY: ${{ vars.FIREBASE_API_KEY }}
+          V_FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
+          V_FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          V_FIREBASE_SENDER_ID: ${{ vars.FIREBASE_SENDER_ID }}
+          S_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
+          S_TUNETRAIL_KEYSTORE_BASE64: ${{ secrets.TUNETRAIL_KEYSTORE_BASE64 }}
+          S_TUNETRAIL_KEYSTORE_PASSWORD: ${{ secrets.TUNETRAIL_KEYSTORE_PASSWORD }}
+          S_TUNETRAIL_KEY_ALIAS: ${{ secrets.TUNETRAIL_KEY_ALIAS }}
+          S_TUNETRAIL_KEY_PASSWORD: ${{ secrets.TUNETRAIL_KEY_PASSWORD }}
+          S_LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "Add the MIGRATE_TOKEN secret first"; exit 1; fi
+          if [ "$TARGET" = "$GITHUB_REPOSITORY" ]; then echo "Target is this repository"; exit 1; fi
+          for v in $(env | grep -o '^V_[A-Z_]*'); do
+            name=${v#V_}; val=${!v}
+            if [ -n "$val" ]; then gh variable set "$name" --repo "$TARGET" --body "$val" && echo "variable $name copied"; else echo "variable $name empty, skipped"; fi
+          done
+          for s in $(env | grep -o '^S_[A-Z0-9_]*'); do
+            name=${s#S_}; val=${!s}
+            if [ -n "$val" ]; then printf '%s' "$val" | gh secret set "$name" --repo "$TARGET" && echo "secret $name copied"; else echo "secret $name empty, skipped"; fi
+          done
