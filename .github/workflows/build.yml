@@ -130,6 +130,7 @@ jobs:
         with:
           name: tunetrail-android
           path: dist/*.apk
+          retention-days: 1
 
   windows:
     # Full builds only for releases (manual runs and version tags): pushes just
