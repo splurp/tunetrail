@@ -39,11 +39,15 @@ activity. If one pauses, press **Restore** in the dashboard.
 ## 2. Google sign-in — Google Cloud (20 min)
 
 1. Go to <https://console.cloud.google.com>, create a project called `Tunetrail`.
-2. **APIs & Services → OAuth consent screen**: External, app name "Tunetrail",
-   your e-mail as support and developer contact. Scopes: just the defaults
-   (`openid`, `profile`). Add yourself as a test user, or press **Publish app**
-   when you're ready for everyone.
-3. **APIs & Services → Credentials → Create credentials → OAuth client ID**, three times:
+2. **APIs & Services → OAuth consent screen** (Google now calls this the
+   **Google Auth Platform**, with these sections in its left menu):
+   - **Branding**: app name "Tunetrail", your e-mail as support and developer contact.
+   - **Audience**: while the status is **Testing**, add your own Google account under
+     **Test users** (only listed accounts can sign in). Press **Publish app** when
+     you're ready for everyone; basic sign-in (name + account id) doesn't need
+     Google's verification review.
+   - **Data Access**: nothing to change; the game asks for `openid` and `profile` itself.
+3. **Clients → + Create client** (older layout: Credentials → Create credentials → OAuth client ID), three times. The names are only labels:
    - **Web application**, name "Tunetrail server". No redirect URIs needed.
      Its client ID → `GOOGLE_SERVER_CLIENT_ID`.
    - **Android**: package name `com.tunetrail.tunetrail`, SHA-1 of your **release**
@@ -56,16 +60,29 @@ activity. If one pauses, press **Restore** in the dashboard.
 ## 3. Android release key (10 min, once)
 
 Google sign-in on Android only works when the APK is always signed with the same
-key. CI currently signs with a throwaway debug key, so create a release key:
+key. CI currently signs with a throwaway debug key, so create a release key **on
+your own computer** (it needs `keytool`, which comes with Java: install Temurin JDK
+17 from adoptium.net, or use Android Studio's
+`C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe`).
 
-```bash
+Windows (PowerShell):
+
+```powershell
 keytool -genkey -v -keystore tunetrail-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias tunetrail
 keytool -list -v -keystore tunetrail-release.jks -alias tunetrail   # copy the SHA1 line into the Android OAuth client
-base64 -w0 tunetrail-release.jks > keystore.b64                     # macOS: base64 -i tunetrail-release.jks
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("tunetrail-release.jks")) | Out-File keystore.b64 -Encoding ascii
 ```
 
-Keep `tunetrail-release.jks` and its passwords somewhere safe — if you lose them
-you can't update the app on Google Play. Never commit them.
+macOS / Linux: the same two `keytool` lines, then `base64 -i tunetrail-release.jks > keystore.b64`
+(Linux: `base64 -w0 tunetrail-release.jks > keystore.b64`).
+
+Newer Java versions only ask for one password (the keystore password); use it
+for both password secrets in step 4.
+
+Keep `tunetrail-release.jks` and its password somewhere safe — if you lose them
+you can't update the app on Google Play. Never commit them. If you later publish
+on Google Play with Play App Signing, also add Play's SHA-1 (Play Console → App
+integrity) as a second Android OAuth client.
 
 ## 4. GitHub settings (5 min)
 
@@ -88,7 +105,7 @@ Repository → **Settings → Secrets and variables → Actions**.
 | `TUNETRAIL_KEYSTORE_BASE64` | contents of `keystore.b64` |
 | `TUNETRAIL_KEYSTORE_PASSWORD` | the keystore password |
 | `TUNETRAIL_KEY_ALIAS` | `tunetrail` |
-| `TUNETRAIL_KEY_PASSWORD` | the key password |
+| `TUNETRAIL_KEY_PASSWORD` | the key password (same as the keystore password on newer Java) |
 
 Every build after this has the server address and sign-in built in; new installs
 connect to the online market automatically.
