@@ -153,11 +153,13 @@ class SampleLibrary {
 // Timeline (seconds from the start of the breakdown).
 const double _wimGap = 13.827 - 11.39; // "what it means" → repeat, in I Wonder
 const double _aiwToWim = 12.4 - 7.5; // "And I wonder" → "what it means"
+// "…what it MEANS" decays until ~14.4 s; the next words start at 14.7 s.
+const double _wimEnd = 14.55;
 const double _origEnd = 21.0; // past "…dreams come true"
 const double _rew1 = _origEnd - 3.0; // the original clip (from 3.0 s) ends here
 const double _flip1 = _rew1 + 1.0; // "And I wonder … what it means, what it means"
 const double _flip1Wim2 = _flip1 + _aiwToWim + _wimGap;
-const double _flip1End = _flip1Wim2 + 1.45;
+const double _flip1End = _flip1Wim2 + (_wimEnd - 12.4);
 const double _rew2 = _flip1End + 0.1;
 const double _flip2 = _rew2 + 0.9; // the same again, with I Wonder underneath
 const double _flip2Wim2 = _flip2 + _aiwToWim + _wimGap;
@@ -203,18 +205,18 @@ const _curated = <SampleInfo>[
       SampleClip(SampleTrack.source, at: 0, from: 3.0, to: _origEnd, fadeOut: 0.6),
       // 2. Rewind, then the flip: "And I wonder, if you know, what it means"
       //    and "what it means" again, spaced exactly as in the hook.
-      SampleClip(SampleTrack.source, at: _flip1, from: 7.5, to: 13.85),
-      SampleClip(SampleTrack.source, at: _flip1Wim2, from: 12.4, to: 13.85),
+      SampleClip(SampleTrack.source, at: _flip1, from: 7.5, to: _wimEnd, fadeOut: 0.3),
+      SampleClip(SampleTrack.source, at: _flip1Wim2, from: 12.4, to: _wimEnd, fadeOut: 0.3),
       // 3. Rewind and play the flip again while I Wonder — the same words —
       //    runs underneath, matched one-to-one: the original fades out across
       //    the whole line as I Wonder fades in.
-      SampleClip(SampleTrack.source, at: _flip2, from: 7.5, to: 13.85, fadeOut: 13.85 - 7.5),
-      SampleClip(SampleTrack.source, at: _flip2Wim2, from: 12.4, to: 13.85, volume: 0.3, fadeOut: 1.45),
+      SampleClip(SampleTrack.source, at: _flip2, from: 7.5, to: _wimEnd, fadeOut: _wimEnd - 7.5),
+      SampleClip(SampleTrack.source, at: _flip2Wim2, from: 12.4, to: _wimEnd, volume: 0.3, fadeOut: _wimEnd - 12.4),
       SampleClip(SampleTrack.song, at: _flip2, from: _songFrom, fadeIn: _flip2Wim2 - _flip2, fadeOut: 0.6),
     ],
     rewinds: [
       SampleRewind(at: _rew1, duration: 0.9, from: _origEnd, to: 7.5),
-      SampleRewind(at: _rew2, duration: 0.8, from: 13.85, to: 7.5),
+      SampleRewind(at: _rew2, duration: 0.8, from: _wimEnd, to: 7.5),
     ],
     stages: [
       SampleStage('Labi Siffre · My Song (1972)', 0, _rew1),

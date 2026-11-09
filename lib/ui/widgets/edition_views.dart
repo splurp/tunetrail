@@ -184,9 +184,13 @@ class _CanvasBackdropState extends State<CanvasBackdrop> {
 /// modern song's, aligned so the sampled passage lines up, with covers,
 /// stage labels and live playheads.
 class SampleBreakdownPanel extends StatefulWidget {
-  const SampleBreakdownPanel({super.key, required this.info, this.compact = false});
+  const SampleBreakdownPanel({super.key, required this.info, this.compact = false, this.fullCard = false});
   final SampleInfo info;
   final bool compact;
+
+  /// Filling a whole Sample card: transparent (the cover shows through),
+  /// with room left for the card's own header and details.
+  final bool fullCard;
   @override
   State<SampleBreakdownPanel> createState() => _SampleBreakdownPanelState();
 }
@@ -252,9 +256,10 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
                       ),
                     ),
                   ),
+                  if (top || !widget.fullCard)
                   Positioned(
                     left: w * 0.03,
-                    top: top ? w * 0.03 : null,
+                    top: top ? (widget.fullCard ? w * 0.16 : w * 0.03) : null,
                     bottom: top ? null : w * 0.03,
                     child: Row(children: [
                       Art(song.cover(120), size: w * 0.13, radius: w * 0.015),
@@ -269,7 +274,7 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
               );
           final stage = mine && pb.stage >= 0 ? pb.stages[pb.stage].label : null;
           return Container(
-            color: const Color(0xFF0B0B0F),
+            color: widget.fullCard ? null : const Color(0xFF0B0B0F),
             child: Stack(children: [
               Column(children: [
                 row(s.source, '${s.source.artistName} · ${s.sourceYear}', _src, true),
@@ -305,8 +310,17 @@ class _WavePainter extends CustomPainter {
 
   // Shared x axis: source-preview time; the song row is shifted so the
   // sampled audio lines up vertically (Tracklib-style).
-  static const span = 17.0;
-  double get _x0 => info.alignSource - span * 0.62;
+  // The window covers everything the breakdown plays from the source
+  // (with a little margin), so no heard part is off screen.
+  late final (double, double) _window = () {
+    final src = info.clips.where((c) => c.track == SampleTrack.source);
+    if (src.isEmpty) return (info.alignSource - 17 * 0.62, 17.0);
+    final a = src.map((c) => c.from).reduce(math.min) - 0.3;
+    final b = src.map((c) => c.from + c.duration).reduce(math.max) + 0.3;
+    return (a, b - a);
+  }();
+  double get _x0 => _window.$1;
+  double get span => _window.$2;
   double get _songOffset => info.alignSong - info.alignSource;
 
   /// Track time → axis time.
@@ -319,7 +333,7 @@ class _WavePainter extends CustomPainter {
     final amp = size.height * 0.3;
     double xOf(double axisT) => (axisT - _x0) / span * size.width;
     // Mark where the sampled audio sits.
-    final passA = xOf(info.alignSource), passB = xOf(info.alignSource + 1.45);
+    final passA = xOf(info.alignSource), passB = xOf(info.alignSource + 2.0);
     canvas.drawRect(Rect.fromLTRB(passA, 0, passB, size.height), Paint()..color = color.withValues(alpha: 0.10));
     canvas.drawLine(Offset(passA, 0), Offset(passA, size.height), Paint()..color = color.withValues(alpha: 0.5));
     if (w != null && w.isNotEmpty) {

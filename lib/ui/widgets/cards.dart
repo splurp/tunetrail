@@ -182,6 +182,7 @@ class SongCardView extends StatelessWidget {
     final shiny = this.shiny && !isEd;
     if (edition == Edition.canvas) return _canvas(context, c);
     final sample = edition == Edition.sample ? SampleLibrary.of(song.id) : null;
+    if (sample != null) return _canvas(context, c, sample: sample);
     final card = Container(
       width: width,
       padding: EdgeInsets.all(width * 0.045),
@@ -239,7 +240,10 @@ class SongCardView extends StatelessWidget {
 
   /// Canvas edition: the music video (or, without one, the cover art)
   /// fills the whole card; details float on top.
-  Widget _canvas(BuildContext context, Color c) {
+  ///
+  /// Sample edition uses the same full-card layout: the cover art faintly
+  /// behind, the two waveforms filling the card's height.
+  Widget _canvas(BuildContext context, Color c, {SampleInfo? sample}) {
     const glow = true;
     final h = width * 1.48;
     return Container(
@@ -256,7 +260,12 @@ class SongCardView extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(fit: StackFit.expand, children: [
-        CanvasBackdrop(song: song, live: live),
+        if (sample == null)
+          CanvasBackdrop(song: song, live: live)
+        else ...[
+          Opacity(opacity: 0.22, child: LayoutBuilder(builder: (context, box) => Art(song.cover(500), size: math.max(box.maxWidth, box.maxHeight), radius: 0, decodeSize: 600))),
+          Positioned(left: 0, right: 0, top: 0, bottom: width * 0.3, child: SampleBreakdownPanel(info: sample, fullCard: true)),
+        ],
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -272,8 +281,8 @@ class SongCardView extends StatelessWidget {
           right: width * 0.05,
           top: width * 0.05,
           child: Row(children: [
-            Expanded(child: VariantLabel(rarity: rarity, shiny: false, edition: Edition.canvas, fontSize: width * 0.048)),
-            if (serial > 0) SerialBadge(serial, Edition.canvas, size: width * 0.04),
+            Expanded(child: VariantLabel(rarity: rarity, shiny: false, edition: edition, fontSize: width * 0.048)),
+            if (serial > 0) SerialBadge(serial, edition, size: width * 0.04),
           ]),
         ),
         Positioned(
