@@ -11,6 +11,7 @@ import '../widgets/ui_kit.dart';
 import '../../game/google_auth.dart';
 import 'copyright_screen.dart';
 import 'onboarding_screen.dart' show showChangeUsername;
+import 'admin_reports_screen.dart';
 import 'debug_screen.dart';
 import 'listing_composer.dart';
 
@@ -198,6 +199,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: p.debugEnabled,
             onChanged: p.isAdmin || PlayerProfile.builtInServer.isEmpty ? g.setDebug : null,
           ),
+          if (p.isAdmin)
+            ListTile(
+              leading: const Icon(Icons.flag_outlined, color: kAccent),
+              title: const Text('Player reports'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AdminReportsScreen())),
+            ),
           if (p.debugEnabled)
             ListTile(
               leading: const Icon(Icons.bug_report, color: kAccent),

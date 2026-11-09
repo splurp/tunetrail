@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 /// Song rarities, ordered from most to least common.
 enum Rarity {

@@ -54,6 +54,23 @@ abstract class MarketBackend {
   Future<ChatMessage> sendMessage(String toId, String text);
   Future<int> unreadMessages();
 
+  // ------------------------------------------------------------ auctions
+  Future<List<Auction>> browseAuctions(ListingQuery q);
+  Future<List<Auction>> myAuctions();
+  Future<Auction> createAuction(List<CardPayload> cards, {required int startPrice, required int increment, int? buyNow, required Duration duration, String note = ''});
+  Future<Auction> bid(String auctionId, int amount);
+  Future<List<CardPayload>> buyAuctionNow(String auctionId, int price);
+  Future<List<CardPayload>> cancelAuction(String auctionId);
+
+  // ------------------------------------------------------------- reports
+  Future<void> report(ReportKind kind, String targetId, String label, String reason, String details, {CardPayload? card});
+  Future<Set<int>> blockedSongs();
+
+  /// Admin only (the server checks).
+  Future<List<Report>> adminReports({bool all = false}) async => const [];
+  Future<void> adminResolve(String reportId) async {}
+  Future<void> adminBlockSong(int songId, bool blocked) async {}
+
   /// Sends this device's push-notification token to the server.
   Future<void> registerPush(String token) async {}
   void dispose() {}
@@ -338,6 +355,30 @@ class LocalMarket extends MarketBackend {
   Future<ChatMessage> sendMessage(String toId, String text) async => engine.sendMessage(playerId, toId, text);
   @override
   Future<int> unreadMessages() async => engine.unreadCount(playerId);
+  @override
+  Future<List<Auction>> browseAuctions(ListingQuery q) async => engine.browseAuctions(q);
+  @override
+  Future<List<Auction>> myAuctions() async => engine.auctionsOf(playerId);
+  @override
+  Future<Auction> createAuction(List<CardPayload> cards, {required int startPrice, required int increment, int? buyNow, required Duration duration, String note = ''}) async =>
+      engine.createAuction(playerId, cards, startPrice: startPrice, increment: increment, buyNow: buyNow, duration: duration, note: note);
+  @override
+  Future<Auction> bid(String auctionId, int amount) async => engine.bid(playerId, auctionId, amount);
+  @override
+  Future<List<CardPayload>> buyAuctionNow(String auctionId, int price) async => engine.buyAuctionNow(playerId, auctionId, expectedPrice: price);
+  @override
+  Future<List<CardPayload>> cancelAuction(String auctionId) async => engine.cancelAuction(playerId, auctionId);
+  @override
+  Future<void> report(ReportKind kind, String targetId, String label, String reason, String details, {CardPayload? card}) async =>
+      engine.fileReport(playerId, kind, targetId, label, reason, details, card: card);
+  @override
+  Future<Set<int>> blockedSongs() async => {...engine.blockedSongs};
+  @override
+  Future<List<Report>> adminReports({bool all = false}) async => [for (final r in engine.reports.reversed) if (all || !r.resolved) r];
+  @override
+  Future<void> adminResolve(String reportId) async => engine.resolveReport(reportId);
+  @override
+  Future<void> adminBlockSong(int songId, bool blocked) async => engine.setSongBlocked(songId, blocked);
 
   @override
   void dispose() {
@@ -517,6 +558,40 @@ class RemoteMarket extends MarketBackend {
 
   @override
   Future<void> registerPush(String token) async => _send('POST', '/me/push', body: {'token': token});
+
+  @override
+  Future<List<Auction>> browseAuctions(ListingQuery q) async => _list(await _send('GET', '/auctions', q: q.toQueryParams()), Auction.fromJson);
+  @override
+  Future<List<Auction>> myAuctions() async => _list(await _send('GET', '/auctions/mine'), Auction.fromJson);
+  @override
+  Future<Auction> createAuction(List<CardPayload> cards, {required int startPrice, required int increment, int? buyNow, required Duration duration, String note = ''}) async =>
+      Auction.fromJson(await _send('POST', '/auctions', body: {
+        'cards': [for (final c in cards) c.toJson()],
+        'start': startPrice,
+        'inc': increment,
+        'buyNow': buyNow,
+        'hours': duration.inHours,
+        'note': note,
+      }) as Map<String, dynamic>);
+  @override
+  Future<Auction> bid(String auctionId, int amount) async =>
+      Auction.fromJson(await _send('POST', '/auctions/$auctionId/bid', body: {'amount': amount}) as Map<String, dynamic>);
+  @override
+  Future<List<CardPayload>> buyAuctionNow(String auctionId, int price) async =>
+      _list(await _send('POST', '/auctions/$auctionId/buy', body: {'price': price}), CardPayload.fromJson);
+  @override
+  Future<List<CardPayload>> cancelAuction(String auctionId) async => _list(await _send('POST', '/auctions/$auctionId/cancel'), CardPayload.fromJson);
+  @override
+  Future<void> report(ReportKind kind, String targetId, String label, String reason, String details, {CardPayload? card}) async =>
+      _send('POST', '/reports', body: {'kind': kind.name, 'target': targetId, 'label': label, 'reason': reason, 'details': details, 'card': card?.toJson()});
+  @override
+  Future<Set<int>> blockedSongs() async => {for (final x in await _send('GET', '/blocked-songs') as List) (x as num).toInt()};
+  @override
+  Future<List<Report>> adminReports({bool all = false}) async => _list(await _send('GET', '/admin/reports', q: {'all': '$all'}), Report.fromJson);
+  @override
+  Future<void> adminResolve(String reportId) async => _send('POST', '/admin/reports/$reportId/resolve');
+  @override
+  Future<void> adminBlockSong(int songId, bool blocked) async => _send('POST', '/admin/songs/$songId/block', body: {'blocked': blocked});
 
   @override
   void dispose() => _c.close();

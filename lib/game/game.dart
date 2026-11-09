@@ -186,8 +186,23 @@ class Game extends ChangeNotifier {
     _marketReady = true;
   }
 
+  /// Songs blocked by admins (reported content): no trading, showcasing or
+  /// video. Refreshed on connect.
+  Set<int> blockedSongs = {};
+
+  Future<void> refreshBlockedSongs() async {
+    try {
+      blockedSongs = await market.blockedSongs();
+    } catch (_) {}
+  }
+
+  /// Sends a report about a song card or a player to the admins.
+  Future<void> report(ReportKind kind, String targetId, String label, String reason, String details, {CardPayload? card}) =>
+      market.report(kind, targetId, label, reason, details, card: card);
+
   /// Account details from the server: admin flag and unread messages.
   Future<void> refreshAccount() async {
+    unawaited(refreshBlockedSongs());
     final m = market;
     if (m is! RemoteMarket || profile.authToken.isEmpty) return;
     try {

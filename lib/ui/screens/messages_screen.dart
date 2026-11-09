@@ -9,6 +9,7 @@ import '../app.dart';
 import '../widgets/cards.dart';
 import '../widgets/profile_banner.dart';
 import 'player_screen.dart';
+import 'report_dialogs.dart';
 
 String _ago(int ms) {
   final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
@@ -192,6 +193,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final me = g.profile.playerId;
     return Scaffold(
       appBar: AppBar(
+        actions: [
+          IconButton(tooltip: 'Report', icon: const Icon(Icons.flag_outlined), onPressed: () => showPlayerReport(context, widget.otherId, widget.otherName)),
+        ],
         titleSpacing: 0,
         title: InkWell(
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PlayerScreen(playerId: widget.otherId))),

@@ -125,7 +125,13 @@ class _CanvasBackdropState extends State<CanvasBackdrop> {
   }
 
   Future<void> _load() async {
-    final movies = GameScope.read(context).movies;
+    final g = GameScope.read(context);
+    // Songs blocked after a report show their cover art, never the video.
+    if (g.blockedSongs.contains(widget.song.id)) {
+      setState(() => _failed = true);
+      return;
+    }
+    final movies = g.movies;
     final lf = widget.liveFootage;
     final clip = lf ? (movies.cachedLive(widget.song.id) ?? await movies.liveClipFor(widget.song)) : (movies.cached(widget.song.id) ?? await movies.clipFor(widget.song));
     if (!mounted) return;

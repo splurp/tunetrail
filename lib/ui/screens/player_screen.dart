@@ -12,6 +12,7 @@ import 'collection_screen.dart';
 import 'favorite_artists_screen.dart';
 
 import 'messages_screen.dart';
+import 'report_dialogs.dart';
 
 /// Another player's public profile: their showcase, favourite artists and
 /// collection. Pick songs from the collection to make an offer, or send
@@ -150,8 +151,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
           actions: [
             if (!me && !p.isBot)
               PopupMenuButton<String>(
-                onSelected: (v) => _block(v == 'block'),
-                itemBuilder: (_) => [PopupMenuItem(value: p.blockedByMe ? 'unblock' : 'block', child: Text(p.blockedByMe ? 'Unblock' : 'Block'))],
+                onSelected: (v) => v == 'report' ? showPlayerReport(context, p.id, p.name) : _block(v == 'block'),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'report', child: Text('Report')),
+                  PopupMenuItem(value: p.blockedByMe ? 'unblock' : 'block', child: Text(p.blockedByMe ? 'Unblock' : 'Block')),
+                ],
               ),
           ],
         ),
@@ -266,7 +270,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           const Padding(
                             padding: EdgeInsets.only(bottom: 8),
                             child: Text(
-                              'Tap songs to pick them, then make an offer. Hold a song to hear it.',
+                              'Tap songs to pick them, then make an offer. Hold a song to see it in full (play or report it there).',
                               style: TextStyle(fontSize: 12, color: kTextTertiary),
                             ),
                           ),
@@ -317,7 +321,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                       g.toast('Up to $kMaxListingItems songs per offer');
                                     }
                                   }),
-                            onLongPress: () => g.audio.playOne(c.songId),
+                            onLongPress: () => showCardFullView(context, c),
                           ),
                         ),
                         if (on)

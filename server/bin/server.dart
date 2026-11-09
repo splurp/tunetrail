@@ -113,6 +113,11 @@ Future<void> main(List<String> args) async {
             return res;
           })
       .addHandler(app.call);
+  // Auctions end on time (and send their notifications) even when nobody
+  // happens to be using the market.
+  Timer.periodic(const Duration(seconds: 15), (_) async {
+    if (engine.settleAuctions() > 0 || engine.expireListings() > 0) await persist();
+  });
   final server = await io.serve(handler, InternetAddress.anyIPv4, port);
   stdout.writeln('Tunetrail server on :${server.port} · storage: ${store.label} · google ids: ${googleIds.length} · guests: ${auth.allowGuests} · push: ${push != null}');
 }
@@ -338,6 +343,70 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
       }));
   r.post('/offers/<id>/decline', (Request req, String id) => guard(() async {
         m.declineOffer(pid(req), id);
+        return ok({'ok': true});
+      }));
+
+  // ----------------------------------------------------------- auctions
+  r.get('/auctions', (Request req) => guard(() async {
+        final q = ListingQuery.fromQueryParams(req.url.queryParameters);
+        return ok([for (final a in m.browseAuctions(q)) a.toJson()]);
+      }));
+  r.get('/auctions/mine', (Request req) => guard(() async => ok([for (final a in m.auctionsOf(pid(req))) a.toJson()])));
+  r.post('/auctions', (Request req) => guard(() async {
+        final me = named(req);
+        final b = await body(req);
+        final a = m.createAuction(me, cards(b['cards']),
+            startPrice: (b['start'] as num).toInt(),
+            increment: (b['inc'] as num?)?.toInt() ?? kMinBidIncrement,
+            buyNow: (b['buyNow'] as num?)?.toInt(),
+            duration: Duration(hours: (b['hours'] as num?)?.toInt() ?? 24),
+            note: b['note'] as String? ?? '');
+        return ok(a.toJson());
+      }));
+  r.post('/auctions/<id>/bid', (Request req, String id) => guard(() async {
+        final me = named(req);
+        final b = await body(req);
+        return ok(m.bid(me, id, (b['amount'] as num).toInt()).toJson());
+      }));
+  r.post('/auctions/<id>/buy', (Request req, String id) => guard(() async {
+        final me = named(req);
+        final b = await body(req);
+        return ok([for (final c in m.buyAuctionNow(me, id, expectedPrice: (b['price'] as num?)?.toInt())) c.toJson()]);
+      }));
+  r.post('/auctions/<id>/cancel', (Request req, String id) => guard(() async => ok([for (final c in m.cancelAuction(pid(req), id)) c.toJson()])));
+
+  // ------------------------------------------------------------ reports
+  r.post('/reports', (Request req) => guard(() async {
+        final me = named(req);
+        final b = await body(req);
+        final r = m.fileReport(me, ReportKind.values.byName(b['kind'] as String), '${b['target']}', b['label'] as String? ?? '', b['reason'] as String? ?? '',
+            b['details'] as String? ?? '',
+            card: b['card'] == null ? null : CardPayload.fromJson(b['card'] as Map<String, dynamic>));
+        return ok({'id': r.id});
+      }));
+  r.get('/blocked-songs', (Request req) => guard(() async => ok(m.blockedSongs.toList())));
+
+  // -------------------------------------------------------------- admin
+  String admin(Request req) {
+    final id = pid(req);
+    if (!admins.contains(id)) throw AuthException('Admins only');
+    return id;
+  }
+
+  r.get('/admin/reports', (Request req) => guard(() async {
+        admin(req);
+        final all = req.url.queryParameters['all'] == 'true';
+        return ok([for (final x in m.reports.reversed) if (all || !x.resolved) x.toJson()]);
+      }));
+  r.post('/admin/reports/<id>/resolve', (Request req, String id) => guard(() async {
+        admin(req);
+        m.resolveReport(id);
+        return ok({'ok': true});
+      }));
+  r.post('/admin/songs/<id>/block', (Request req, String id) => guard(() async {
+        admin(req);
+        final b = await body(req);
+        m.setSongBlocked(int.parse(id), b['blocked'] as bool? ?? true);
         return ok({'ok': true});
       }));
 

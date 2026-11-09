@@ -10,6 +10,7 @@ import '../app.dart';
 import '../widgets/cards.dart';
 import 'artist_screen.dart';
 import 'copyright_screen.dart';
+import 'report_dialogs.dart';
 import 'album_screen.dart';
 import 'listing_composer.dart';
 
@@ -92,13 +93,20 @@ class CardDetailScreen extends StatelessWidget {
         _InfoRow('Popularity', '${formatNumber(s.rank)} (Deezer score, higher = more played)'),
         Align(
           alignment: Alignment.centerLeft,
-          child: TextButton.icon(
+          child: Wrap(children: [
+            TextButton.icon(
+              icon: const Icon(Icons.flag_outlined, size: 16),
+              label: const Text('Report this song'),
+              onPressed: () => showSongReport(context, card.toPayload()),
+            ),
+            TextButton.icon(
             icon: const Icon(Icons.copyright, size: 16),
             label: const Text('Report a copyright issue'),
             onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
               builder: (_) => CopyrightScreen(subject: 'Copyright notice: "${s.title}" by ${s.artistName} (id ${s.id})'),
             )),
           ),
+          ]),
         ),
         _InfoRow('Scrap value', '${g.scrapValueOf(card)} coins'),
         const Divider(height: 28),

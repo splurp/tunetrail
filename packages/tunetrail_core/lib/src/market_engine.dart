@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'auction_models.dart';
 import 'card_payload.dart';
 import 'market_models.dart';
 import 'rarity.dart';
@@ -123,6 +124,7 @@ class MarketEngine {
   /// Returns and clears everything waiting for [playerId].
   List<InboxItem> claimInbox(String playerId) {
     expireListings();
+    settleAuctions();
     final items = inboxes.remove(playerId) ?? const [];
     if (items.isNotEmpty) _changed();
     return items;
@@ -142,8 +144,8 @@ class MarketEngine {
       if (i.price > 100000000) throw MarketException('Price too high');
       if (!uids.add(i.card.uid)) throw MarketException('A song appears twice');
     }
-    final listed = {for (final l in listings.values.where((l) => l.sellerId == sellerId)) ...l.cards.map((c) => c.uid)};
-    if (uids.any(listed.contains)) throw MarketException('One of those songs is already listed');
+    if (uids.any(_escrowedUids(sellerId).contains)) throw MarketException('One of those songs is already listed');
+    _checkTradeable(items.map((i) => i.card));
     final total = items.fold<int>(0, (a, i) => a + i.price);
     if (folderPrice != null) {
       if (folderPrice < 1) throw MarketException('Folder price must be at least 1 coin');
@@ -452,6 +454,10 @@ class MarketEngine {
     for (final o in offers.values) {
       if (o.fromId == id) o.fromName = name;
     }
+    for (final a in auctions.values) {
+      if (a.sellerId == id) a.sellerName = name;
+      if (a.highBidderId == id) a.highBidderName = name;
+    }
     final s = showcases[id];
     if (s != null) {
       s.playerName = name;
@@ -707,6 +713,218 @@ class MarketEngine {
     return List.of(list);
   }
 
+  // --------------------------------------------------------------- auctions
+  final Map<String, Auction> auctions = {};
+
+  /// Songs an admin has blocked (reported content): they can't be listed,
+  /// auctioned or showcased, and games show cover art instead of video.
+  final Set<int> blockedSongs = {};
+
+  void _checkTradeable(Iterable<CardPayload> cards) {
+    for (final c in cards) {
+      if (blockedSongs.contains(c.songId)) throw MarketException('${c.title} can\'t be traded or showcased right now');
+    }
+  }
+
+  Set<int> _escrowedUids(String sellerId) => {
+        for (final l in listings.values.where((l) => l.sellerId == sellerId)) ...l.cards.map((c) => c.uid),
+        for (final a in auctions.values.where((a) => a.sellerId == sellerId)) ...a.cards.map((c) => c.uid),
+      };
+
+  /// Puts 1–20 songs up for auction. The seller's game has already removed
+  /// them from its collection (they're held until the auction ends).
+  Auction createAuction(String sellerId, List<CardPayload> cards,
+      {required int startPrice, int increment = kMinBidIncrement, int? buyNow, Duration duration = const Duration(hours: 24), String note = ''}) {
+    if (cards.isEmpty) throw MarketException('Add at least one song');
+    if (cards.length > kMaxListingItems) throw MarketException('An auction holds up to $kMaxListingItems songs');
+    if (startPrice < 1 || startPrice > 100000000) throw MarketException('Starting price must be at least 1 coin');
+    if (increment < kMinBidIncrement || increment > 100000000) throw MarketException('The bid increment is at least $kMinBidIncrement coins');
+    if (buyNow != null && (buyNow <= startPrice || buyNow > 1000000000)) throw MarketException('Buy It Now must be more than the starting price');
+    if (!kAuctionDurations.contains(duration)) throw MarketException('Choose 1, 3, 6, 12 or 24 hours');
+    final uids = <int>{};
+    for (final c in cards) {
+      if (!uids.add(c.uid)) throw MarketException('A song appears twice');
+    }
+    if (uids.any(_escrowedUids(sellerId).contains)) throw MarketException('One of those songs is already on the market');
+    _checkTradeable(cards);
+    final t = now();
+    final a = Auction(
+      id: _id('a'),
+      sellerId: sellerId,
+      sellerName: nameOf(sellerId),
+      cards: List.of(cards),
+      startPrice: startPrice,
+      increment: increment,
+      buyNow: buyNow,
+      note: cleanUserText(note, maxLength: kMaxListingNote, multiline: true),
+      createdAt: t,
+      endsAt: t + duration.inMilliseconds,
+    );
+    auctions[a.id] = a;
+    _changed();
+    return a;
+  }
+
+  void _refundHighBid(Auction a, String why) {
+    final prev = a.highBidderId;
+    if (prev == null) return;
+    _deliver(prev, '$why — your ${a.highBid} coins were returned', coins: a.highBid);
+    _notify(prev, 'Outbid', '$why (${a.label})');
+  }
+
+  /// Bids [amount] coins (already held by the bidder's game). In the last
+  /// five minutes, every bid adds 30 seconds.
+  Auction bid(String bidderId, String auctionId, int amount) {
+    settleAuctions();
+    final a = auctions[auctionId];
+    if (a == null) throw MarketException('This auction has ended');
+    if (a.sellerId == bidderId) throw MarketException("You can't bid on your own auction");
+    if (a.highBidderId == bidderId) throw MarketException('You\'re already the highest bidder');
+    if (amount < a.minBid) throw MarketException('Bid at least ${a.minBid} coins');
+    if (amount > 1000000000) throw MarketException('That bid is too high');
+    final t = now();
+    _refundHighBid(a, 'You were outbid on ${a.label}');
+    a
+      ..highBid = amount
+      ..highBidderId = bidderId
+      ..highBidderName = nameOf(bidderId)
+      ..bids += 1;
+    if (a.endsAt - t < kSnipeWindow.inMilliseconds) a.endsAt += kSnipeExtension.inMilliseconds;
+    _notify(a.sellerId, 'New bid', '${nameOf(bidderId)} bid $amount coins on your ${a.label}');
+    if (a.buyNow != null && amount >= a.buyNow!) _finishAuction(a);
+    _changed();
+    return a;
+  }
+
+  /// Buys the auction outright at its Buy It Now price (already held by
+  /// the buyer's game).
+  List<CardPayload> buyAuctionNow(String buyerId, String auctionId, {int? expectedPrice}) {
+    settleAuctions();
+    final a = auctions[auctionId];
+    if (a == null) throw MarketException('This auction has ended');
+    if (a.sellerId == buyerId) throw MarketException("You can't buy your own auction");
+    if (!a.buyNowOpen) throw MarketException('Buy It Now is no longer available');
+    if (expectedPrice != null && expectedPrice != a.buyNow) throw MarketException('Price changed');
+    _refundHighBid(a, 'Someone bought ${a.label} outright');
+    auctions.remove(a.id);
+    _deliver(a.sellerId, '${nameOf(buyerId)} bought your ${a.label} for ${a.buyNow} coins (Buy It Now)', coins: a.buyNow!);
+    _notify(a.sellerId, 'Sold!', '${nameOf(buyerId)} bought your ${a.label} for ${a.buyNow} coins');
+    _changed();
+    return a.cards.toList();
+  }
+
+  /// Takes an auction down (only while nobody has bid).
+  List<CardPayload> cancelAuction(String sellerId, String auctionId) {
+    final a = auctions[auctionId];
+    if (a == null) throw MarketException('Auction not found');
+    if (a.sellerId != sellerId) throw MarketException('Not your auction');
+    if (a.highBidderId != null) throw MarketException('Auctions with bids can\'t be cancelled');
+    auctions.remove(a.id);
+    _changed();
+    return a.cards.toList();
+  }
+
+  void _finishAuction(Auction a) {
+    auctions.remove(a.id);
+    final winner = a.highBidderId;
+    if (winner == null) {
+      _deliver(a.sellerId, 'Your auction of ${a.label} ended without bids — the songs are back in your collection', cards: a.cards.toList());
+      _notify(a.sellerId, 'Auction ended', 'No bids on your ${a.label}');
+      return;
+    }
+    _deliver(winner, 'You won ${a.label} for ${a.highBid} coins', cards: a.cards.toList());
+    _notify(winner, 'You won!', 'You won ${a.label} for ${a.highBid} coins');
+    _deliver(a.sellerId, '${a.highBidderName} won your ${a.label} for ${a.highBid} coins', coins: a.highBid);
+    _notify(a.sellerId, 'Sold at auction', '${a.highBidderName} won your ${a.label} for ${a.highBid} coins');
+  }
+
+  /// Ends auctions whose time is up. Returns how many ended.
+  int settleAuctions() {
+    final t = now();
+    final done = auctions.values.where((a) => t >= a.endsAt).toList();
+    for (final a in done) {
+      _finishAuction(a);
+    }
+    if (done.isNotEmpty) _changed();
+    return done.length;
+  }
+
+  /// Auctions matching [q] (song filters, text also matches the seller),
+  /// ending soonest first.
+  List<Auction> browseAuctions(ListingQuery q) {
+    settleAuctions();
+    final text = q.text.trim().toLowerCase();
+    final out = auctions.values.where((a) {
+      if (q.excludeSellerId != null && a.sellerId == q.excludeSellerId) return false;
+      final sellerHit = text.isNotEmpty && (a.sellerName.toLowerCase().contains(text) || a.note.toLowerCase().contains(text));
+      return a.cards.any((c) => _matches(c, q, sellerHit ? '' : text));
+    }).toList()
+      ..sort((a, b) => a.endsAt.compareTo(b.endsAt));
+    if (q.offset >= out.length) return const [];
+    return out.sublist(q.offset, math.min(out.length, q.offset + q.limit));
+  }
+
+  /// [playerId]'s auctions, and auctions they're currently winning.
+  List<Auction> auctionsOf(String playerId) {
+    settleAuctions();
+    return auctions.values.where((a) => a.sellerId == playerId || a.highBidderId == playerId).toList()
+      ..sort((a, b) => a.endsAt.compareTo(b.endsAt));
+  }
+
+  // ---------------------------------------------------------------- reports
+  final List<Report> reports = [];
+
+  /// Files a report for admins to review.
+  Report fileReport(String reporterId, ReportKind kind, String targetId, String targetLabel, String reason, String details, {CardPayload? card}) {
+    _player(reporterId);
+    final allowed = kind == ReportKind.song ? kSongReportReasons : kPlayerReportReasons;
+    if (!allowed.contains(reason)) throw MarketException('Choose a reason');
+    if (kind == ReportKind.player) {
+      if (targetId == reporterId) throw MarketException("You can't report yourself");
+      _player(targetId);
+    }
+    final t = now();
+    final today = reports.where((r) => r.reporterId == reporterId && t - r.createdAt < const Duration(days: 1).inMilliseconds).length;
+    if (today >= 20) throw MarketException('You\'ve sent a lot of reports today — try again tomorrow');
+    if (reports.any((r) => !r.resolved && r.reporterId == reporterId && r.kind == kind && r.targetId == targetId)) {
+      throw MarketException('You\'ve already reported this — we\'ll look at it soon');
+    }
+    final r = Report(
+      id: _id('r'),
+      kind: kind,
+      reporterId: reporterId,
+      reporterName: nameOf(reporterId),
+      targetId: targetId,
+      targetLabel: cleanUserText(targetLabel, maxLength: 120),
+      reason: reason,
+      details: cleanUserText(details, maxLength: 1000, multiline: true),
+      createdAt: t,
+      card: card,
+    );
+    reports.add(r);
+    if (reports.length > 5000) reports.removeWhere((x) => x.resolved);
+    _changed();
+    return r;
+  }
+
+  void resolveReport(String id) {
+    for (final r in reports) {
+      if (r.id == id) r.resolved = true;
+    }
+    _changed();
+  }
+
+  /// Blocks (or unblocks) a song: no trading or showcasing, no video.
+  void setSongBlocked(int songId, bool blocked) {
+    blocked ? blockedSongs.add(songId) : blockedSongs.remove(songId);
+    if (blocked) {
+      for (final r in reports) {
+        if (r.kind == ReportKind.song && r.targetId == '$songId') r.resolved = true;
+      }
+    }
+    _changed();
+  }
+
   // -------------------------------------------------------------- showcases
   Showcase setShowcase(String playerId, String title, List<CardPayload> cards,
       List<ShowcasePlaylist> playlists, {List<FavoriteArtist> favoriteArtists = const []}) {
@@ -714,6 +932,7 @@ class MarketEngine {
     if (cards.length > kMaxShowcaseCards) throw MarketException('A showcase holds up to $kMaxShowcaseCards cards');
     if (cards.isEmpty) throw MarketException('Add at least one card to your showcase');
     title = cleanUserText(title, maxLength: 60);
+    _checkTradeable(cards);
     final s = Showcase(
       playerId: playerId,
       playerName: nameOf(playerId),
@@ -772,6 +991,9 @@ class MarketEngine {
         },
         'lastRead': lastRead,
         'push': pushTokens,
+        'auctions': [for (final a in auctions.values) a.toJson()],
+        'reports': [for (final r in reports) r.toJson()],
+        'blockedSongs': blockedSongs.toList(),
       };
 
   void loadJson(Map<String, dynamic> j) {
@@ -821,6 +1043,17 @@ class MarketEngine {
     (j['messages'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {
       messages[k] = [for (final m in (v as List)) ChatMessage.fromJson(m as Map<String, dynamic>)];
     });
+    auctions
+      ..clear()
+      ..addEntries([
+        for (final a in (j['auctions'] as List? ?? const [])) MapEntry((a as Map<String, dynamic>)['id'] as String, Auction.fromJson(a)),
+      ]);
+    reports
+      ..clear()
+      ..addAll([for (final r in (j['reports'] as List? ?? const [])) Report.fromJson(r as Map<String, dynamic>)]);
+    blockedSongs
+      ..clear()
+      ..addAll([for (final x in (j['blockedSongs'] as List? ?? const [])) (x as num).toInt()]);
     pushTokens.clear();
     (j['push'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {
       pushTokens[k] = [for (final t in v as List) t as String];

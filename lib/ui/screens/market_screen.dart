@@ -18,6 +18,7 @@ import 'collection_screen.dart';
 import 'listing_composer.dart';
 import 'messages_screen.dart';
 import 'player_screen.dart';
+import 'report_dialogs.dart';
 
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
@@ -521,6 +522,22 @@ class _ListingTileState extends State<ListingTile> {
                     ]),
                   ])
                 : Row(children: [
+                    IconButton(
+                      tooltip: 'Report a song',
+                      icon: const Icon(Icons.flag_outlined, size: 20, color: kTextTertiary),
+                      onPressed: () async {
+                        final c = l.items.length == 1
+                            ? l.card
+                            : await showDialog<CardPayload>(
+                                context: context,
+                                builder: (ctx) => SimpleDialog(title: const Text('Which song?'), children: [
+                                  for (final it in l.items)
+                                    SimpleDialogOption(onPressed: () => Navigator.pop(ctx, it.card), child: Text('${it.card.title} — ${it.card.artistName}')),
+                                ]),
+                              );
+                        if (c != null && context.mounted) await showSongReport(context, c);
+                      },
+                    ),
                     if (l.acceptsTrades) ...[
                       Expanded(
                         child: OutlinedButton.icon(

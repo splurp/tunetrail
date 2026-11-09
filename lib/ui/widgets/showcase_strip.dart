@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../data/samples.dart';
 import '../app.dart';
 import 'cards.dart';
+import '../screens/report_dialogs.dart';
 
 /// Round play / pause button for one card's song (Sample editions play
 /// their sample breakdown).
@@ -67,6 +68,12 @@ Future<void> showCardFullView(BuildContext context, CardPayload card) {
         const SizedBox(height: 16),
         Row(mainAxisSize: MainAxisSize.min, children: [
           CardPlayButton(card: card, size: 30),
+          const SizedBox(width: 16),
+          Material(
+            color: Colors.white.withValues(alpha: 0.12),
+            shape: const CircleBorder(),
+            child: IconButton(tooltip: 'Report this song', icon: const Icon(Icons.flag_outlined, color: Colors.white), onPressed: () => showSongReport(ctx, card)),
+          ),
           const SizedBox(width: 16),
           Material(
             color: Colors.white.withValues(alpha: 0.12),
