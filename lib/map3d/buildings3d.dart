@@ -12,19 +12,52 @@ import 'tile_data.dart';
 
 /// One extruded city building (world metres relative to the map origin).
 class CityBuilding {
-  CityBuilding(this.ring, this.roof, this.height, this.cx, this.cy, this.radius);
+  CityBuilding(this.ring, this.roofIdx, this.height, this.cx, this.cy, this.radius, this.normals, this.shade);
   final Float32List ring; // outline x,y pairs (no repeated closing point)
-  final Float32List roof; // roof triangles x,y
+  final Uint16List roofIdx; // roof triangles as indices into [ring]
   final double height;
   final double cx, cy, radius;
+
+  /// Outward wall normal per edge (x,y; zero for degenerate edges) and its
+  /// fixed light factor — precomputed so frames don't redo them.
+  final Float32List normals, shade;
 }
 
 /// Ordinary OpenStreetMap buildings with real heights, from OpenFreeMap's
 /// free OpenMapTiles-schema tiles (`building` layer: `render_height`, from
 /// OSM `height` / `building:levels`, else a default).
+///
+/// Buildings are bucketed into a coarse grid so a frame only looks at the
+/// cells around the camera instead of every building in the tile.
 class CityBuildingTile {
-  CityBuildingTile(this.buildings);
+  CityBuildingTile(this.buildings) {
+    if (buildings.isEmpty) {
+      minX = minY = 0;
+      cols = rows = 0;
+      grid = const [];
+      return;
+    }
+    var x0 = double.infinity, y0 = double.infinity, x1 = -double.infinity, y1 = -double.infinity;
+    for (final b in buildings) {
+      x0 = math.min(x0, b.cx);
+      y0 = math.min(y0, b.cy);
+      x1 = math.max(x1, b.cx);
+      y1 = math.max(y1, b.cy);
+    }
+    minX = x0;
+    minY = y0;
+    cols = ((x1 - x0) / cell).floor() + 1;
+    rows = ((y1 - y0) / cell).floor() + 1;
+    grid = List.generate(cols * rows, (_) => <CityBuilding>[]);
+    for (final b in buildings) {
+      grid[((b.cy - y0) / cell).floor() * cols + ((b.cx - x0) / cell).floor()].add(b);
+    }
+  }
   final List<CityBuilding> buildings;
+  static const double cell = 200;
+  late final double minX, minY;
+  late final int cols, rows;
+  late final List<List<CityBuilding>> grid;
 }
 
 /// Real-world heights.
@@ -72,13 +105,26 @@ CityBuildingTile processBuildingTile(TileJob j) {
           rad = math.max(rad, math.sqrt(math.pow(verts[i * 2] - cx, 2) + math.pow(verts[i * 2 + 1] - cy, 2)));
         }
         if (rad < 2) continue;
+        if (cnt > 65535) continue;
         final idx = Earcut.triangulateRaw(verts);
-        final roof = Float32List(idx.length * 2);
-        for (var i = 0; i < idx.length; i++) {
-          roof[i * 2] = verts[idx[i] * 2];
-          roof[i * 2 + 1] = verts[idx[i] * 2 + 1];
+        var area = 0.0;
+        for (var i = 0, k = cnt - 1; i < cnt; k = i++) {
+          area += (verts[k * 2] - verts[i * 2]) * (verts[k * 2 + 1] + verts[i * 2 + 1]);
         }
-        out.add(CityBuilding(Float32List.fromList(verts), roof, h, cx, cy, rad));
+        final sign = area > 0 ? 1.0 : -1.0;
+        final normals = Float32List(cnt * 2), shade = Float32List(cnt);
+        for (var i = 0; i < cnt; i++) {
+          final k = (i + 1) % cnt;
+          var nx = (verts[k * 2 + 1] - verts[i * 2 + 1]) * sign, ny = -(verts[k * 2] - verts[i * 2]) * sign;
+          final nl = math.sqrt(nx * nx + ny * ny);
+          if (nl < 0.01) continue;
+          nx /= nl;
+          ny /= nl;
+          normals[i * 2] = nx;
+          normals[i * 2 + 1] = ny;
+          shade[i] = 0.55 + 0.45 * ((nx * 0.55 + ny * 0.83) * 0.5 + 0.5);
+        }
+        out.add(CityBuilding(Float32List.fromList(verts), Uint16List.fromList(idx), h, cx, cy, rad, normals, shade));
       }
     }
   }
@@ -88,49 +134,70 @@ CityBuildingTile processBuildingTile(TileJob j) {
 /// Draws city buildings as flat-shaded low-poly blocks: far-to-near per
 /// building, back faces culled, everything batched into one vertex list
 /// (so thousands of buildings stay cheap).
+///
+/// Per frame it only visits grid cells near the camera, projects each
+/// outline corner once (at the ground and at the roof) and reuses those
+/// for the walls and the roof, writing straight into reused typed buffers.
 class CityBuildingRenderer {
-  static final _pos = <double>[];
-  static final _col = <int>[];
+  /// Buildings drawn in the last frame (benchmarks).
+  static int lastDrawn = 0;
+  static Float32List _pos = Float32List(1 << 16);
+  static Int32List _col = Int32List(1 << 15);
+  static Float32List _gx = Float32List(256), _gy = Float32List(256), _tx = Float32List(256), _ty = Float32List(256);
+  static final _visible = <(double, CityBuilding, double)>[];
 
   static void paint(Canvas canvas, Camera3D cam, Iterable<CityBuildingTile> tiles, MapPalette palette, {double maxDistance = 700}) {
-    final visible = <(double, CityBuilding, double)>[];
-    final halfFov = cam.size.width / 2;
-    for (final t in tiles) {
-      for (final b in t.buildings) {
-        final ya = cam.alignY(b.cx, b.cy);
-        if (ya + b.radius < cam.yNear || ya - b.radius > maxDistance) continue;
-        // Horizontal frustum test on the centre (with the footprint radius).
-        final zc = cam.depth(math.max(ya, cam.yNear + 1), 0);
-        if (zc <= 1) continue;
-        final sx = cam.sx(cam.alignX(b.cx, b.cy), zc);
-        final rpx = b.radius * cam.focal / zc;
-        if (sx + rpx < -40 || sx - rpx > halfFov * 2 + 40) continue;
-        // Skip any building that would cross the near plane.
-        if (ya - b.radius < cam.yNear) continue;
-        // Keep the player and the view around them clear: nothing between
-        // the camera and the player, nothing right around the player.
-        final dx = b.cx - cam.px, dy = b.cy - cam.py;
-        final dist = math.sqrt(dx * dx + dy * dy) - b.radius;
-        // ...fading out as you walk up instead of popping out of existence.
-        double fade(double v, double from, double to) {
-          final t = ((v - from) / (to - from)).clamp(0.0, 1.0);
-          return t * t * (3 - 2 * t);
-        }
+    final visible = _visible..clear();
+    final width = cam.size.width;
+    final px = cam.px, py = cam.py, cosB = cam.cosB, sinB = cam.sinB;
+    final yNear = cam.yNear;
+    // Everything that can be on screen lies within this radius of the player.
+    final reach = math.sqrt(maxDistance * maxDistance + math.pow(cam.halfWidthAt(maxDistance), 2)) + 300;
+    double fade(double v, double from, double to) {
+      final t = ((v - from) / (to - from)).clamp(0.0, 1.0);
+      return t * t * (3 - 2 * t);
+    }
 
-        final alpha = math.min(fade(dist, 40, 150), fade(ya - b.radius, 20, 110));
-        if (alpha <= 0.02) continue;
-        visible.add((cam.depth(ya, b.height / 2), b, alpha));
+    for (final t in tiles) {
+      if (t.cols == 0) continue;
+      const cs = CityBuildingTile.cell;
+      final c0 = ((px - reach - t.minX) / cs).floor().clamp(0, t.cols - 1), c1 = ((px + reach - t.minX) / cs).floor();
+      final r0 = ((py - reach - t.minY) / cs).floor().clamp(0, t.rows - 1), r1 = ((py + reach - t.minY) / cs).floor();
+      if (c1 < 0 || r1 < 0) continue;
+      for (var r = r0; r <= math.min(r1, t.rows - 1); r++) {
+        for (var c = c0; c <= math.min(c1, t.cols - 1); c++) {
+          // Cull whole cells that are entirely behind the near plane or
+          // beyond the draw distance.
+          final ccx = t.minX + (c + 0.5) * cs, ccy = t.minY + (r + 0.5) * cs;
+          final cya = (ccx - px) * sinB + (ccy - py) * cosB;
+          if (cya + cs < yNear || cya - cs - 150 > maxDistance) continue;
+          for (final b in t.grid[r * t.cols + c]) {
+            final dx = b.cx - px, dy = b.cy - py;
+            final ya = dx * sinB + dy * cosB;
+            // Skip anything crossing the near plane or past the draw distance.
+            if (ya - b.radius < yNear || ya - b.radius > maxDistance) continue;
+            final zc = cam.depth(ya, 0);
+            if (zc <= 1) continue;
+            final sx = cam.sx(dx * cosB - dy * sinB, zc);
+            final rpx = b.radius * cam.focal / zc;
+            if (sx + rpx < -40 || sx - rpx > width + 40) continue;
+            // Keep the player and the view around them clear, fading out as
+            // you walk up instead of popping out of existence.
+            final dist = math.sqrt(dx * dx + dy * dy) - b.radius;
+            final alpha = math.min(fade(dist, 40, 150), fade(ya - b.radius, 20, 110));
+            if (alpha <= 0.02) continue;
+            visible.add((cam.depth(ya, b.height / 2), b, alpha));
+          }
+        }
       }
     }
+    lastDrawn = visible.length;
     if (visible.isEmpty) return;
     visible.sort((a, b) => b.$1.compareTo(a.$1));
-    _pos.clear();
-    _col.clear();
     final br = cam.bearing * math.pi / 180;
     // Camera position on the ground (for back-face culling of walls).
     final back = cam.distance * math.cos(cam.pitch * math.pi / 180);
-    final camX = cam.px - math.sin(br) * back, camY = cam.py - math.cos(br) * back;
-    const lx = 0.55, ly = 0.83;
+    final camX = px - math.sin(br) * back, camY = py - math.cos(br) * back;
     final wall = palette.buildingWall, roofC = palette.buildingRoof;
     final fog = palette.skyBottom;
     int argb(Color c, double k, double fogT, double alpha) {
@@ -138,51 +205,72 @@ class CityBuildingRenderer {
       return ((alpha * 255).round() << 24) | (ch(c.r, fog.r).round() << 16) | (ch(c.g, fog.g).round() << 8) | ch(c.b, fog.b).round();
     }
 
-    void vert(double x, double y, double z) {
-      final xa = cam.alignX(x, y), ya = cam.alignY(x, y);
-      final zc = cam.depth(ya, z);
-      _pos
-        ..add(cam.sx(xa, zc))
-        ..add(cam.sy(ya, z, zc));
+    final eb = cam.eyeBack, eu = cam.eyeUp, ed = cam.eyeDist, f = cam.focal, ccx = cam.cx, ccy = cam.cy;
+    final dd = ed * ed;
+    var np = 0, nc = 0; // floats / colours written
+    void ensure(int verts) {
+      if ((nc + verts) > _col.length) {
+        final grow = math.max(_col.length * 2, nc + verts);
+        _col = Int32List(grow)..setRange(0, nc, _col);
+        _pos = Float32List(grow * 2)..setRange(0, np, _pos);
+      }
     }
 
     for (final (d, b, alpha) in visible) {
       final r = b.ring, cnt = r.length ~/ 2, h = b.height;
-      final fogT = ((d - 300) / (maxDistance * 1.2)).clamp(0.0, 0.75);
-      var area = 0.0;
-      for (var i = 0, k = cnt - 1; i < cnt; k = i++) {
-        area += (r[k * 2] - r[i * 2]) * (r[k * 2 + 1] + r[i * 2 + 1]);
+      if (_gx.length < cnt) {
+        _gx = Float32List(cnt * 2);
+        _gy = Float32List(cnt * 2);
+        _tx = Float32List(cnt * 2);
+        _ty = Float32List(cnt * 2);
       }
-      final sign = area > 0 ? 1.0 : -1.0;
+      // Project every corner once, at the ground and at the roof.
       for (var i = 0; i < cnt; i++) {
-        final k = (i + 1) % cnt;
-        final ax = r[i * 2], ay = r[i * 2 + 1], bx = r[k * 2], by = r[k * 2 + 1];
-        var nx = (by - ay) * sign, ny = -(bx - ax) * sign;
-        final nl = math.sqrt(nx * nx + ny * ny);
-        if (nl < 0.01) continue;
-        nx /= nl;
-        ny /= nl;
+        final dx = r[i * 2] - px, dy = r[i * 2 + 1] - py;
+        final xa = dx * cosB - dy * sinB, ya = dx * sinB + dy * cosB;
+        final z0 = (ya * eb + dd) / ed, zh = z0 - h * eu / ed;
+        _gx[i] = ccx + f * xa / z0;
+        _gy[i] = ccy - f * (ya * eu / ed) / z0;
+        _tx[i] = ccx + f * xa / zh;
+        _ty[i] = ccy - f * ((ya * eu + h * eb) / ed) / zh;
+      }
+      final fogT = ((d - 300) / (maxDistance * 1.2)).clamp(0.0, 0.75);
+      final nrm = b.normals, shade = b.shade;
+      ensure(cnt * 6 + b.roofIdx.length);
+      for (var i = 0; i < cnt; i++) {
+        final nx = nrm[i * 2], ny = nrm[i * 2 + 1];
+        if (nx == 0 && ny == 0) continue;
+        final k = i + 1 == cnt ? 0 : i + 1;
         // Back-face cull: the wall faces away from the camera.
-        if (nx * (camX - (ax + bx) / 2) + ny * (camY - (ay + by) / 2) <= 0) continue;
-        final c = argb(wall, 0.55 + 0.45 * ((nx * lx + ny * ly) * 0.5 + 0.5), fogT, alpha);
-        vert(ax, ay, 0);
-        vert(bx, by, 0);
-        vert(bx, by, h);
-        vert(ax, ay, 0);
-        vert(bx, by, h);
-        vert(ax, ay, h);
+        if (nx * (camX - (r[i * 2] + r[k * 2]) / 2) + ny * (camY - (r[i * 2 + 1] + r[k * 2 + 1]) / 2) <= 0) continue;
+        final c = argb(wall, shade[i], fogT, alpha);
+        _pos[np++] = _gx[i];
+        _pos[np++] = _gy[i];
+        _pos[np++] = _gx[k];
+        _pos[np++] = _gy[k];
+        _pos[np++] = _tx[k];
+        _pos[np++] = _ty[k];
+        _pos[np++] = _gx[i];
+        _pos[np++] = _gy[i];
+        _pos[np++] = _tx[k];
+        _pos[np++] = _ty[k];
+        _pos[np++] = _tx[i];
+        _pos[np++] = _ty[i];
         for (var q = 0; q < 6; q++) {
-          _col.add(c);
+          _col[nc++] = c;
         }
       }
-      final roof = b.roof;
       final rc = argb(roofC, 1, fogT, alpha);
-      for (var i = 0; i + 1 < roof.length; i += 2) {
-        vert(roof[i], roof[i + 1], h);
-        _col.add(rc);
+      final idx = b.roofIdx;
+      for (var i = 0; i < idx.length; i++) {
+        final v = idx[i];
+        _pos[np++] = _tx[v];
+        _pos[np++] = _ty[v];
+        _col[nc++] = rc;
       }
     }
-    final v = ui.Vertices.raw(VertexMode.triangles, Float32List.fromList(_pos), colors: Int32List.fromList(_col));
+    if (nc == 0) return;
+    final v = ui.Vertices.raw(VertexMode.triangles, Float32List.sublistView(_pos, 0, np), colors: Int32List.sublistView(_col, 0, nc));
     canvas.drawVertices(v, BlendMode.dst, Paint());
     v.dispose();
   }

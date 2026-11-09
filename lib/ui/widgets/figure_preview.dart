@@ -9,9 +9,13 @@ import 'stick_figure.dart';
 /// The player's real 3D figure (the one on the map), standing and slowly
 /// turning, so clothing previews look exactly like they will in game.
 class Figure3DPreview extends StatefulWidget {
-  const Figure3DPreview({super.key, required this.look, this.size = 120, this.turn = true});
+  const Figure3DPreview({super.key, required this.look, this.size = 120, this.turn = true, this.animate = true});
   final FigureLook look;
   final double size;
+
+  /// Animate (sway, breathe). Off = drawn once and cached, for grids of
+  /// many previews (the shop) where animating them all costs frames.
+  final bool animate;
 
   /// Sway left and right to show the outfit in 3D.
   final bool turn;
@@ -21,8 +25,21 @@ class Figure3DPreview extends StatefulWidget {
 }
 
 class _Figure3DPreviewState extends State<Figure3DPreview> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 60))..repeat();
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 60));
   final IdleDirector _idle = IdleDirector(1);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.animate) _c.repeat();
+  }
+
+  @override
+  void didUpdateWidget(Figure3DPreview old) {
+    super.didUpdateWidget(old);
+    if (widget.animate && !_c.isAnimating) _c.repeat();
+    if (!widget.animate && _c.isAnimating) _c.stop();
+  }
 
   @override
   void dispose() {
@@ -39,7 +56,7 @@ class _Figure3DPreviewState extends State<Figure3DPreview> with SingleTickerProv
         child: AnimatedBuilder(
           animation: _c,
           builder: (context, _) => CustomPaint(
-            painter: _PreviewPainter(widget.look, _c.value * 60, _idle, widget.turn),
+            painter: _PreviewPainter(widget.look, widget.animate ? _c.value * 60 : 1.2, _idle, widget.turn && widget.animate),
           ),
         ),
       ),
@@ -84,5 +101,8 @@ class _PreviewPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_PreviewPainter old) => true;
+  bool shouldRepaint(_PreviewPainter old) => old.time != time || old.turn != turn || !_sameLook(old.look, look);
+
+  static bool _sameLook(FigureLook a, FigureLook b) =>
+      a.color == b.color && a.hat == b.hat && a.shirt == b.shirt && a.pet == b.pet && a.backpack == b.backpack;
 }

@@ -72,15 +72,8 @@ class GroundPainter extends CustomPainter {
       v.dispose();
     }
 
-    _catchRing(canvas, cam);
-    footsteps?.call()?.paint(canvas, size);
-    if (map.buildingsEnabled) {
-      CityBuildingRenderer.paint(canvas, cam, map.buildingTiles.values, palette);
-    } else {
-      _buildings(canvas, cam);
-    }
-
-    // Distance fog towards the horizon.
+    // Distance fog towards the horizon — on the ground only: drawn before
+    // buildings, so tall ones rising past the horizon aren't cut by it.
     final fogNear = cam.groundY(math.max(360, cam.distance * 1.6));
     final fogFar = cam.groundY(cam.yFar * 0.92);
     final fogRect = Rect.fromLTRB(0, fogFar - 1, size.width, fogNear);
@@ -92,6 +85,14 @@ class GroundPainter extends CustomPainter {
                 .createShader(fogRect));
     }
     canvas.drawRect(Rect.fromLTRB(0, horizon - 1, size.width, fogFar), Paint()..color = palette.skyBottom);
+    _catchRing(canvas, cam);
+    footsteps?.call()?.paint(canvas, size);
+    if (map.buildingsEnabled) {
+      CityBuildingRenderer.paint(canvas, cam, map.buildingTiles.values, palette);
+    } else {
+      _buildings(canvas, cam);
+    }
+
   }
 
   void _projectLayer(Camera3D cam, Float32List tris, Float32List buckets, _Buf out) {

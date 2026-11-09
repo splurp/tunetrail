@@ -24,9 +24,13 @@ class SkyPainter extends CustomPainter {
       ..update();
     final horizon = cam.horizonY;
     if (horizon <= 0) return; // looking down (overhead view): no sky
-    final sky = Rect.fromLTWH(0, 0, size.width, horizon + 2);
+    // Reaches a little below the horizon so a frame where the ground lags
+    // the camera never shows a gap.
+    final sky = Rect.fromLTWH(0, 0, size.width, horizon + size.height * 0.08);
     canvas.drawRect(sky,
-        Paint()..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [palette.skyTop, palette.skyBottom]).createShader(sky));
+        Paint()
+          ..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [palette.skyTop, palette.skyBottom])
+              .createShader(Rect.fromLTWH(0, 0, size.width, horizon + 2)));
     canvas.save();
     canvas.clipRect(sky);
     switch (decor) {

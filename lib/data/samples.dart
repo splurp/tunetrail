@@ -155,6 +155,11 @@ const double _wimGap = 13.827 - 11.39; // "what it means" → repeat, in I Wonde
 const double _aiwToWim = 12.4 - 7.5; // "And I wonder" → "what it means"
 // "…what it MEANS" decays until ~14.4 s; the next words start at 14.7 s.
 const double _wimEnd = 14.55;
+// The loop point: "…what it MEANS" is cut just before "to find" (14.7 s)
+// and the repeat picks up the quiet breath before "what it" so that, as in
+// I Wonder, the phrase loops back-to-back with no gap or fade.
+const double _wimCut = 14.65;
+const double _xf = 0.03; // tiny crossfade at the loop point
 const double _origEnd = 21.0; // past "…dreams come true"
 const double _rew1 = _origEnd - 3.0; // the original clip (from 3.0 s) ends here
 const double _flip1 = _rew1 + 1.0; // "And I wonder … what it means, what it means"
@@ -163,6 +168,11 @@ const double _flip1End = _flip1Wim2 + (_wimEnd - 12.4);
 const double _rew2 = _flip1End + 0.1;
 const double _flip2 = _rew2 + 0.9; // the same again, with I Wonder underneath
 const double _flip2Wim2 = _flip2 + _aiwToWim + _wimGap;
+// When (in the breakdown) the first line reaches the cut, and where in the
+// source the repeat has to start so "what it means" still lands on the beat.
+const double _flip1Loop = _flip1 + (_wimCut - 7.5);
+const double _flip2Loop = _flip2 + (_wimCut - 7.5);
+const double _repeatFrom = 12.4 - (_aiwToWim + _wimGap - (_wimCut - 7.5));
 // I Wonder's "And I wonder" (6.542 s into its preview) lines up with Labi's
 // at 7.6 s; the song starts at the same point of the line as the source.
 const double _songFrom = 6.542 - (7.6 - 7.5);
@@ -205,13 +215,13 @@ const _curated = <SampleInfo>[
       SampleClip(SampleTrack.source, at: 0, from: 3.0, to: _origEnd, fadeOut: 0.6),
       // 2. Rewind, then the flip: "And I wonder, if you know, what it means"
       //    and "what it means" again, spaced exactly as in the hook.
-      SampleClip(SampleTrack.source, at: _flip1, from: 7.5, to: _wimEnd, fadeOut: 0.3),
-      SampleClip(SampleTrack.source, at: _flip1Wim2, from: 12.4, to: _wimEnd, fadeOut: 0.3),
+      SampleClip(SampleTrack.source, at: _flip1, from: 7.5, to: _wimCut + _xf, fadeOut: _xf * 2),
+      SampleClip(SampleTrack.source, at: _flip1Loop, from: _repeatFrom, to: _wimEnd, fadeIn: _xf, fadeOut: 0.3),
       // 3. Rewind and play the flip again while I Wonder — the same words —
       //    runs underneath, matched one-to-one: the original fades out across
       //    the whole line as I Wonder fades in.
-      SampleClip(SampleTrack.source, at: _flip2, from: 7.5, to: _wimEnd, fadeOut: _wimEnd - 7.5),
-      SampleClip(SampleTrack.source, at: _flip2Wim2, from: 12.4, to: _wimEnd, volume: 0.3, fadeOut: _wimEnd - 12.4),
+      SampleClip(SampleTrack.source, at: _flip2, from: 7.5, to: _wimCut + _xf, fadeOut: _wimCut + _xf - 7.5),
+      SampleClip(SampleTrack.source, at: _flip2Loop, from: _repeatFrom, to: _wimEnd, volume: 0.3, fadeIn: _xf, fadeOut: _wimEnd - _repeatFrom),
       SampleClip(SampleTrack.song, at: _flip2, from: _songFrom, fadeIn: _flip2Wim2 - _flip2, fadeOut: 0.6),
     ],
     rewinds: [

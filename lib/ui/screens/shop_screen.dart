@@ -456,7 +456,7 @@ class _Style extends StatelessWidget {
                 child: Column(
                   children: [
                     Expanded(
-                      child: Center(child: Figure3DPreview(look: look, size: 130)),
+                      child: Center(child: Figure3DPreview(look: look, size: 130, animate: on)),
                     ),
                     Text(
                       it.name,

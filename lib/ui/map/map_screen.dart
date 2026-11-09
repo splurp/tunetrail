@@ -55,7 +55,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   double _lastT = 0;
   double _wx = double.nan, _wy = double.nan;
   int _mapVersion = -1;
-  double _lastBearing = 0, _lastDistance = 0;
+  double _lastBearing = 0, _lastDistance = 0, _lastPitch = 0;
   double _scaleStartDistance = 230;
   double? _joyX, _joyY;
 
@@ -118,10 +118,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (g.location.moving) _targetFacing = g.location.heading;
     final df = ((_targetFacing - _facing + 540) % 360) - 180;
     _facing = (_facing + df * 0.2 + 360) % 360;
-    if (g.mapData.version != _mapVersion || _cam.bearing != _lastBearing || _cam.distance != _lastDistance) changed = true;
+    if (g.mapData.version != _mapVersion || _cam.bearing != _lastBearing || _cam.distance != _lastDistance || _cam.pitch != _lastPitch) changed = true;
     _mapVersion = g.mapData.version;
     _lastBearing = _cam.bearing;
     _lastDistance = _cam.distance;
+    _lastPitch = _cam.pitch;
     if (_guide.isAnimating) changed = true;
     if (_keyboardDriving && g.location.joystickMode) _applyKeys(g);
     // The footstep trail starts fading as soon as the camera has swung
@@ -196,7 +197,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (dx == 0 && dy == 0) return;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     _cam.bearing = (_cam.bearing + dx / dpr * 0.22) % 360;
-    _cam.pitch = (_cam.pitch - dy / dpr * 0.08).clamp(28.0, 58.0);
+    // Mouse up tilts the view up (towards the horizon), down tilts it down.
+    _cam.pitch = (_cam.pitch + dy / dpr * 0.08).clamp(28.0, 58.0);
     _cameraTouched();
     ctl.warp(c.$1, c.$2);
   }

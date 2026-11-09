@@ -49,6 +49,13 @@ class Camera3D {
     yFar = math.max(1150, distance * 1.8);
   }
 
+  // Raw projection terms, for renderers that inline the maths.
+  double get cosB => _cos;
+  double get sinB => _sin;
+  double get eyeBack => _b;
+  double get eyeUp => _h;
+  double get eyeDist => _d;
+
   /// World (x,y) → camera-aligned ground coords (xa right, ya forward).
   @pragma('vm:prefer-inline')
   double alignX(double x, double y) => (x - px) * _cos - (y - py) * _sin;
