@@ -205,19 +205,35 @@ jobs:
           path: dist
           pattern: tunetrail-*
           merge-multiple: true
+      - name: Release name
+        id: rel
+        shell: bash
+        run: |
+          ref="${{ github.ref_name }}"
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            if [[ "$ref" == *-beta ]]; then
+              echo "name=Tunetrail Beta ${ref%-beta}" >> "$GITHUB_OUTPUT"; echo "pre=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "name=Tunetrail $ref" >> "$GITHUB_OUTPUT"; echo "pre=false" >> "$GITHUB_OUTPUT"
+            fi
+            echo "kind=Release" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=Tunetrail dev build ${{ github.run_number }}" >> "$GITHUB_OUTPUT"; echo "pre=true" >> "$GITHUB_OUTPUT"
+            echo "kind=Developer build" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('dev-build-{0}', github.run_number) }}
-          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('Tunetrail dev build {0}', github.run_number) }}
+          name: ${{ steps.rel.outputs.name }}
           target_commitish: ${{ github.sha }}
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          prerelease: ${{ steps.rel.outputs.pre }}
           body: |
-            Developer build of Tunetrail from `${{ github.ref_name }}` @ ${{ github.sha }}.
+            ${{ steps.rel.outputs.kind }} of Tunetrail from `${{ github.ref_name }}` @ ${{ github.sha }}.
 
             **Windows:** download `Tunetrail-windows-x64-setup.exe` (installer) or the portable `Tunetrail-windows-x64.zip` (extract, then run `Tunetrail.exe`).
             **Linux:** download `Tunetrail-linux-x64.tar.gz`, extract it and run `./tunetrail` (needs GTK 3 and ALSA or PulseAudio for sound).
             **Android:** download `Tunetrail-android-universal.apk` (or the smaller `arm64` APK for most modern phones) and allow installs from unknown sources.
 
-            The debug menu is in Profile → Settings → Debug menu.
+            Questions about music rights: see Profile → Settings → Copyright & DMCA.
           files: dist/*
