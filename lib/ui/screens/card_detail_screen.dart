@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../build_flags.dart';
+
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/collection.dart';
@@ -84,7 +86,7 @@ class CardDetailScreen extends StatelessWidget {
         _InfoRow('Variants of this song owned', '${g.collection.copiesOf(s.id)}'),
         if (card.edition == Edition.sample && SampleLibrary.of(s.id) != null) ...[
           _InfoRow('Samples', '${SampleLibrary.of(s.id)!.source.title} — ${SampleLibrary.of(s.id)!.source.artistName} (${SampleLibrary.of(s.id)!.sourceYear})'),
-          if (g.profile.debugEnabled) SampleSyncTuner(songId: s.id),
+          if (kAdminBuild && g.profile.debugEnabled) SampleSyncTuner(songId: s.id),
         ],
         _InfoRow('Est. market value', '${formatNumber(payload.fair)} coins'),
         _InfoRow('Popularity', '${formatNumber(s.rank)} (Deezer score, higher = more played)'),

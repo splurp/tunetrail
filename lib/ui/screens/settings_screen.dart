@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../build_flags.dart';
+
 import '../../game/audio_service.dart';
 
 import '../../data/profile.dart';
@@ -94,14 +96,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onChanged: g.setShowBuildings,
         ),
         SwitchListTile(
-          title: const Text('Reduce map effects'),
-          subtitle: const Text('Disables theme particles (saves battery)'),
-          value: p.reduceEffects,
+          secondary: const Icon(Icons.battery_saver_outlined),
+          title: const Text('Battery Saver'),
+          subtitle: const Text('Limits the game to 60 FPS and turns off theme particles'),
+          value: p.batterySaver,
           onChanged: (v) {
-            p.reduceEffects = v;
+            p.batterySaver = v;
             p.changed();
           },
         ),
+        if (kAdminBuild) ...[
         ListTile(
           title: const Text('Map tile server'),
           subtitle: Text(p.tileUrl.isEmpty ? 'OpenStreetMap (default)' : p.tileUrl, maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -132,6 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }
           },
         ),
+        ],
        ],
        [
         const _Header('Account'),
@@ -146,7 +151,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.alternate_email),
             title: const Text('Username'),
-            subtitle: Text(p.usernameSet ? p.name : 'Not chosen yet'),
+            subtitle: Text(p.usernameSet ? '${p.name} · ${p.usernameChanges == 0 ? 'first change free' : 'change for 100 bits'}' : 'Not chosen yet'),
             trailing: const Icon(Icons.edit, size: 18),
             onTap: () => showChangeUsername(context),
           ),
@@ -170,42 +175,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const QuickListPresetsScreen())),
         ),
-        RadioGroup<MarketMode>(
-          groupValue: p.marketMode,
-          onChanged: (m) => g.setMarketMode(m!, _server.text.trim()),
-          child: const Column(children: [
-            RadioListTile(value: MarketMode.local, title: Text('Local market'), subtitle: Text('Offline, with simulated NPC traders')),
-            RadioListTile(value: MarketMode.online, title: Text('Online market server'), subtitle: Text('Trade with real players (see server/ in the repo)')),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(children: [
-            Expanded(child: TextField(controller: _server, decoration: const InputDecoration(labelText: 'Server URL', hintText: 'http://192.168.1.10:8080'))),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: () async {
-                await g.setMarketMode(MarketMode.online, _server.text.trim());
-                g.toast('Market: ${g.market.label}');
-              },
-              child: const Text('Connect'),
-            ),
-          ]),
-        ),
-        const _Header('Developer'),
-        SwitchListTile(
-          title: const Text('Debug menu'),
-          subtitle: const Text('Balances, free purchases, joystick, teleport, stress tests'),
-          value: p.debugEnabled,
-          onChanged: g.setDebug,
-        ),
-        if (p.debugEnabled)
-          ListTile(
-            leading: const Icon(Icons.bug_report, color: kAccent),
-            title: const Text('Open debug menu'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DebugScreen())),
+        // Server and developer tools exist only in admin builds.
+        if (kAdminBuild) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: [
+              Expanded(child: TextField(controller: _server, decoration: const InputDecoration(labelText: 'Server URL (admin)'))),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: () async {
+                  await g.setMarketMode(MarketMode.online, _server.text.trim());
+                  g.toast('Market: ${g.market.label}');
+                },
+                child: const Text('Connect'),
+              ),
+            ]),
           ),
+          const _Header('Developer'),
+          SwitchListTile(
+            title: const Text('Debug menu'),
+            subtitle: Text(p.isAdmin || PlayerProfile.builtInServer.isEmpty ? 'Balances, free purchases, joystick, teleport, stress tests' : 'Only for admin accounts'),
+            value: p.debugEnabled,
+            onChanged: p.isAdmin || PlayerProfile.builtInServer.isEmpty ? g.setDebug : null,
+          ),
+          if (p.debugEnabled)
+            ListTile(
+              leading: const Icon(Icons.bug_report, color: kAccent),
+              title: const Text('Open debug menu'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DebugScreen())),
+            ),
+        ],
         const _Header('About'),
         ListTile(
           leading: const Icon(Icons.copyright),
@@ -215,11 +215,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CopyrightScreen())),
         ),
         const ListTile(
-          title: Text('Tunetrail — developer build'),
-          subtitle: Text('Song data, artwork & previews: Deezer API. Maps: © OpenStreetMap contributors. Geocoding: Nominatim.'),
+          title: Text('Tunetrail · $kAppVersion${kAdminBuild ? ' (admin build)' : ''}'),
+          subtitle: Text('Song data, artwork & previews: Deezer and Apple. Maps: © OpenStreetMap contributors (OpenFreeMap, VersaTiles).'),
         ),
         ListTile(title: const Text('Player ID'), subtitle: SelectableText(p.playerId)),
-        const SizedBox(height: 24),
+        SizedBox(height: 24 + MediaQuery.viewPaddingOf(context).bottom),
        ],
       ]),
     );

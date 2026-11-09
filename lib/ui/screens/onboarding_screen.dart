@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../../build_flags.dart';
 import 'package:flutter/services.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
@@ -182,7 +184,7 @@ class _SignInState extends State<_SignIn> {
         ),
       ),
       if (_busy) const _WaitingForBrowser(),
-      if (GameScope.of(context).profile.debugEnabled)
+      if (kAdminBuild && GameScope.of(context).profile.debugEnabled)
         Padding(
           padding: const EdgeInsets.only(top: 12),
           child: TextButton(onPressed: GameScope.read(context).skipOnboardingForNow, child: const Text('Debug: skip sign-in for now')),
@@ -459,6 +461,11 @@ Future<void> showChangeUsername(BuildContext context) async {
                   onSubmitted: (_) => save(),
                   decoration: InputDecoration(errorText: error, errorMaxLines: 3),
                 ),
+                Text(
+                  g.usernameChangeCost == 0 ? 'This change is free.' : 'This change costs ${g.usernameChangeCost} bits (you have ${g.profile.bits}).',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
                 const Text(
                   'Letters, numbers, symbols and emoji · no spaces · not < > & " \' ` \\ /\nYour old name becomes free for others.',
                   style: TextStyle(fontSize: 12, color: kTextTertiary),

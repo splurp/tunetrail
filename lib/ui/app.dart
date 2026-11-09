@@ -3,6 +3,8 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+
+import '../build_flags.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../game/game.dart';
@@ -192,7 +194,7 @@ class _TunetrailAppState extends State<TunetrailApp> with WidgetsBindingObserver
               child: ListenableBuilder(
                 listenable: g.profile,
                 child: child,
-                builder: (context, child) => Stack(children: [child!, if (g.profile.debugEnabled && g.profile.showFps) const FpsOverlay()]),
+                builder: (context, child) => Stack(children: [child!, if (kAdminBuild && g.profile.debugEnabled && g.profile.showFps) const FpsOverlay()]),
               ),
             ),
       home: g == null

@@ -159,7 +159,7 @@ class ProfileScreen extends StatelessWidget {
             _NavTile(icon: Icons.assignment, title: 'Quests', subtitle: 'Daily tasks, artist spotlights & milestones', page: const QuestsScreen()),
             _NavTile(icon: Icons.recycling_rounded, title: 'Scrapyard', subtitle: '${p.cardsScrapped} songs scrapped', page: const ScrapyardScreen()),
             _NavTile(icon: Icons.queue_music, title: 'Playlists', subtitle: '${p.playlists.length} playlists', page: const PlaylistsScreen()),
-            _NavTile(icon: Icons.settings, title: 'Settings', subtitle: p.debugEnabled ? 'Debug menu enabled' : 'Audio, market server, debug', page: const SettingsScreen()),
+            _NavTile(icon: Icons.settings, title: 'Settings', subtitle: 'Audio, graphics, account', page: const SettingsScreen()),
           ],
         ],
       ),

@@ -29,6 +29,10 @@ Future<void> main(List<String> args) async {
     if (args[i] == '--port') port = int.parse(args[i + 1]);
     if (args[i] == '--data') dataPath = args[i + 1];
   }
+  // Admin accounts (comma-separated player ids, e.g. g_1234…; see the
+  // game's Settings → Player ID): only these can
+  // use debug tools, and only in the admin build of the game.
+  final admins = {for (final s in (env['ADMINS'] ?? '').split(',')) if (s.trim().isNotEmpty) s.trim()};
   final googleIds = {for (final s in (env['GOOGLE_CLIENT_IDS'] ?? '').split(',')) if (s.trim().isNotEmpty) s.trim()};
   final secret = env['SESSION_SECRET'] ?? '';
   if (googleIds.isNotEmpty && secret.length < 32) {
@@ -76,7 +80,7 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  final app = buildRouter(engine, auth);
+  final app = buildRouter(engine, auth, admins: admins);
   final handler = const Pipeline()
       .addMiddleware(_cors())
       .addMiddleware(_rateLimit())
@@ -90,7 +94,7 @@ Future<void> main(List<String> args) async {
   stdout.writeln('Tunetrail server on :${server.port} · storage: ${store.label} · google ids: ${googleIds.length} · guests: ${auth.allowGuests}');
 }
 
-Router buildRouter(MarketEngine m, Auth auth) {
+Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
   final r = Router();
 
   /// The calling player: from a session token, or (when guests are
@@ -182,7 +186,8 @@ Router buildRouter(MarketEngine m, Auth auth) {
   // ------------------------------------------------------------ account
   r.get('/me', (Request req) => guard(() async {
         final p = m.players[pid(req)]!;
-        return ok({'id': p.id, 'name': p.name, 'needsUsername': !p.named && p.id.startsWith('g_'), 'unread': m.unreadCount(p.id)});
+        final admin = admins.contains(p.id);
+        return ok({'id': p.id, 'name': p.name, 'needsUsername': !p.named && p.id.startsWith('g_'), 'unread': m.unreadCount(p.id), 'admin': admin});
       }));
   r.get('/usernames/check', (Request req) => guard(() async {
         final name = (req.url.queryParameters['name'] ?? '').trim();

@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 
 import 'package:tunetrail_core/tunetrail_core.dart';
 
+import '../build_flags.dart';
+
 import 'models.dart';
 
 enum MarketMode { local, online }
@@ -92,7 +94,20 @@ class PlayerProfile extends ChangeNotifier {
   double lastLng = -73.9855;
 
   // Settings.
-  bool debugEnabled = false;
+  /// Debug tools: only in admin builds, only for accounts the server marks
+  /// as admins (or on development builds without a server).
+  bool get debugEnabled => kAdminBuild && (isAdmin || builtInServer.isEmpty) && _debugPref;
+  set debugEnabled(bool v) => _debugPref = v;
+  bool _debugPref = false;
+
+  /// The server lists this account as an admin (refreshed on connect).
+  bool isAdmin = false;
+
+  /// Username changes after the first choice (the first change is free).
+  int usernameChanges = 0;
+
+  /// Battery Saver: 60 FPS cap and no theme particles.
+  bool batterySaver = false;
   bool freePurchases = false;
   bool joystickEnabled = false;
   bool unlimitedRange = false;
@@ -170,7 +185,8 @@ class PlayerProfile extends ChangeNotifier {
   ];
 
   QuickListPreset quickListPreset(Rarity r) => quickListPresets[r.index];
-  bool reduceEffects = false;
+  /// Theme particles off (Battery Saver).
+  bool get reduceEffects => batterySaver;
 
   int get level => levelForXp(xp);
   static int levelForXp(int xp) => (math.sqrt(xp / 100)).floor() + 1;
@@ -256,7 +272,9 @@ class PlayerProfile extends ChangeNotifier {
         'showcasePlaylists': showcasePlaylists,
         'lat': lastLat,
         'lng': lastLng,
-        'debug': debugEnabled,
+        'debug': _debugPref,
+        'renames': usernameChanges,
+        'battery': batterySaver,
         'freePurchases': freePurchases,
         'joystick': joystickEnabled,
         'unlimitedRange': unlimitedRange,
@@ -273,7 +291,6 @@ class PlayerProfile extends ChangeNotifier {
         'lastFmKey': lastFmKey,
         'volume': volume,
         'playOnEncounter': playOnEncounter,
-        'reduceEffects': reduceEffects,
       };
 
   void _fromJson(Map<String, dynamic> j) {
@@ -345,7 +362,9 @@ class PlayerProfile extends ChangeNotifier {
     showcasePlaylists = [for (final x in (j['showcasePlaylists'] as List? ?? const [])) x as String];
     lastLat = (j['lat'] as num?)?.toDouble() ?? lastLat;
     lastLng = (j['lng'] as num?)?.toDouble() ?? lastLng;
-    debugEnabled = j['debug'] as bool? ?? false;
+    _debugPref = j['debug'] as bool? ?? false;
+    usernameChanges = (j['renames'] as num?)?.toInt() ?? 0;
+    batterySaver = j['battery'] as bool? ?? (j['reduceEffects'] as bool? ?? false);
     freePurchases = j['freePurchases'] as bool? ?? false;
     joystickEnabled = j['joystick'] as bool? ?? false;
     unlimitedRange = j['unlimitedRange'] as bool? ?? false;
@@ -362,6 +381,5 @@ class PlayerProfile extends ChangeNotifier {
     lastFmKey = j['lastFmKey'] as String? ?? '';
     volume = (j['volume'] as num?)?.toDouble() ?? volume;
     playOnEncounter = j['playOnEncounter'] as bool? ?? true;
-    reduceEffects = j['reduceEffects'] as bool? ?? false;
   }
 }

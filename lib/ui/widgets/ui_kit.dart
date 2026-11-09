@@ -356,6 +356,8 @@ class AdaptivePanes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Keep the last items clear of the phone's navigation bar.
+    final padding = this.padding.copyWith(bottom: this.padding.bottom + MediaQuery.viewPaddingOf(context).bottom);
     if (!isWideLayout(context)) {
       return ListView(padding: padding, children: [for (final p in panes) ...p]);
     }

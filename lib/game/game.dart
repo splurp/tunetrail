@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
+import '../build_flags.dart';
 import '../data/catalog.dart';
 import '../data/collection.dart';
 import '../data/deezer_api.dart';
@@ -95,7 +96,7 @@ class Game extends ChangeNotifier {
   Future<void> _init() async {
     purchases = PurchaseService(onGrant: _grantProduct);
     unawaited(purchases.init());
-    location.joystickMode = profile.debugEnabled && profile.joystickEnabled;
+    location.joystickMode = kAdminBuild && profile.debugEnabled && profile.joystickEnabled;
     location.speedMultiplier = profile.speedMultiplier;
     location.onTravel = _onTravel;
     location.addListener(_onLocation);
@@ -151,21 +152,45 @@ class Game extends ChangeNotifier {
 
   // ---------------------------------------------------------------- market
   Future<void> _connectMarket() async {
-    profile.applyBuiltInServer();
+    // Builds with a server always trade online (no offline NPC market);
+    // admin builds may point at another server.
+    final server = PlayerProfile.builtInServer.isNotEmpty && !kAdminBuild ? PlayerProfile.builtInServer : profile.serverUrl;
+    if (PlayerProfile.builtInServer.isNotEmpty) {
+      profile
+        ..marketMode = MarketMode.online
+        ..serverUrl = server;
+    }
     if (profile.marketMode == MarketMode.online) {
-      market = RemoteMarket(profile.serverUrl, profile.playerId, profile.name, token: profile.authToken);
+      market = RemoteMarket(server, profile.playerId, profile.name, token: profile.authToken);
+      _marketReady = true;
       try {
         await market.register(profile.playerId, profile.name);
-        _marketReady = true;
-        return;
+        unawaited(refreshAccount());
       } catch (e) {
-        toast('Market server unreachable — using local market');
+        if (PlayerProfile.builtInServer.isEmpty) {
+          toast('Market server unreachable — using local market');
+        } else {
+          return; // Stay online; requests retry as the player uses the market.
+        }
       }
+      if (PlayerProfile.builtInServer.isNotEmpty) return;
     }
     final local = LocalMarket(dir, catalog, profile.playerId, profile.name);
     await local.init();
     market = local;
     _marketReady = true;
+  }
+
+  /// Account details from the server: admin flag and unread messages.
+  Future<void> refreshAccount() async {
+    final m = market;
+    if (m is! RemoteMarket || profile.authToken.isEmpty) return;
+    try {
+      final j = await m.me();
+      profile.isAdmin = j['admin'] as bool? ?? false;
+      unreadMessages.value = (j['unread'] as num?)?.toInt() ?? unreadMessages.value;
+      profile.changed();
+    } catch (_) {}
   }
 
   /// Signs in with Google through the game server; the account then owns
@@ -287,8 +312,19 @@ class Game extends ChangeNotifier {
   }
 
   /// Claims [name] as this player's unique username.
+  /// Bits the next username change costs (the first change is free).
+  int get usernameChangeCost => !profile.usernameSet || profile.usernameChanges == 0 ? 0 : 100;
+
   Future<void> chooseUsername(String name) async {
+    final changing = profile.usernameSet;
+    final cost = usernameChangeCost;
+    if (changing && name.trim() == profile.name) return;
+    if (profile.bits < cost) throw MarketException('Changing your username again costs $cost bits');
     final (chosen, token) = await market.setUsername(name.trim());
+    if (changing) {
+      profile.bits -= cost;
+      profile.usernameChanges++;
+    }
     profile
       ..name = chosen
       ..usernameSet = true;
@@ -367,7 +403,7 @@ class Game extends ChangeNotifier {
   /// Buys a profile theme with coins and puts it on.
   void buyProfileTheme(ProfileTheme t) {
     if (profile.owned.contains(t.id)) return setProfileTheme(t.id);
-    if (!profile.freePurchases || !profile.debugEnabled) {
+    if (!(kAdminBuild && profile.freePurchases && profile.debugEnabled)) {
       if (profile.coins < t.price) throw MarketException('Not enough coins');
       profile.coins -= t.price;
     }
@@ -679,7 +715,7 @@ class Game extends ChangeNotifier {
   }
 
   bool inRange(Spawn s) =>
-      (profile.debugEnabled && profile.unlimitedRange) ||
+      (kAdminBuild && profile.debugEnabled && profile.unlimitedRange) ||
       metersBetween(location.position, s.point) <= catchRangeMeters;
 
   void _markSpent(Spawn s) {
@@ -853,7 +889,7 @@ class Game extends ChangeNotifier {
     if (p.kind != ProductKind.bits && profile.owned.contains(p.id)) {
       return PurchaseResult.granted;
     }
-    final r = await purchases.buy(p, debugFree: profile.debugEnabled && profile.freePurchases);
+    final r = await purchases.buy(p, debugFree: kAdminBuild && profile.debugEnabled && profile.freePurchases);
     return r;
   }
 

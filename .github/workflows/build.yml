@@ -149,6 +149,20 @@ jobs:
         with:
           name: tunetrail-windows
           path: dist/*
+      # Admin build: debug tools compiled in (they only unlock for accounts in
+      # the server's ADMINS list). Kept as a workflow artifact for people with
+      # repository access — never attached to a public release.
+      - run: flutter build windows --release --no-tree-shake-icons --dart-define=TUNETRAIL_ADMIN=true --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
+      - name: Package admin build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force admin | Out-Null
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath admin\Tunetrail-ADMIN-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: admin-windows
+          path: admin/*
+          retention-days: 30
 
   linux:
     runs-on: ubuntu-latest
@@ -189,6 +203,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: tunetrail-*
           merge-multiple: true
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

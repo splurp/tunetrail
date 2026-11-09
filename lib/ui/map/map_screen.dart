@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
+import '../../build_flags.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
@@ -761,7 +763,7 @@ class _Hud extends StatelessWidget {
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (p.debugEnabled)
+                    if (kAdminBuild && p.debugEnabled)
                       HudButton(
                         icon: Icons.travel_explore,
                         tooltip: 'Teleport',

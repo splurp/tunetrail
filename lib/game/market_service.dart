@@ -352,6 +352,7 @@ class RemoteMarket extends MarketBackend {
 
   @override
   String get label => 'Online: $baseUrl';
+  // (Shown only in admin builds.)
 
   Map<String, String> get _h => {
         'content-type': 'application/json',
@@ -496,6 +497,8 @@ class RemoteMarket extends MarketBackend {
       ChatMessage.fromJson(await _send('POST', '/messages/${Uri.encodeComponent(toId)}', body: {'text': text}) as Map<String, dynamic>);
   @override
   Future<int> unreadMessages() async => ((await _send('GET', '/me') as Map)['unread'] as num? ?? 0).toInt();
+
+  Future<Map<String, dynamic>> me() async => await _send('GET', '/me') as Map<String, dynamic>;
 
   @override
   void dispose() => _c.close();

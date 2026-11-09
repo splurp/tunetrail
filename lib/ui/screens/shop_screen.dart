@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../build_flags.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/models.dart';
@@ -20,7 +22,7 @@ class ShopScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = GameScope.of(context);
-    final free = g.profile.debugEnabled && g.profile.freePurchases;
+    final free = kAdminBuild && g.profile.debugEnabled && g.profile.freePurchases;
     return DefaultTabController(
       length: 5,
       child: Scaffold(

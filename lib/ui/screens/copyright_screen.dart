@@ -35,7 +35,7 @@ class CopyrightScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Copyright & DMCA')),
       body: ContentWidth(
         maxWidth: 760,
-        child: ListView(padding: const EdgeInsets.all(20), children: [
+        child: ListView(padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.viewPaddingOf(context).bottom), children: [
           const Text('How music appears in Tunetrail', style: h),
           const SizedBox(height: 6),
           const Text(
