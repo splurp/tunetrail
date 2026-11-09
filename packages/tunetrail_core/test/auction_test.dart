@@ -49,7 +49,7 @@ void main() {
   });
 
   test('no bids returns the songs; cancel only without bids', () {
-    final au = m.createAuction('s', [_card(1)], startPrice: 100, duration: const Duration(hours: 3));
+    m.createAuction('s', [_card(1)], startPrice: 100, duration: const Duration(hours: 3));
     final au2 = m.createAuction('s', [_card(2)], startPrice: 100);
     m.bid('a', au2.id, 100);
     expect(() => m.cancelAuction('s', au2.id), throwsA(isA<MarketException>()));

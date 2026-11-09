@@ -11,4 +11,5 @@ export 'src/market_models.dart';
 export 'src/market_engine.dart';
 export 'src/social_models.dart';
 export 'src/auction_models.dart';
+export 'src/song_catalog.dart';
 export 'src/text_safety.dart';
