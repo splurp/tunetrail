@@ -213,10 +213,11 @@ Public builds contain no debug tools at all. To use them:
 1. In the game, **Profile → Settings → Player ID** — copy it (`g_…`).
 2. On the VM, add it to `.env`: `ADMINS=g_123…` (comma-separate several), then
    `docker compose up -d`.
-3. Download the admin build: GitHub → **Actions** → the latest *Build
-   Tunetrail* run → **Artifacts** → `admin-windows` (only people with access
-   to the repository can see it; it's never attached to releases). Its debug
-   menu unlocks only for accounts in `ADMINS`.
+3. Build it when you need it: **Actions → Build Tunetrail → Run workflow**, tick
+   **admin build**, then download **Artifacts → `admin-windows`** from that run.
+   It's kept for 1 day (in a public repository anyone signed in to GitHub can
+   download artifacts) and never attached to releases. Its debug menu unlocks
+   only for accounts in `ADMINS`.
 
 ---
 

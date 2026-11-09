@@ -11,6 +11,11 @@ on:
         description: 'Publish as a named release with this tag (e.g. beta-1.0.0 → "Tunetrail Beta v1.0.0"); empty = dev build'
         required: false
         default: ''
+      admin_build:
+        description: 'Also build the admin (debug tools) Windows build — kept 1 day; only build it when you need it'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -163,17 +168,20 @@ jobs:
       # Admin build: debug tools compiled in (they only unlock for accounts in
       # the server's ADMINS list). Kept as a workflow artifact for people with
       # repository access — never attached to a public release.
-      - run: flutter build windows --release --no-tree-shake-icons --dart-define=TUNETRAIL_ADMIN=true --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} --dart-define=FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }} --dart-define=FIREBASE_APP_ID=${{ vars.FIREBASE_APP_ID }} --dart-define=FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }} --dart-define=FIREBASE_SENDER_ID=${{ vars.FIREBASE_SENDER_ID }}
+      - if: ${{ github.event.inputs.admin_build == 'true' }}
+        run: flutter build windows --release --no-tree-shake-icons --dart-define=TUNETRAIL_ADMIN=true --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} --dart-define=FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }} --dart-define=FIREBASE_APP_ID=${{ vars.FIREBASE_APP_ID }} --dart-define=FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }} --dart-define=FIREBASE_SENDER_ID=${{ vars.FIREBASE_SENDER_ID }}
       - name: Package admin build
+        if: ${{ github.event.inputs.admin_build == 'true' }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force admin | Out-Null
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath admin\Tunetrail-ADMIN-windows-x64.zip
-      - uses: actions/upload-artifact@v4
+      - if: ${{ github.event.inputs.admin_build == 'true' }}
+        uses: actions/upload-artifact@v4
         with:
           name: admin-windows
           path: admin/*
-          retention-days: 30
+          retention-days: 1
 
   linux:
     # Full builds only for releases (manual runs and version tags): pushes just

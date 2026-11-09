@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:postgres/postgres.dart';
+import 'package:tunetrail_core/tunetrail_core.dart';
 
 /// Where the server keeps its state between restarts.
 abstract class Store {
@@ -15,6 +16,12 @@ abstract class Store {
 
   /// Saves one player's collection.
   Future<void> saveCollection(String playerId, List<dynamic> cards);
+
+  /// The server's song catalogue: songs, and fans per artist.
+  Future<(List<SongInfo>, Map<int, int>)> loadCatalog();
+
+  /// Adds/updates catalogue songs and artist fan counts.
+  Future<void> saveCatalog(List<SongInfo> songs, Map<int, int> fans);
 
   /// Postgres when [databaseUrl] is set (e.g. a free Supabase or Neon
   /// database), else a JSON file next to the server.
@@ -42,6 +49,36 @@ class FileStore implements Store {
     final tmp = File('$path.tmp');
     await tmp.writeAsString(jsonEncode(state));
     await tmp.rename(path);
+  }
+
+  File get _catalog => File('$path.catalog.jsonl');
+
+  @override
+  Future<(List<SongInfo>, Map<int, int>)> loadCatalog() async {
+    final songs = <int, SongInfo>{};
+    final fans = <int, int>{};
+    if (!await _catalog.exists()) return (<SongInfo>[], fans);
+    for (final line in await _catalog.readAsLines()) {
+      if (line.isEmpty) continue;
+      final j = jsonDecode(line) as Map<String, dynamic>;
+      if (j['s'] != null) {
+        final s = SongInfo.fromJson(j['s'] as Map<String, dynamic>);
+        songs[s.id] = s;
+      } else if (j['f'] != null) {
+        fans[(j['a'] as num).toInt()] = (j['f'] as num).toInt();
+      }
+    }
+    return (songs.values.toList(), fans);
+  }
+
+  @override
+  Future<void> saveCatalog(List<SongInfo> songs, Map<int, int> fans) async {
+    final sink = _catalog.openWrite(mode: FileMode.append);
+    for (final s in songs) {
+      sink.writeln(jsonEncode({'s': s.toJson()}));
+    }
+    fans.forEach((a, f) => sink.writeln(jsonEncode({'a': a, 'f': f})));
+    await sink.close();
   }
 
   Directory get _collections => Directory('$path.collections');
@@ -87,6 +124,8 @@ class PgStore implements Store {
     final c = await s._connection();
     await c.execute('CREATE TABLE IF NOT EXISTS tunetrail_state (id text PRIMARY KEY, data jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())');
     await c.execute('CREATE TABLE IF NOT EXISTS tunetrail_collections (player_id text PRIMARY KEY, cards jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())');
+    await c.execute('CREATE TABLE IF NOT EXISTS tunetrail_songs (id bigint PRIMARY KEY, data jsonb NOT NULL)');
+    await c.execute('CREATE TABLE IF NOT EXISTS tunetrail_artists (id bigint PRIMARY KEY, fans bigint NOT NULL)');
     return s;
   }
 
@@ -129,5 +168,34 @@ class PgStore implements Store {
           'ON CONFLICT (player_id) DO UPDATE SET cards = EXCLUDED.cards, updated_at = now()'),
       parameters: {'id': playerId, 'c': jsonEncode(cards)},
     );
+  }
+
+  @override
+  Future<(List<SongInfo>, Map<int, int>)> loadCatalog() async {
+    final c = await _connection();
+    final songs = [for (final r in await c.execute(Sql.named('SELECT data::text FROM tunetrail_songs'))) SongInfo.fromJson(jsonDecode(r[0] as String) as Map<String, dynamic>)];
+    final fans = {for (final r in await c.execute(Sql.named('SELECT id, fans FROM tunetrail_artists'))) (r[0] as int): (r[1] as int)};
+    return (songs, fans);
+  }
+
+  @override
+  Future<void> saveCatalog(List<SongInfo> songs, Map<int, int> fans) async {
+    final c = await _connection();
+    // In batches, as JSON arrays expanded by Postgres (one round trip each).
+    for (var i = 0; i < songs.length; i += 500) {
+      final batch = songs.sublist(i, i + 500 > songs.length ? songs.length : i + 500);
+      await c.execute(
+        Sql.named('INSERT INTO tunetrail_songs (id, data) SELECT (x->>\'id\')::bigint, x FROM jsonb_array_elements(@b::jsonb) x '
+            'ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data'),
+        parameters: {'b': jsonEncode([for (final s in batch) s.toJson()])},
+      );
+    }
+    if (fans.isNotEmpty) {
+      await c.execute(
+        Sql.named('INSERT INTO tunetrail_artists (id, fans) SELECT (x->>0)::bigint, (x->>1)::bigint FROM jsonb_array_elements(@b::jsonb) x '
+            'ON CONFLICT (id) DO UPDATE SET fans = EXCLUDED.fans'),
+        parameters: {'b': jsonEncode([for (final e in fans.entries) [e.key, e.value]])},
+      );
+    }
   }
 }
