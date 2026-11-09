@@ -11,7 +11,7 @@ play, showcase, list on the market or trade.
 > [Releases](../../releases) page.
 
 <p align="center">
-  <img src="docs/screenshots/explore.png" width="260" alt="Exploring the map with the Synthwave theme">
+  <img src="docs/screenshots/explore.png" width="260" alt="Exploring the map with the Sakura theme">
   <img src="docs/screenshots/catch.png" width="260" alt="Catching a song on the beat">
   <img src="docs/screenshots/collection.png" width="260" alt="The collection">
 </p>
@@ -67,23 +67,6 @@ for changes or removal — see *Profile → Settings → Copyright & DMCA* in th
 | `server/` | The multiplayer server (Dart, Postgres) and its Docker image |
 | `deploy/` | Docker Compose + Caddy for hosting the server |
 | `docs/` | Setup guides ([multiplayer & hosting](docs/multiplayer-setup.md), [admin build](docs/admin-build.md)) |
-
-## Building
-
-Builds and releases run on GitHub Actions (**Actions → Build Tunetrail → Run
-workflow**). To build locally you need Flutter 3.47.9:
-
-```bash
-flutter pub get
-flutter run                       # debug run on a connected device or desktop
-flutter build apk --release       # Android
-flutter build windows --release   # Windows
-flutter build linux --release     # Linux
-```
-
-Without a server address built in, the game runs offline with a local market of
-NPC traders. See [docs/multiplayer-setup.md](docs/multiplayer-setup.md) to run your
-own server.
 
 ## Licence
 

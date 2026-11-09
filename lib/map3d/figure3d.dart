@@ -348,6 +348,21 @@ class Figure3DPainter extends CustomPainter {
     if (look.backpack != null) buildBackpack(outfit, look.backpack!, pose.j, s, time, walk > 0.3);
     final hatStart = outfit.tris.length;
     if (look.hat != null) buildHat(outfit, look.hat!, pose.j['head']!, 1.4 * s, time);
+    // The hat turns with the head when it looks around (as the eyes do).
+    if (idle.lookYaw.abs() > 0.01 && outfit.tris.length > hatStart) {
+      final d = idle.lookYaw * math.pi / 180, cd = math.cos(d), sd = math.sin(d);
+      final hc = pose.j['head']!;
+      (double, double, double) rot((double, double, double) p) {
+        final f = p.$1 - hc.$1, r = p.$2 - hc.$2;
+        return (hc.$1 + f * cd - r * sd, hc.$2 + f * sd + r * cd, p.$3);
+      }
+
+      (double, double, double)? rotDir((double, double, double)? v) => v == null ? null : (v.$1 * cd - v.$2 * sd, v.$1 * sd + v.$2 * cd, v.$3);
+      for (var i = hatStart; i < outfit.tris.length; i++) {
+        final t = outfit.tris[i];
+        outfit.tris[i] = OutfitTri(rot(t.a), rot(t.b), rot(t.c), t.color, rot(t.center), host: t.host == null ? null : rot(t.host!), mount: rotDir(t.mount));
+      }
+    }
     const lx = -0.35, ly = 0.45, lz = 0.82; // light from above, slightly to one side
     final parts = <(double, double, double), List<(Offset, Offset, Offset, Color, double)>>{};
     // Details mounted on a part (speakers, pockets), drawn right after it.
