@@ -86,7 +86,7 @@ class CardDetailScreen extends StatelessWidget {
           if (g.profile.debugEnabled) SampleSyncTuner(songId: s.id),
         ],
         _InfoRow('Est. market value', '${formatNumber(payload.fair)} coins'),
-        _InfoRow('Popularity', '${formatNumber(s.rank)} Deezer rank'),
+        _InfoRow('Popularity', '${formatNumber(s.rank)} (Deezer score, higher = more played)'),
         _InfoRow('Scrap value', '${g.scrapValueOf(card)} coins'),
         const Divider(height: 28),
         ListTile(

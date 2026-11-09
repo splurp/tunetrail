@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 
+import 'package:tunetrail_core/tunetrail_core.dart' show Edition;
+
+import '../../data/collection.dart';
 import '../../data/profile.dart';
+import '../../data/samples.dart';
 import '../../game/store_catalog.dart';
 import '../app.dart';
 import '../widgets/figure_preview.dart';
 import '../widgets/cards.dart';
 import '../widgets/stick_figure.dart';
 import 'card_detail_screen.dart';
+import 'collection_screen.dart';
 import 'favorite_artists_screen.dart';
 import 'playlists_screen.dart';
 import 'quests_screen.dart';
@@ -129,6 +134,8 @@ class ProfileScreen extends StatelessWidget {
           ],
           [
             if (!isWideLayout(context)) const SizedBox(height: 16),
+            const _EditionShowcase(),
+            const SizedBox(height: 16),
             FavoriteArtistsTab(
               artists: p.favoriteArtists,
               onEdit: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FavoriteArtistsScreen())),
@@ -220,4 +227,128 @@ class _NavTile extends StatelessWidget {
       onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page)),
     ),
   );
+}
+
+/// Up to three Canvas / Sample cards the player shows off on their profile.
+/// Tap one for the full card; the corner button plays it in place.
+class _EditionShowcase extends StatelessWidget {
+  const _EditionShowcase();
+
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    final p = g.profile;
+    // Drop cards that were sold or scrapped since.
+    final cards = [for (final uid in p.editionShowcase) ?g.collection.byUid(uid)];
+    Future<void> add() async {
+      final picked = await pickCards(
+        context,
+        title: 'Showcase a Canvas or Sample card',
+        exclude: p.editionShowcase.toSet(),
+        query: const CollectionQuery(editionMask: 0x6),
+      );
+      if (picked == null || picked.isEmpty) return;
+      final c = g.collection.byUid(picked.first);
+      if (c == null || c.edition == Edition.standard) {
+        g.toast('Only Canvas and Sample editions can be showcased here');
+        return;
+      }
+      p.editionShowcase = [...p.editionShowcase.where((u) => g.collection.byUid(u) != null), c.uid].take(3).toList();
+      p.changed();
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Text('Showcase', style: TextStyle(fontWeight: FontWeight.w800)),
+        const Spacer(),
+        Text('Canvas & Sample editions', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
+      ]),
+      const SizedBox(height: 8),
+      LayoutBuilder(builder: (context, box) {
+        const gap = 8.0;
+        final w = (box.maxWidth - gap * 2) / 3;
+        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (var i = 0; i < 3; i++) ...[
+            if (i > 0) const SizedBox(width: gap),
+            SizedBox(
+              width: w,
+              child: i < cards.length
+                  ? _ShowcaseCard(
+                      card: cards[i],
+                      width: w,
+                      onRemove: () {
+                        p.editionShowcase = [...p.editionShowcase]..remove(cards[i].uid);
+                        p.changed();
+                      },
+                    )
+                  : GestureDetector(
+                      onTap: add,
+                      child: Container(
+                        height: w * 1.48,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(w * 0.07),
+                          border: Border.all(color: Colors.white24),
+                          color: Colors.white.withValues(alpha: 0.03),
+                        ),
+                        child: const Icon(Icons.add, color: Colors.white38),
+                      ),
+                    ),
+            ),
+          ],
+        ]);
+      }),
+    ]);
+  }
+}
+
+class _ShowcaseCard extends StatelessWidget {
+  const _ShowcaseCard({required this.card, required this.width, required this.onRemove});
+  final OwnedCard card;
+  final double width;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    final sample = card.edition == Edition.sample ? SampleLibrary.of(card.song.id) : null;
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CardDetailScreen(uid: card.uid))),
+      onLongPress: onRemove,
+      child: Stack(children: [
+        SongCardView(song: card.song, rarity: card.rarity, shiny: card.shiny, edition: card.edition, serial: card.serial, width: width),
+        Positioned(
+          right: 4,
+          bottom: 4,
+          child: ListenableBuilder(
+            listenable: Listenable.merge([g.audio, g.samples]),
+            builder: (context, _) {
+              final playing = sample != null
+                  ? g.samples.value.songId == card.song.id && g.samples.value.active
+                  : g.audio.playing && g.audio.current?.id == card.song.id;
+              return Material(
+                color: Colors.black.withValues(alpha: 0.6),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () {
+                    if (playing) {
+                      sample != null ? g.samples.stop() : g.audio.stop();
+                    } else if (sample != null) {
+                      g.samples.play(sample);
+                    } else {
+                      g.audio.playOne(card.song.id);
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: Icon(playing ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 18, color: Colors.white),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ]),
+    );
+  }
 }

@@ -82,6 +82,9 @@ class PlayerProfile extends ChangeNotifier {
   // Showcase.
   String showcaseTitle = '';
   List<int> showcaseCards = [];
+
+  /// Up to three Canvas / Sample cards shown on the player's profile.
+  List<int> editionShowcase = [];
   List<String> showcasePlaylists = [];
 
   // Location.
@@ -224,6 +227,7 @@ class PlayerProfile extends ChangeNotifier {
         'favArtists': [for (final a in favoriteArtists) a.toJson()],
         'showcaseTitle': showcaseTitle,
         'showcaseCards': showcaseCards,
+        'edShowcase': editionShowcase,
         'showcasePlaylists': showcasePlaylists,
         'lat': lastLat,
         'lng': lastLng,
@@ -307,6 +311,7 @@ class PlayerProfile extends ChangeNotifier {
     favoriteArtists = [for (final a in (j['favArtists'] as List? ?? const [])) FavoriteArtist.fromJson(a as Map<String, dynamic>)];
     showcaseTitle = j['showcaseTitle'] as String? ?? '';
     showcaseCards = [for (final x in (j['showcaseCards'] as List? ?? const [])) (x as num).toInt()];
+    editionShowcase = [for (final x in (j['edShowcase'] as List? ?? const [])) (x as num).toInt()];
     showcasePlaylists = [for (final x in (j['showcasePlaylists'] as List? ?? const [])) x as String];
     lastLat = (j['lat'] as num?)?.toDouble() ?? lastLat;
     lastLng = (j['lng'] as num?)?.toDouble() ?? lastLng;

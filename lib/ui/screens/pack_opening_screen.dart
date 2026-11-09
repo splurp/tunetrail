@@ -44,7 +44,11 @@ class _PackOpeningScreenState extends State<PackOpeningScreen> with TickerProvid
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
-    final cardW = math.min(w > 900 ? 260.0 : 170.0, math.min((w - 48) / (widget.cards.length > 3 ? (w > 900 ? 5.4 : 2.2) : 2), (h - 220) / (w > 900 ? 1.6 : 3.2)));
+    final single = widget.cards.length == 1;
+    // A single pull (e.g. the Artist Blind Box) gets a big, centred card.
+    final cardW = single
+        ? math.max(120.0, math.min(360.0, math.min(w - 64, (h - 260) / 1.5)))
+        : math.min(w > 900 ? 260.0 : 170.0, math.min((w - 48) / (widget.cards.length > 3 ? (w > 900 ? 5.4 : 2.2) : 2), (h - 220) / (w > 900 ? 1.6 : 3.2)));
     final best = widget.cards.map((c) => c.card.rarity.index).reduce(math.max);
     return Scaffold(
       appBar: AppBar(title: Text(widget.pack.name)),
@@ -52,10 +56,10 @@ class _PackOpeningScreenState extends State<PackOpeningScreen> with TickerProvid
         decoration: BoxDecoration(
           gradient: RadialGradient(colors: [rarityColor(Rarity.fromIndex(best)).withValues(alpha: 0.25), Colors.transparent], radius: 1.1),
         ),
-        child: Column(children: [
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(16, single ? 24 : 16, 16, 16),
               child: Wrap(alignment: WrapAlignment.center, spacing: 12, runSpacing: 12, children: [
                 for (var i = 0; i < widget.cards.length; i++)
                   GestureDetector(
@@ -98,8 +102,10 @@ class _PackOpeningScreenState extends State<PackOpeningScreen> with TickerProvid
               ]),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
+          // Clear of the system navigation bar.
+          SafeArea(
+            top: false,
+            minimum: const EdgeInsets.all(16),
             child: _allRevealed
                 ? FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Add to collection'))
                 : OutlinedButton(onPressed: () => _revealAll().then((_) => Future<void>.delayed(const Duration(milliseconds: 700), () => mounted ? setState(() {}) : null)), child: const Text('Reveal all')),

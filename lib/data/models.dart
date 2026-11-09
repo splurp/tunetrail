@@ -108,9 +108,11 @@ class Song {
     final album = t['album'] as Map<String, dynamic>? ?? const {};
     return Song(
       id: id,
-      title: (t['title_short'] as String?)?.isNotEmpty == true
-          ? t['title_short'] as String
-          : t['title'] as String? ?? 'Unknown',
+      // The full title keeps the version ("Gnarly (Ice Spice Remix)",
+      // "(Sped Up)", "(Live)"…) so variants aren't indistinguishable.
+      title: (t['title'] as String?)?.isNotEmpty == true
+          ? t['title'] as String
+          : t['title_short'] as String? ?? 'Unknown',
       artistId: (artist['id'] as num?)?.toInt() ?? 0,
       artistName: artist['name'] as String? ?? 'Unknown Artist',
       albumId: albumId ?? (album['id'] as num?)?.toInt() ?? 0,
@@ -290,3 +292,22 @@ const List<GenreDef> kGenres = [
 
 String genreName(int id) =>
     kGenres.firstWhere((g) => g.id == id, orElse: () => const GenreDef(-1, 'Other', 0)).name;
+
+/// What kind of version a song title says it is — "Remix", "Sped Up",
+/// "Live", "Clean Edit"… — or null for a plain title.
+String? songVersionLabel(String title) {
+  const words = [
+    'remix', 'mix', 'edit', 'version', 'live', 'sped up', 'speed up', 'slowed', 'reverb', 'nightcore', 'acoustic', 'instrumental',
+    'remaster', 'mono', 'stereo', 'demo', 'karaoke', 'a cappella', 'acapella', 'radio', 'extended', 'unplugged', 'session', 'cover', 'rework', 'vip',
+  ];
+  final parts = [
+    for (final m in RegExp(r'[\(\[]([^\)\]]+)[\)\]]').allMatches(title)) m.group(1)!,
+    if (title.contains(' - ')) title.substring(title.lastIndexOf(' - ') + 3),
+  ];
+  for (final p in parts.reversed) {
+    final l = p.toLowerCase();
+    if (l.startsWith('feat') || l.startsWith('ft.') || l.startsWith('with ')) continue;
+    if (words.any(l.contains)) return p.trim();
+  }
+  return null;
+}

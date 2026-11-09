@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
+import '../../data/catalog.dart';
 import '../../data/samples.dart';
 import '../../data/models.dart';
 import '../../game/store_catalog.dart';
@@ -291,6 +292,13 @@ class _TeleportScreenState extends State<TeleportScreen> {
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
           ),
         ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Text(
+            'Popularity is Deezer\'s own score for a track — higher means more listened to on Deezer (it is not a chart position, and it only reflects Deezer, so small artists with a loyal Deezer audience can score high).',
+            style: TextStyle(fontSize: 11, color: kTextTertiary),
+          ),
+        ),
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         for (final (name, p) in _results)
           ListTile(leading: const Icon(Icons.place), title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis), onTap: () => _go(name, p)),
@@ -397,12 +405,21 @@ class _SpawnSongScreenState extends State<SpawnSongScreen> {
             itemBuilder: (_, i) {
               final s = _results[i];
               final r = g.catalog.rarityOf(g.catalog.songs[s.id] ?? s);
+              final version = songVersionLabel(s.title);
+              // The original: the plain-titled one with the best Deezer
+              // popularity among same-named songs by the artist.
+              final core = Catalog.normalizeTitle(s.title);
+              final siblings = _results.where((x) => x.artistId == s.artistId && Catalog.normalizeTitle(x.title) == core).toList();
+              final original = version == null &&
+                  siblings.length > 1 &&
+                  siblings.where((x) => songVersionLabel(x.title) == null).reduce((a, b) => a.rank >= b.rank ? a : b).id == s.id;
+              final len = s.duration > 0 ? ' · ${s.duration ~/ 60}:${(s.duration % 60).toString().padLeft(2, '0')}' : '';
               return CardRow(
                 song: s,
                 rarity: r,
                 shiny: _shiny,
                 edition: _edition,
-                subtitle: '${s.artistName} · rank ${formatNumber(s.rank)}',
+                subtitle: '${original ? '✓ Original · ' : version != null ? '$version · ' : ''}${s.artistName} · ${s.albumTitle}$len · popularity ${formatNumber(s.rank)}',
                 trailing: const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.add_location_alt_outlined, size: 20)),
                 onTap: () {
                   g.debugSpawnSong(s, shiny: _shiny, edition: _edition == Edition.sample && !SampleLibrary.has(s.id) ? Edition.standard : _edition);

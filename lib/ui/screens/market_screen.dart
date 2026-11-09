@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
 import '../widgets/net_image.dart';
+import 'canvas_checker_screen.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
 import 'favorite_artists_screen.dart';
@@ -37,8 +38,15 @@ class MarketScreen extends StatelessWidget {
           Container(
             width: double.infinity,
             color: kBg,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            child: Text(g.market.label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+            padding: const EdgeInsets.only(left: 14, right: 4),
+            child: Row(children: [
+              Expanded(child: Text(g.market.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white54))),
+              TextButton.icon(
+                icon: const Icon(Icons.movie_filter_outlined, size: 18),
+                label: const Text('Canvas Checker'),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CanvasCheckerScreen())),
+              ),
+            ]),
           ),
           const Expanded(child: TabBarView(children: [_Browse(), _MyListings(), _Offers(), _Showcases()])),
         ])),

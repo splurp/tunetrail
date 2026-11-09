@@ -18,9 +18,9 @@ class CollectionScreen extends StatelessWidget {
 }
 
 /// Full-screen card picker (trades, showcases, playlists).
-Future<List<int>?> pickCards(BuildContext context, {required String title, int max = 1, Set<int> exclude = const {}}) {
+Future<List<int>?> pickCards(BuildContext context, {required String title, int max = 1, Set<int> exclude = const {}, CollectionQuery? query}) {
   return Navigator.of(context).push<List<int>>(MaterialPageRoute(
-    builder: (_) => CollectionBrowser(pickTitle: title, pickMax: max, exclude: exclude),
+    builder: (_) => CollectionBrowser(pickTitle: title, pickMax: max, exclude: exclude, initialQuery: query),
   ));
 }
 
@@ -30,7 +30,8 @@ Future<List<int>?> pickCards(BuildContext context, {required String title, int m
 /// as smoothly as 100. Filtering/sorting runs on packed integer keys (see
 /// [CollectionStore.query]).
 class CollectionBrowser extends StatefulWidget {
-  const CollectionBrowser({super.key, this.pickTitle, this.pickMax = 1, this.exclude = const {}});
+  const CollectionBrowser({super.key, this.pickTitle, this.pickMax = 1, this.exclude = const {}, this.initialQuery});
+  final CollectionQuery? initialQuery;
   final String? pickTitle;
   final int pickMax;
   final Set<int> exclude;
@@ -42,7 +43,7 @@ class CollectionBrowser extends StatefulWidget {
 }
 
 class _CollectionBrowserState extends State<CollectionBrowser> {
-  CollectionQuery _q = const CollectionQuery();
+  late CollectionQuery _q = widget.initialQuery ?? const CollectionQuery();
   Int32List _rows = Int32List(0);
   int _rowsVersion = -1;
   CollectionQuery? _rowsQuery;
