@@ -6,6 +6,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Publish as a named release with this tag (e.g. v1.0.0-beta); empty = dev build'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -210,7 +215,10 @@ jobs:
         shell: bash
         run: |
           ref="${{ github.ref_name }}"
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          tag="${{ github.event.inputs.release_tag }}"
+          if [[ -n "$tag" ]]; then ref="$tag"; fi
+          if [[ -n "$tag" || "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag=$ref" >> "$GITHUB_OUTPUT"
             if [[ "$ref" == *-beta ]]; then
               echo "name=Tunetrail Beta ${ref%-beta}" >> "$GITHUB_OUTPUT"; echo "pre=true" >> "$GITHUB_OUTPUT"
             else
@@ -218,18 +226,19 @@ jobs:
             fi
             echo "kind=Release" >> "$GITHUB_OUTPUT"
           else
+            echo "tag=dev-build-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
             echo "name=Tunetrail dev build ${{ github.run_number }}" >> "$GITHUB_OUTPUT"; echo "pre=true" >> "$GITHUB_OUTPUT"
             echo "kind=Developer build" >> "$GITHUB_OUTPUT"
           fi
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('dev-build-{0}', github.run_number) }}
+          tag_name: ${{ steps.rel.outputs.tag }}
           name: ${{ steps.rel.outputs.name }}
           target_commitish: ${{ github.sha }}
           prerelease: ${{ steps.rel.outputs.pre }}
           body: |
-            ${{ steps.rel.outputs.kind }} of Tunetrail from `${{ github.ref_name }}` @ ${{ github.sha }}.
+            ${{ steps.rel.outputs.kind }} of Tunetrail (`${{ steps.rel.outputs.tag }}`) from `${{ github.ref_name }}` @ ${{ github.sha }}.
 
             **Windows:** download `Tunetrail-windows-x64-setup.exe` (installer) or the portable `Tunetrail-windows-x64.zip` (extract, then run `Tunetrail.exe`).
             **Linux:** download `Tunetrail-linux-x64.tar.gz`, extract it and run `./tunetrail` (needs GTK 3 and ALSA or PulseAudio for sound).
