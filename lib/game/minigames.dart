@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../data/deezer_api.dart';
+import '../data/kworb.dart';
 import '../data/models.dart';
 
 /// Genres the guessing games use. Artists outside these aren't included.
@@ -277,7 +278,6 @@ Future<List<TriviaQuestion>> buildTrivia(DeezerApi api, MinigameData data, List<
   final out = <TriviaQuestion>[];
   final top = <int, List<Song>>{};
   final albums = <int, List<AlbumInfo>>{};
-  final infos = <int, ArtistInfo>{};
   Future<List<Song>> topOf(int id) async => top[id] ??= await api.artistTop(id, limit: 25);
   Future<List<AlbumInfo>> albumsOf(FavoriteArtist a) async =>
       albums[a.id] ??= (await api.artistAlbums(a.id, a.name)).where((x) => x.recordType == 'album').toList();
@@ -315,7 +315,12 @@ Future<List<TriviaQuestion>> buildTrivia(DeezerApi api, MinigameData data, List<
       TriviaQuestion? q;
       switch (r.nextInt(6)) {
         case 0:
-          q = make('What is ${fav.name}\'s most popular song?', coreTitle(songs.first.title), songs.skip(5).map((s) => coreTitle(s.title)));
+          // All-time Spotify streams (kworb), not this week's top tracks.
+          final all = await SpotifyStats.instance.topSongs(fav.name);
+          if (all.length < 8) break;
+          final best = coreTitle(all.first.title);
+          q = make('What is ${fav.name}\'s most streamed song of all time?', best,
+              [for (final s in all.skip(4).take(20)) if (normalizeGuess(coreTitle(s.title)) != normalizeGuess(best)) coreTitle(s.title)]);
         case 1:
           final al = await albumsOf(fav);
           final s = songs.firstWhere((s) => al.any((a) => a.id == s.albumId), orElse: () => songs.first);
@@ -342,11 +347,12 @@ Future<List<TriviaQuestion>> buildTrivia(DeezerApi api, MinigameData data, List<
           q = make('Which of these songs is by ${fav.name}?', coreTitle(songs[r.nextInt(math.min(10, songs.length))].title),
               others.where((o) => o.artistId != fav.id).map((o) => coreTitle(o.title)));
         case 5:
-          final info = infos[fav.id] ??= await api.artist(fav.id);
-          if (info.fans < 1000) break;
+          // Spotify monthly listeners (kworb's chart of the top 2,500).
+          final listeners = await SpotifyStats.instance.monthlyListeners(fav.name);
+          if (listeners == null || listeners < 1000) break;
           String band(int f) => f >= 1000000 ? '${(f / 1000000).toStringAsFixed(f >= 10000000 ? 0 : 1)} million' : '${(f / 1000).round()} thousand';
           final scale = [0.08, 0.25, 3.5, 9.0, 0.45, 2.2]..shuffle(r);
-          q = make('About how many fans does ${fav.name} have on Deezer?', band(info.fans), scale.map((k) => band((info.fans * k).round())));
+          q = make('About how many monthly listeners does ${fav.name} have on Spotify?', band(listeners), scale.map((k) => band((listeners * k).round())));
       }
       if (q != null && !out.any((x) => x.prompt == q!.prompt)) out.add(q);
     } catch (_) {}
