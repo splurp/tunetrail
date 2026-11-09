@@ -56,3 +56,6 @@ android/key.properties
 *.jks
 *.keystore
 deploy/.env
+
+# Local admin build settings (never commit)
+admin-build.env
