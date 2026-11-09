@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -196,7 +197,6 @@ class CollectionStore extends ChangeNotifier {
   final List<int> rarityCounts = List.filled(5, 0);
   int shinyCount = 0;
   int version = 0;
-  int _uidCounter = 0;
   Timer? _saveTimer;
 
   File get _file => File('${dir.path}/collection.bin');
@@ -288,6 +288,7 @@ class CollectionStore extends ChangeNotifier {
     final size = magic == _magic ? _recordSize : _recordSizeV1;
     final count = bd.getUint32(4, Endian.little);
     var o = 8;
+    var repaired = 0;
     for (var i = 0; i < count && o + size <= bytes.length; i++) {
       final uid = bd.getInt64(o, Endian.little);
       final song = bd.getInt64(o + 8, Endian.little);
@@ -296,9 +297,17 @@ class CollectionStore extends ChangeNotifier {
       final src = bytes[o + 25];
       final serial = size == _recordSize ? bd.getUint16(o + 26, Endian.little) : 0;
       o += size;
-      _append(uid, song, acq, flags, src, serial);
+      // Older builds could give two cards the same uid (tapping one opened
+      // the other); give any repeat a fresh one.
+      if (_indexOfUid.containsKey(uid)) {
+        _append(newUid(), song, acq, flags, src, serial);
+        repaired++;
+      } else {
+        _append(uid, song, acq, flags, src, serial);
+      }
     }
     version++;
+    if (repaired > 0) _scheduleSave();
   }
 
   Future<void> save() async {
@@ -337,10 +346,18 @@ class CollectionStore extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------ mutation
+  /// A uid no other card has. Time-based but strictly increasing, so cards
+  /// created in a burst (packs, the debug generator) never share one even
+  /// when the clock is coarse (Windows / Android tick in ~ms steps).
   int newUid() {
-    _uidCounter = (_uidCounter + 1) & 0xFFFF;
-    return DateTime.now().microsecondsSinceEpoch * 1000 + _uidCounter % 1000;
+    var id = math.max(DateTime.now().microsecondsSinceEpoch * 1000, _lastUid + 1);
+    while (_indexOfUid.containsKey(id)) {
+      id++;
+    }
+    return _lastUid = id;
   }
+
+  int _lastUid = 0;
 
   void _append(int uid, int songId, int acquired, int flags, int source, [int serial = 0]) {
     _indexOfUid[uid] = _uids.length;

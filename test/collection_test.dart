@@ -38,6 +38,19 @@ void main() {
   setUp(() => dir = Directory.systemTemp.createTempSync('tt'));
   tearDown(() => dir.deleteSync(recursive: true));
 
+  test('cards added in a burst all get distinct uids', () async {
+    final cat = await _catalog(dir, 5000);
+    final col = CollectionStore(cat, dir);
+    addTearDown(col.dispose);
+    final now = DateTime.now();
+    col.addMany([for (var i = 0; i < 5000; i++) (1 + i, Rarity.common, false, CardSource.debug, now)]);
+    final uids = {for (var i = 0; i < col.length; i++) col.uidAt(i)};
+    expect(uids.length, col.length);
+    for (var i = 0; i < col.length; i += 499) {
+      expect(col.byUid(col.uidAt(i))!.song.id, col.at(i).song.id);
+    }
+  });
+
   test('100k-card collection: query, sort, persist', () async {
     final cat = await _catalog(dir, 20000);
     final col = CollectionStore(cat, dir);

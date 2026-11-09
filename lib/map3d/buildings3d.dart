@@ -224,15 +224,19 @@ class CityBuildingRenderer {
         _tx = Float32List(cnt * 2);
         _ty = Float32List(cnt * 2);
       }
-      // Project every corner once, at the ground and at the roof.
+      // Project every corner once, at the ground and at the roof. A wall
+      // taller than the camera can pass behind the eye plane; it is cut
+      // just in front of it rather than flipping across the screen.
       for (var i = 0; i < cnt; i++) {
         final dx = r[i * 2] - px, dy = r[i * 2 + 1] - py;
         final xa = dx * cosB - dy * sinB, ya = dx * sinB + dy * cosB;
-        final z0 = (ya * eb + dd) / ed, zh = z0 - h * eu / ed;
+        final z0 = (ya * eb + dd) / ed;
+        final hc = eu > 0 ? math.min(h, (z0 - 2) * ed / eu) : h;
+        final zh = z0 - hc * eu / ed;
         _gx[i] = ccx + f * xa / z0;
         _gy[i] = ccy - f * (ya * eu / ed) / z0;
         _tx[i] = ccx + f * xa / zh;
-        _ty[i] = ccy - f * ((ya * eu + h * eb) / ed) / zh;
+        _ty[i] = ccy - f * ((ya * eu + hc * eb) / ed) / zh;
       }
       final fogT = ((d - 300) / (maxDistance * 1.2)).clamp(0.0, 0.75);
       final nrm = b.normals, shade = b.shade;

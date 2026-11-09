@@ -100,9 +100,11 @@ void main() {
     cam
       ..bearing = 40
       ..px = 0
+      ..pitch = double.parse(Platform.environment['TT_PITCH'] ?? '40')
       ..update();
     CityBuildingRenderer.paint(c, cam, tiles, kObsidian);
-    final img = await rec.endRecording().toImage(1280, 720);
+    final pic = rec.endRecording();
+    final img = await pic.toImage(2560, 1440);
     File('build/shibuya.png').writeAsBytesSync((await img.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List());
   }, skip: dir == null);
 }
