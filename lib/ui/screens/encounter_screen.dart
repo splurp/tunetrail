@@ -126,7 +126,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     });
     final beatsF = g.audio.beatInfo(id).catchError((Object _) => null);
     await g.audio.playOne(id);
-    _pos = () async => g.audio.exactPosition;
+    _pos = () async => g.audio.smoothPosition();
     await _syncTo(g, beatsF, req, const Duration(seconds: 4));
   }
 
@@ -170,7 +170,9 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     final until = DateTime.now().add(timeout);
     while (mounted && _waiting && req == _startReq && DateTime.now().isBefore(until)) {
       final p = await _pos();
-      if (p != null && p > 0.02) {
+      // Wait until the smooth clock has seen a few buffers (sample
+      // editions report their own position).
+      if (p != null && p > (_inBreakdown ? 0.02 : 0.25)) {
         _inBreakdown = false;
         var period = beats.period;
         // Very fast songs: one ring per two beats keeps it playable.

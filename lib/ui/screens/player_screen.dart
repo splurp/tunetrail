@@ -260,10 +260,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ),
                         ],
                         if (p.favoriteArtists.isNotEmpty) ...[const SizedBox(height: 14), FavoriteArtistsTab(artists: p.favoriteArtists)],
-                        if (p.showcase != null && p.showcase!.cards.isNotEmpty) ...[
-                          SectionLabel('${p.showcase!.title} · ${p.showcase!.likes} likes'),
-                          ShowcaseStrip(cards: p.showcase!.cards, cardWidth: 140),
-                        ],
+                        // (The market showcase is shown on the market only.)
                         SectionLabel('Collection  ${formatNumber(_total)}'),
                         if (!me)
                           const Padding(

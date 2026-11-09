@@ -110,76 +110,91 @@ class _Packs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = GameScope.of(context);
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                const _PackArt(color: Color(0xFFFF6F91), cards: 1),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Artist Blind Box', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Pick any artist: get one of their songs as a shiny — every rarity equally likely — with a 1 in 100 chance of a Canvas edition. 5–100 bits depending on the artist\'s popularity.',
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
-                      ),
-                      const SizedBox(height: 6),
-                      FilledButton.icon(
-                        icon: const Icon(Icons.person_search, size: 18),
-                        label: const Text('Choose an artist'),
-                        onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const BlindBoxScreen())),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        for (final p in kPacks)
-          Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
+    // Centred on wide screens (PC) instead of hugging the top.
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        padding: const EdgeInsets.all(12),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: box.maxHeight - 24),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _PackArt(color: p.color, cards: p.cards),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(p.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 4),
-                        Text(p.description, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                        TextButton(
-                          style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
-                          onPressed: () => _showOdds(context, p),
-                          child: const Text('View drop rates'),
-                        ),
-                        FilledButton.icon(
-                          icon: const Icon(kBitsIcon, size: 18),
-                          label: Text('${p.bits} bits'),
-                          onPressed: g.profile.bits < p.bits ? null : () => _open(context, p),
-                        ),
-                      ],
+                  Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          const _PackArt(color: Color(0xFFFF6F91), cards: 1),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Artist Blind Box', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Pick any artist: get one of their songs as a shiny — every rarity equally likely — with a 1 in 100 chance of a Canvas edition. 5–100 bits depending on the artist\'s popularity.',
+                                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                                ),
+                                const SizedBox(height: 6),
+                                FilledButton.icon(
+                                  icon: const Icon(Icons.person_search, size: 18),
+                                  label: const Text('Choose an artist'),
+                                  onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const BlindBoxScreen())),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+                  for (final p in kPacks)
+                    Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            _PackArt(color: p.color, cards: p.cards),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(p.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                                  const SizedBox(height: 4),
+                                  Text(p.description, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                  TextButton(
+                                    style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                                    onPressed: () => _showOdds(context, p),
+                                    child: const Text('View drop rates'),
+                                  ),
+                                  FilledButton.icon(
+                                    icon: const Icon(kBitsIcon, size: 18),
+                                    label: Text('${p.bits} bits'),
+                                    onPressed: g.profile.bits < p.bits ? null : () => _open(context, p),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (g.profile.bits < kPacks.first.bits)
+                    TextButton(onPressed: () => DefaultTabController.of(context).animateTo(1), child: const Text('Get more bits →')),
                 ],
               ),
             ),
           ),
-        if (g.profile.bits < kPacks.first.bits)
-          TextButton(onPressed: () => DefaultTabController.of(context).animateTo(1), child: const Text('Get more bits →')),
-      ],
+        ),
+      ),
     );
   }
 

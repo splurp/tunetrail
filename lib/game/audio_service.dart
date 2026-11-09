@@ -9,7 +9,7 @@ import '../data/catalog.dart';
 import '../data/models.dart';
 
 /// Short UI sound effects (bundled original WAVs in assets/sfx).
-enum Sfx { catchSong, list, quicksell, offer, tradeAccepted, sold }
+enum Sfx { catchSong, list, quicksell, offer, tradeAccepted, sold, cardFlip }
 
 /// Tempo and beat grid of a preview clip.
 class BeatInfo {
@@ -45,7 +45,7 @@ class AudioService extends ChangeNotifier {
       if (_beatRequested.add(s.id)) beatInfo(s.id).catchError((_) => null);
       return null;
     }
-    final pos = exactPosition;
+    final pos = heardPosition();
     if (pos == null || pos < b.phase) return null;
     return ((pos - b.phase) / b.period) % 1.0;
   }
@@ -114,11 +114,61 @@ class AudioService extends ChangeNotifier {
     if (h != null && _sl.isInitialized && _sl.getIsValidVoiceHandle(h)) _sl.setVolume(h, v);
   }
 
-  /// Current exact playback position of the playing clip (seconds), or null.
+  /// Playback position as the audio engine reports it (seconds), or null.
+  /// It only advances once per mixed audio buffer (every ~20–90 ms), so
+  /// anything animated from it steps; use [smoothPosition] for that.
   double? get exactPosition {
     final h = _handle;
     if (h == null || !_sl.isInitialized || !_sl.getIsValidVoiceHandle(h)) return null;
     return _sl.getPosition(h).inMicroseconds / 1e6;
+  }
+
+  /// Seconds between the engine's position and what's actually heard
+  /// (output buffering), plus the player's calibration from Settings.
+  double outputLatency = 0.045;
+
+  final Stopwatch _clock = Stopwatch()..start();
+  SoundHandle? _clockHandle;
+  double _clockRaw = -1;
+  final List<double> _clockOffsets = [];
+
+  /// A smooth playback position (seconds) for animating in time with the
+  /// music. The engine's own position only moves in buffer-sized steps and
+  /// is read up to a buffer late, so this follows a steady clock anchored
+  /// at the moments the reported position changes: the latest of those
+  /// anchors is the one closest to the true position.
+  double? smoothPosition() {
+    final raw = exactPosition;
+    final t = _clock.elapsedMicroseconds / 1e6;
+    if (raw == null) {
+      _clockHandle = null;
+      return null;
+    }
+    if (_clockHandle != _handle || raw < _clockRaw - 0.05) {
+      _clockHandle = _handle;
+      _clockOffsets.clear();
+      _clockRaw = -1;
+    }
+    if (raw != _clockRaw) {
+      _clockRaw = raw;
+      _clockOffsets.add(raw - t);
+      if (_clockOffsets.length > 24) _clockOffsets.removeAt(0);
+    }
+    final est = t + _clockOffsets.reduce(math.max);
+    // Never wander far from the engine (pauses, seeks).
+    if ((est - raw).abs() > 0.2) {
+      _clockOffsets
+        ..clear()
+        ..add(raw - t);
+      return raw;
+    }
+    return est;
+  }
+
+  /// The music as heard: [smoothPosition] minus the output latency.
+  double? heardPosition() {
+    final p = smoothPosition();
+    return p == null ? null : p - outputLatency;
   }
 
   Future<void> playQueue(List<int> songIds, {int start = 0, String? name}) async {
@@ -352,6 +402,7 @@ class AudioService extends ChangeNotifier {
         Sfx.offer => 'assets/sfx/offer.wav',
         Sfx.tradeAccepted => 'assets/sfx/trade_accepted.wav',
         Sfx.sold => 'assets/sfx/sold.wav',
+        Sfx.cardFlip => 'assets/sfx/card_flip.wav',
       };
 
   /// Plays a sound effect over whatever music is playing.
@@ -360,7 +411,8 @@ class AudioService extends ChangeNotifier {
     try {
       await _ensureInit();
       final src = _sfx[s] ??= await _sl.loadAsset(_sfxAsset(s));
-      _sl.play(src, volume: sfxVolume);
+      // Card flips repeat quickly in a pack: kept quieter than the rest.
+      _sl.play(src, volume: sfxVolume * (s == Sfx.cardFlip ? 0.45 : 1));
     } catch (e) {
       debugPrint('sfx: $e');
     }

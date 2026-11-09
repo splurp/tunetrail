@@ -109,6 +109,10 @@ class Game extends ChangeNotifier {
     collection.addListener(notifyListeners);
     collection.addListener(_scheduleCollectionSync);
     profile.addListener(_scheduleProfileSync);
+    // Beat-synced animation (pets) uses the same calibration as the catch ring.
+    void latency() => audio.outputLatency = 0.045 + profile.beatOffsetMs / 1000;
+    latency();
+    profile.addListener(latency);
 
     SampleLibrary.overrides
       ..clear()
