@@ -10,6 +10,11 @@ on:
 permissions:
   contents: write
 
+# A newer push to the same branch supersedes a build still in progress.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   FLUTTER_VERSION: '3.47.9'
 
@@ -34,7 +39,6 @@ jobs:
         run: dart pub get && dart analyze
 
   android:
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +46,23 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      # Gradle dependencies, the wrapper and native (C++) plugin builds are
+      # reused between runs; only what changed is rebuilt.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            android/.gradle
+            build/app/intermediates
+            build/*/intermediates
+            build/*/.cxx
+            build/*/kotlin
+            build/*/tmp
+          key: android-gradle-${{ runner.os }}-${{ hashFiles('pubspec.lock', 'android/**/*.gradle*', 'android/gradle.properties') }}-${{ github.run_id }}
+          restore-keys: |
+            android-gradle-${{ runner.os }}-${{ hashFiles('pubspec.lock', 'android/**/*.gradle*', 'android/gradle.properties') }}-
+            android-gradle-${{ runner.os }}-
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -84,7 +105,6 @@ jobs:
           path: dist/*.apk
 
   windows:
-    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,6 +114,12 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - uses: actions/cache@v4
+        with:
+          path: build/windows
+          key: windows-build-${{ hashFiles('pubspec.lock', 'windows/**/CMakeLists.txt') }}-${{ github.run_id }}
+          restore-keys: |
+            windows-build-${{ hashFiles('pubspec.lock', 'windows/**/CMakeLists.txt') }}-
       - run: flutter build windows --release --no-tree-shake-icons --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
       - name: Package portable zip
         shell: pwsh
@@ -111,7 +137,6 @@ jobs:
           path: dist/*
 
   linux:
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -136,7 +161,7 @@ jobs:
           path: dist/*
 
   release:
-    needs: [android, windows, linux]
+    needs: [test, android, windows, linux]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:

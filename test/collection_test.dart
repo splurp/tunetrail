@@ -244,7 +244,7 @@ void main() {
     // Editions are exclusive of rarity/shininess: one Canvas per song.
     expect(col.ownsVariant(1, Rarity.common, true, Edition.canvas), isTrue);
     expect(col.ownsVariant(2, Rarity.rare, false, Edition.canvas), isFalse);
-    expect(col.editionCounts, [2, 1, 1]);
+    expect(col.editionCounts, [2, 1, 1, 0]);
     // Duplicates from older saves are folded away (earliest kept).
     col.add(1, Rarity.rare, false, CardSource.pack, at: DateTime(2020));
     col.add(1, Rarity.rare, false, CardSource.pack);
@@ -260,7 +260,7 @@ void main() {
     final again = CollectionStore(cat, dir);
     addTearDown(again.dispose);
     await again.load();
-    expect(again.editionCounts, [2, 1, 1]);
+    expect(again.editionCounts, [2, 1, 1, 0]);
     expect(again.ownsVariant(1, Rarity.rare, false, Edition.sample), isTrue);
     // Payload round trip keeps the edition.
     final p = CardPayload.fromJson(again.byUid(again.uidAt(again.query(const CollectionQuery(editionMask: 2)).first))!.toPayload().toJson());

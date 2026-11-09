@@ -243,14 +243,14 @@ class _EditionShowcase extends StatelessWidget {
     Future<void> add() async {
       final picked = await pickCards(
         context,
-        title: 'Showcase a Canvas or Sample card',
+        title: 'Showcase a Canvas, Sample or Live card',
         exclude: p.editionShowcase.toSet(),
-        query: const CollectionQuery(editionMask: 0x6),
+        query: const CollectionQuery(editionMask: 0xE),
       );
       if (picked == null || picked.isEmpty) return;
       final c = g.collection.byUid(picked.first);
       if (c == null || c.edition == Edition.standard) {
-        g.toast('Only Canvas and Sample editions can be showcased here');
+        g.toast('Only Canvas, Sample and Live editions can be showcased here');
         return;
       }
       p.editionShowcase = [...p.editionShowcase.where((u) => g.collection.byUid(u) != null), c.uid].take(3).toList();
@@ -261,7 +261,7 @@ class _EditionShowcase extends StatelessWidget {
       Row(children: [
         const Text('Showcase', style: TextStyle(fontWeight: FontWeight.w800)),
         const Spacer(),
-        Text('Canvas & Sample editions', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
+        Text('Canvas, Sample & Live', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
       ]),
       const SizedBox(height: 8),
       LayoutBuilder(builder: (context, box) {

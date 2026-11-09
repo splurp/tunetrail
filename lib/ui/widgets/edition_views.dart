@@ -17,12 +17,14 @@ import 'ui_kit.dart';
 Color editionColor(Edition e) => switch (e) {
       Edition.canvas => const Color(0xFFFF8A65),
       Edition.sample => const Color(0xFF4DD0E1),
+      Edition.live => const Color(0xFFFF4D6D),
       Edition.standard => kTextSecondary,
     };
 
 IconData editionIcon(Edition e) => switch (e) {
       Edition.canvas => Icons.movie_outlined,
       Edition.sample => Icons.graphic_eq,
+      Edition.live => Icons.mic_external_on,
       Edition.standard => Icons.music_note,
     };
 
@@ -101,9 +103,12 @@ class EditionBadge extends StatelessWidget {
 /// music-video clip when one exists and [live], otherwise a still or the
 /// song's cover art filling the card.
 class CanvasBackdrop extends StatefulWidget {
-  const CanvasBackdrop({super.key, required this.song, this.live = true});
+  const CanvasBackdrop({super.key, required this.song, this.live = true, this.liveFootage = false});
   final Song song;
   final bool live;
+
+  /// Live edition: footage of a live performance instead of the music video.
+  final bool liveFootage;
   @override
   State<CanvasBackdrop> createState() => _CanvasBackdropState();
 }
@@ -121,7 +126,8 @@ class _CanvasBackdropState extends State<CanvasBackdrop> {
 
   Future<void> _load() async {
     final movies = GameScope.read(context).movies;
-    final clip = movies.cached(widget.song.id) ?? await movies.clipFor(widget.song);
+    final lf = widget.liveFootage;
+    final clip = lf ? (movies.cachedLive(widget.song.id) ?? await movies.liveClipFor(widget.song)) : (movies.cached(widget.song.id) ?? await movies.clipFor(widget.song));
     if (!mounted) return;
     if (clip == null) {
       setState(() => _failed = true);
@@ -129,7 +135,7 @@ class _CanvasBackdropState extends State<CanvasBackdrop> {
     }
     setState(() => _clip = clip);
     if (!widget.live) return;
-    final file = await movies.videoFile(widget.song.id, clip);
+    final file = await movies.videoFile(MovieService.keyFor(widget.song.id, live: lf), clip);
     if (!mounted || file == null) return;
     final v = VideoPlayerController.file(file, videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true));
     _video = v;

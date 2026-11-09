@@ -5,6 +5,7 @@ import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../game/spawns.dart';
 import '../widgets/cards.dart';
+import '../widgets/edition_views.dart';
 import '../widgets/net_image.dart';
 
 /// A song hovering above the ground: album art in a thin rarity ring, a
@@ -75,7 +76,7 @@ class SpawnMarker extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(color: const Color(0xFF0D0D10), shape: BoxShape.circle, border: Border.all(color: Colors.white70, width: 1)),
-                    child: Icon(spawn.edition == Edition.canvas ? Icons.movie_outlined : Icons.graphic_eq, size: 11, color: Colors.white),
+                    child: Icon(editionIcon(spawn.edition), size: 11, color: Colors.white),
                   ),
                 ),
             ]),

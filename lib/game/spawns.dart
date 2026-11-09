@@ -100,8 +100,8 @@ class SpawnEngine {
       final genre = catalog.pickGenre(rng, bias: weights);
       final song = catalog.maybeFavorite(rng, rolled, bias: weights) ?? catalog.pickSong(rng, genreId: genre, rarity: rolled);
       if (song == null || exclude.contains(id)) continue;
-      // Editions: Canvas 1 in 500 (any song); Sample 1 in 5000 (a song from
-      // the sample library). Editions exclude shininess.
+      // Editions: Canvas 1 in 500 (any song); Live 1 in 1000 (songs with
+      // live footage); Sample 1 in 5000 (a song from the sample library). Editions exclude shininess.
       final er = rng.nextInt(kSampleOdds * kCanvasOdds);
       var picked = song;
       var edition = Edition.standard;
@@ -111,6 +111,10 @@ class SpawnEngine {
         edition = Edition.sample;
       } else if (er % kCanvasOdds == 1) {
         edition = Edition.canvas;
+      } else if (er % kLiveOdds == 2) {
+        // (Kept only if the song turns out to have live footage — see
+        // Game._applyEditionAvailability.)
+        edition = Edition.live;
       }
       final rarity = catalog.rarityOf(catalog.songs[picked.id] ?? picked);
       out.add(Spawn(

@@ -409,6 +409,7 @@ class Game extends ChangeNotifier {
   /// Serials left per "songId:edition" (cached from the market backend).
   final Map<String, int> _serialsLeft = {};
   final Set<String> _serialsPending = {};
+  final Set<int> _liveChecks = {};
 
   int? serialsLeft(int songId, Edition e) => _serialsLeft['$songId:${e.index}'];
 
@@ -419,6 +420,21 @@ class Game extends ChangeNotifier {
     var changed = false;
     final out = <Spawn>[];
     for (final s in spawns) {
+      // A Live edition needs live footage of the song: look it up, and
+      // spawn it as a standard card if there is none.
+      if (s.edition == Edition.live) {
+        final has = movies.hasLive(s.song.id);
+        if (has == null && _liveChecks.add(s.song.id)) {
+          unawaited(movies.liveClipFor(s.song).then((_) => _applyEditionAvailability()).catchError((_) {}));
+        }
+        if (has == false) {
+          final std = s.withEdition(Edition.standard);
+          _spawnMemo[s.id] = std;
+          out.add(std);
+          changed = true;
+          continue;
+        }
+      }
       if (s.edition != Edition.standard) {
         final key = '${s.song.id}:${s.edition.index}';
         final left = _serialsLeft[key];

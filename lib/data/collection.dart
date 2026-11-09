@@ -115,7 +115,7 @@ class CollectionQuery {
     this.sort = CollectionSort.dateAcquired,
     this.descending = true,
     this.uniqueSongs = false,
-    this.editionMask = 0x7,
+    this.editionMask = 0xF,
   });
 
   /// Bit i set ⇒ include Edition index i.

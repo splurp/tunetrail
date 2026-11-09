@@ -217,7 +217,7 @@ class _BrowseState extends State<_Browse> {
                       final s = {..._q.serials};
                       s.contains(n) ? s.remove(n) : s.add(n);
                       // Serials only exist on edition cards.
-                      _set(_copy(serials: s, editions: s.isNotEmpty && _q.editions.isEmpty ? {Edition.canvas.index, Edition.sample.index} : null));
+                      _set(_copy(serials: s, editions: s.isNotEmpty && _q.editions.isEmpty ? {Edition.canvas.index, Edition.sample.index, Edition.live.index} : null));
                     },
                   ),
               ],

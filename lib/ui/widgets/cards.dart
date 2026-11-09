@@ -180,7 +180,7 @@ class SongCardView extends StatelessWidget {
     final c = isEd ? editionColor(edition) : rarityColor(rarity);
     final glow = isEd || rarity.index >= Rarity.epic.index;
     final shiny = this.shiny && !isEd;
-    if (edition == Edition.canvas) return _canvas(context, c);
+    if (edition == Edition.canvas || edition == Edition.live) return _canvas(context, c);
     final sample = edition == Edition.sample ? SampleLibrary.of(song.id) : null;
     if (sample != null) return _canvas(context, c, sample: sample);
     final card = Container(
@@ -261,7 +261,7 @@ class SongCardView extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Stack(fit: StackFit.expand, children: [
         if (sample == null)
-          CanvasBackdrop(song: song, live: live)
+          CanvasBackdrop(song: song, live: live, liveFootage: edition == Edition.live)
         else ...[
           Opacity(opacity: 0.22, child: LayoutBuilder(builder: (context, box) => Art(song.cover(500), size: math.max(box.maxWidth, box.maxHeight), radius: 0, decodeSize: 600))),
           Positioned(left: 0, right: 0, top: 0, bottom: width * 0.3, child: SampleBreakdownPanel(info: sample, fullCard: true)),

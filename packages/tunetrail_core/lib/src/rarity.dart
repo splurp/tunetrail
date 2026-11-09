@@ -44,7 +44,11 @@ enum Edition {
 
   /// Waveform breakdown aligned with the song it samples; plays the sample
   /// first, then fades into the song. Serialized #1–#5 per song.
-  sample('Sample', 12.0, 5);
+  sample('Sample', 12.0, 5),
+
+  /// Full-card footage of the song performed live (a live music video),
+  /// for songs that have one. Serialized #1–#5 per song.
+  live('Live', 9.0, 5);
 
   const Edition(this.label, this.valueMultiplier, this.maxSerials);
   final String label;
@@ -59,6 +63,10 @@ enum Edition {
 
 /// Chance a wild spawn is a Canvas edition.
 const int kCanvasOdds = 500;
+
+/// Chance a wild spawn is a Live edition (kept only for songs that have
+/// live footage).
+const int kLiveOdds = 1000;
 
 /// Chance a wild spawn is a Sample edition (of a song with sample data).
 const int kSampleOdds = 5000;

@@ -393,6 +393,11 @@ class _SpawnSongScreenState extends State<SpawnSongScreen> {
               ),
           ]),
         ),
+        if (_edition == Edition.live)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Text('Live editions need live footage of the song (Apple Music live videos); songs without it spawn as standard cards.', style: TextStyle(fontSize: 12, color: kTextTertiary)),
+          ),
         if (_edition == Edition.sample)
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 4, 16, 0),

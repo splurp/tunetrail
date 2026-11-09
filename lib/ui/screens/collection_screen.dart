@@ -63,7 +63,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
 
   int get _activeFilters =>
       (_q.rarityMask == 0x1F ? 0 : 1) +
-      (_q.shinyOnly || _q.normalOnly || _q.editionMask != 0x7 ? 1 : 0) +
+      (_q.shinyOnly || _q.normalOnly || _q.editionMask != 0xF ? 1 : 0) +
       (_q.genres.isEmpty ? 0 : 1) +
       (_q.favoritesOnly ? 1 : 0);
 
@@ -72,7 +72,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
       if (_q.rarityMask != 0x1F) [for (final r in Rarity.values) if ((_q.rarityMask >> r.index) & 1 == 1) r.label].join(', '),
       if (_q.shinyOnly) 'Shiny',
       if (_q.normalOnly) 'Not shiny',
-      if (_q.editionMask != 0x7) [for (final e in Edition.values) if ((_q.editionMask >> e.index) & 1 == 1) e.label].join(', '),
+      if (_q.editionMask != 0xF) [for (final e in Edition.values) if ((_q.editionMask >> e.index) & 1 == 1) e.label].join(', '),
       if (_q.genres.isNotEmpty) _q.genres.length == 1 ? genreName(_q.genres.first) : '${_q.genres.length} genres',
       if (_q.favoritesOnly) 'Favourites',
     ];
@@ -175,7 +175,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
           child: FilterDropdown(
             activeCount: _activeFilters,
             summary: _filterSummary,
-            onReset: () => _setQuery(_q.copyWith(rarityMask: 0x1F, shinyOnly: false, normalOnly: false, favoritesOnly: false, genres: const {}, editionMask: 0x7)),
+            onReset: () => _setQuery(_q.copyWith(rarityMask: 0x1F, shinyOnly: false, normalOnly: false, favoritesOnly: false, genres: const {}, editionMask: 0xF)),
             sections: () => [
               FilterSection(
                 title: 'Rarity',
@@ -196,7 +196,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
               ),
               FilterSection(
                 title: 'Variant',
-                onClear: () => _setQuery(_q.copyWith(shinyOnly: false, normalOnly: false, editionMask: 0x7)),
+                onClear: () => _setQuery(_q.copyWith(shinyOnly: false, normalOnly: false, editionMask: 0xF)),
                 options: [
                   FilterOption(
                     label: '✦ Shiny  ${formatNumber(c.shinyCount)}',
@@ -211,11 +211,11 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
                   for (final e in Edition.values)
                     FilterOption(
                       label: '${e.label}  ${formatNumber(c.editionCounts[e.index])}',
-                      selected: _q.editionMask != 0x7 && (_q.editionMask >> e.index) & 1 == 1,
+                      selected: _q.editionMask != 0xF && (_q.editionMask >> e.index) & 1 == 1,
                       onTap: () {
-                        var m = _q.editionMask == 0x7 ? 0 : _q.editionMask;
+                        var m = _q.editionMask == 0xF ? 0 : _q.editionMask;
                         m ^= 1 << e.index;
-                        _setQuery(_q.copyWith(editionMask: m == 0 ? 0x7 : m));
+                        _setQuery(_q.copyWith(editionMask: m == 0 ? 0xF : m));
                       },
                     ),
                 ],
