@@ -17,7 +17,7 @@ permissions:
 
 # A newer push to the same branch supersedes a build still in progress.
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
