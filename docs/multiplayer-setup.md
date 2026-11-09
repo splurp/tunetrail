@@ -139,13 +139,20 @@ sudo netfilter-persistent save
 curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker ubuntu && newgrp docker
 
+# Read-only access to the (private) repository: make a key for this VM,
+# then add the printed line in GitHub → repo Settings → Deploy keys → Add deploy key
+# (title "oracle-vm", leave "Allow write access" unticked).
+ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 && cat ~/.ssh/id_ed25519.pub
+
 # The game server
-git clone https://github.com/splurp/tunetrail.git && cd tunetrail/deploy
+git clone -b ccr-3946c635-1vgat4 git@github.com:splurp/tunetrail.git && cd tunetrail/deploy
 cp .env.example .env && nano .env      # fill in DOMAIN, DATABASE_URL, SESSION_SECRET, GOOGLE_CLIENT_IDS
 docker compose up -d --build
 ```
 
    `SESSION_SECRET`: run `openssl rand -base64 48` and paste the result.
+   `DATABASE_URL`: if your database password has symbols like `@ # / ? :`, either
+   change it in Supabase to letters and numbers only, or URL-encode them (`@` → `%40`).
    `GOOGLE_CLIENT_IDS`: `GOOGLE_SERVER_CLIENT_ID,GOOGLE_DESKTOP_CLIENT_ID`.
 
 6. Check it: open `https://YOUR-SUBDOMAIN.duckdns.org/health` — you should see
