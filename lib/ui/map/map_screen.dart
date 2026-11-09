@@ -14,7 +14,7 @@ import '../../game/genre_zones.dart';
 import '../../game/spawns.dart';
 import '../../map3d/palette.dart';
 import '../../map3d/props3d.dart';
-import '../../map3d/snow3d.dart';
+import '../../map3d/particles3d.dart';
 import '../../map3d/camera.dart';
 import '../../platform/pointer_lock.dart';
 import '../../map3d/figure3d.dart';
@@ -478,10 +478,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   child: ValueListenableBuilder<double>(
                     valueListenable: _clock,
                     builder: (context, t, _) => CustomPaint(
-                      // Snow falls in 3D through the camera; other effects are screen overlays.
-                      painter: theme.effect == MapEffect.snow && !p.reduceEffects
-                          ? Snow3DPainter(camera: _cam, time: t)
-                          : MapEffectPainter(theme, t, reduce: p.reduceEffects),
+                      // Snow, dust, embers and petals live in 3D around the
+                      // player; the other effects are screen overlays.
+                      painter: switch (p.reduceEffects ? null : _particleKind(theme.effect)) {
+                        final k? => Particles3DPainter(camera: _cam, time: t, kind: k, vignette: theme.vignette),
+                        null => MapEffectPainter(theme, t, reduce: p.reduceEffects),
+                      },
                     ),
                   ),
                 ),
@@ -577,6 +579,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       ),
     );
   }
+
+  static Particle3DKind? _particleKind(MapEffect e) => switch (e) {
+        MapEffect.snow => Particle3DKind.snow,
+        MapEffect.dust => Particle3DKind.dust,
+        MapEffect.embers => Particle3DKind.embers,
+        MapEffect.petals => Particle3DKind.petals,
+        _ => null,
+      };
 }
 
 /// Billboarded spawns, projected through the 3D camera each frame.
