@@ -262,7 +262,15 @@ class Game extends ChangeNotifier {
   bool get onlineAccounts => GoogleAuth.available && PlayerProfile.builtInServer.isNotEmpty;
 
   /// First-run setup still has steps left.
-  bool get needsOnboarding => onlineAccounts && (profile.authToken.isEmpty || !profile.usernameSet || !profile.onboarded);
+  bool get needsOnboarding =>
+      !_skipOnboarding && onlineAccounts && (profile.authToken.isEmpty || !profile.usernameSet || !profile.onboarded);
+  bool _skipOnboarding = false;
+
+  /// Debug players can skip account setup for this session.
+  void skipOnboardingForNow() {
+    _skipOnboarding = true;
+    notifyListeners();
+  }
 
   /// Unread direct messages (refreshed with the inbox).
   final ValueNotifier<int> unreadMessages = ValueNotifier(0);

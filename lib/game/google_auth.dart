@@ -49,6 +49,24 @@ class GoogleAuth {
     return token;
   }
 
+  /// Desktop: the Google page the browser was sent to while sign-in is
+  /// waiting (to open again or copy), else null.
+  static final ValueNotifier<Uri?> pendingUrl = ValueNotifier(null);
+  static Completer<String>? _cancel;
+
+  /// Desktop: stops waiting for the browser.
+  static void cancel() => _cancel?.completeError(StateError('Sign-in cancelled'));
+
+  static Future<bool> openPending() async {
+    final u = pendingUrl.value;
+    if (u == null) return false;
+    try {
+      return await launchUrl(u, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<void> signOut() async {
     if (_desktop || !_initialized) return;
     try {
@@ -76,8 +94,15 @@ class GoogleAuth {
         'state': state,
         'prompt': 'select_account',
       });
-      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) throw StateError('Couldn\'t open the browser');
-      final req = await server.first.timeout(const Duration(minutes: 5));
+      pendingUrl.value = url;
+      final cancel = _cancel = Completer<String>();
+      // A browser that fails to open isn't fatal: the page offers the link
+      // to open again or copy.
+      try {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+      final req = await Future.any<Object>([server.first, cancel.future]).timeout(const Duration(minutes: 10));
+      if (req is! HttpRequest) throw StateError('Sign-in cancelled');
       final q = req.uri.queryParameters;
       req.response
         ..statusCode = 200
@@ -99,7 +124,11 @@ class GoogleAuth {
       final token = (jsonDecode(res.body) as Map<String, dynamic>)['id_token'] as String?;
       if (res.statusCode != 200 || token == null) throw StateError('Google sign-in failed (${res.statusCode})');
       return token;
+    } on TimeoutException {
+      throw StateError('Sign-in timed out — try again');
     } finally {
+      pendingUrl.value = null;
+      _cancel = null;
       await server.close(force: true);
     }
   }
