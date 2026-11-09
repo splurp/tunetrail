@@ -13,4 +13,10 @@ void main() {
     expect(clip, isNotNull);
     expect(clip!.videoUrl, contains('.m4v'));
   }, skip: Platform.environment['TT_NET'] != '1');
+
+  test('finds videos the keyword search misses', () async {
+    final m = MovieService(Directory.systemTemp.createTempSync('mv'));
+    const s = Song(id: 1, title: 'Gnarly', artistId: 1, artistName: 'KATSEYE', albumId: 1, albumTitle: '', coverMd5: '');
+    expect(await m.clipFor(s), isNotNull);
+  }, skip: Platform.environment['TT_NET'] != '1');
 }

@@ -65,18 +65,24 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   late final AnimationController _spin = AnimationController(vsync: this, duration: const Duration(milliseconds: 1700));
 
   static const _baseCatch = [0.92, 0.78, 0.62, 0.48, 0.34];
-  static const _fleeChance = [0.03, 0.06, 0.1, 0.15, 0.2];
+  static const _fleeChance = [0.02, 0.03, 0.05, 0.07, 0.1];
+
+  /// Catch chance for a throw with [acc]% timing: 90%+ always catches,
+  /// 50–89% climbs from the rarity's base chance towards certain, and an
+  /// off-beat throw keeps a small chance.
+  static double catchChance(Rarity r, int acc) {
+    final base = _baseCatch[r.index];
+    if (acc >= 90) return 1;
+    if (acc >= 50) return (base + (1 - base) * 0.75 * (acc - 50) / 40).clamp(0.0, 1.0);
+    return base * 0.3;
+  }
   static const _maxAttempts = 5;
 
   Rarity get r => widget.spawn.rarity;
 
-  /// The spawn's edition, unless it's a Movie whose song turned out to have
-  /// no video.
-  Edition get _edition {
-    final s = widget.spawn;
-    if (s.edition == Edition.canvas && _game?.movies.hasMovie(s.song.id) == false) return Edition.standard;
-    return s.edition;
-  }
+  /// A Canvas spawn stays a Canvas even without a music video — its
+  /// canvas falls back to the cover art.
+  Edition get _edition => widget.spawn.edition;
 
   bool get _alreadyOwned => _game?.collection.ownsVariant(widget.spawn.song.id, r, widget.spawn.shiny, _edition) ?? false;
 
@@ -280,16 +286,10 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
         : acc >= 50
         ? _Hit.good
         : _Hit.miss;
-    final mult = switch (hit) {
-      _Hit.perfect => 1.0,
-      _Hit.great => 1.3,
-      _Hit.good => 1.0,
-      _Hit.miss => 0.0,
-    };
     HapticFeedback.mediumImpact();
     _attempts++;
     // A 100% perfect beat always catches — and turns the song shiny.
-    final success = hit == _Hit.perfect || _rand.nextDouble() < (_baseCatch[r.index] * mult).clamp(0.0, 0.99);
+    final success = hit == _Hit.perfect || _rand.nextDouble() < catchChance(r, acc);
     setState(() {
       _accuracy = acc;
       _perfect = hit == _Hit.perfect;
@@ -503,7 +503,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                                           if (listed && context.mounted) Navigator.of(context).pop();
                                         },
                                 ),
-                              if (_card != null)
+                              if (_card != null && _card!.edition == Edition.standard && !_card!.shiny)
                                 OutlinedButton.icon(
                                   icon: const Icon(Icons.recycling, size: 18),
                                   label: Text(_card == null ? 'Quicksell' : 'Quicksell · ${_game?.scrapValueOf(_card!) ?? 0}c'),
@@ -552,7 +552,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                             TextButton.icon(onPressed: _skipBreakdown, icon: const Icon(Icons.skip_next), label: const Text('Skip to the song')),
                           const SizedBox(height: 6),
                           Text(
-                            '${_synced ? '${_bpm!.round()} BPM · ' : (_waiting ? '' : 'Not synced · ')}Catch chance ${(_baseCatch[r.index] * 100).round()}% · a flawless 100% beat makes it shiny${_alreadyOwned ? '\nYou already own this variant — a catch is auto-scrapped unless it turns shiny' : ''}',
+                            '${_synced ? '${_bpm!.round()} BPM · ' : (_waiting ? '' : 'Not synced · ')}Base catch ${(_baseCatch[r.index] * 100).round()}% · 90%+ timing always catches · a flawless 100% beat makes it shiny${_alreadyOwned ? '\nYou already own this variant — a catch is auto-scrapped unless it turns shiny' : ''}',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: Colors.white54, fontSize: 12),
                           ),

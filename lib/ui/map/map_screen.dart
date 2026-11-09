@@ -97,9 +97,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _clock.value = d.inMicroseconds / 1e6;
     if (!mounted) return;
     final g = GameScope.read(context);
-    // Idle activities pause while the player is moving or adjusting the camera.
+    // Turning the camera keeps a new idle from starting; walking ends one.
     final cameraBusy = DateTime.now().difference(_lastCameraInput) < const Duration(milliseconds: 1500) || _guide.isAnimating;
-    _idle.update(_clock.value - _lastT, g.location.moving || cameraBusy);
+    _idle.update(_clock.value - _lastT, g.location.moving, busy: cameraBusy);
     _lastT = _clock.value;
     final (tx, ty) = g.mapData.toWorld(g.location.position.latitude, g.location.position.longitude);
     var changed = false;

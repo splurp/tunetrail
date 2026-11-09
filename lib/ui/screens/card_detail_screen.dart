@@ -140,6 +140,7 @@ class CardDetailScreen extends StatelessWidget {
             ),
           ),
         ]),
+        if (card.edition == Edition.standard && !card.shiny) ...[
         const SizedBox(height: 8),
         TextButton.icon(
           onPressed: () async {
@@ -164,6 +165,7 @@ class CardDetailScreen extends StatelessWidget {
           icon: const Icon(Icons.recycling_rounded, size: 18),
           label: const Text('Scrap for coins'),
         ),
+        ],
        ],
       ]),
     );

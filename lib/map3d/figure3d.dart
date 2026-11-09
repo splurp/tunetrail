@@ -32,12 +32,17 @@ class IdleDirector {
   bool _ending = false;
   IdleActivity _last = IdleActivity.turntable;
 
-  void update(double dt, bool moving) {
+  /// [moving]: the character walks (ends any idle). [busy]: something
+  /// else, like the camera turning, that only keeps a new idle from
+  /// starting — one already playing carries on through it.
+  void update(double dt, bool moving, {bool busy = false}) {
     dt = dt.clamp(0.0, 0.1);
     walk += ((moving ? 1.0 : 0.0) - walk) * math.min(1.0, dt * 7);
     if (moving) {
       _stillFor = 0;
       if (activity != IdleActivity.none) _ending = true;
+    } else if (busy && activity == IdleActivity.none) {
+      _stillFor = 0;
     } else {
       _stillFor += dt;
     }

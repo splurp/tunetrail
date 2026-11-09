@@ -29,6 +29,9 @@ class MovieService extends ChangeNotifier {
   final http.Client _client = http.Client();
   final Map<int, MovieClip?> _cache = {};
   final Map<int, Future<MovieClip?>> _pending = {};
+  final Map<int, int> _noneAt = {};
+  final Map<String, Future<List<Map<String, dynamic>>>> _artistVideos = {};
+  static const _noneTtl = Duration(days: 5);
   Timer? _save;
 
   File get _file => File('${dir.path}/movies.json');
@@ -37,7 +40,18 @@ class MovieService extends ChangeNotifier {
     try {
       if (!await _file.exists()) return;
       final j = jsonDecode(await _file.readAsString()) as Map<String, dynamic>;
-      j.forEach((k, v) => _cache[int.parse(k)] = v == null ? null : MovieClip.fromJson(v as Map<String, dynamic>));
+      final now = DateTime.now().millisecondsSinceEpoch;
+      j.forEach((k, v) {
+        final id = int.parse(k);
+        if (v is Map<String, dynamic> && v.containsKey('v')) {
+          _cache[id] = MovieClip.fromJson(v);
+        } else if (v is Map<String, dynamic> && (v['none'] as int? ?? 0) > now - _noneTtl.inMilliseconds) {
+          // "No video" is only trusted for a while (and old bare-null
+          // entries, from a weaker matcher, are looked up again).
+          _cache[id] = null;
+          _noneAt[id] = v['none'] as int;
+        }
+      });
     } catch (_) {}
   }
 
@@ -45,7 +59,9 @@ class MovieService extends ChangeNotifier {
     _save?.cancel();
     _save = Timer(const Duration(seconds: 2), () async {
       try {
-        await _file.writeAsString(jsonEncode({for (final e in _cache.entries) '${e.key}': e.value?.toJson()}));
+        await _file.writeAsString(jsonEncode({
+          for (final e in _cache.entries) '${e.key}': e.value?.toJson() ?? {'none': _noneAt[e.key] ?? DateTime.now().millisecondsSinceEpoch},
+        }));
       } catch (_) {}
     });
   }
@@ -91,31 +107,65 @@ class MovieService extends ChangeNotifier {
         }
       }();
 
+  static bool _isAlt(String name) {
+    final n = name.toLowerCase();
+    return n.contains('lyric') || n.contains('visualizer') || n.contains('audio') || n.contains('live') || n.contains('behind the scenes') || n.contains('dance practice');
+  }
+
+  /// The best music video in [results] for [s], or null.
+  static MovieClip? _match(Song s, List<Map<String, dynamic>> results) {
+    final want = Catalog.normalizeTitle(s.title);
+    final artist = s.artistName.toLowerCase();
+    Map<String, dynamic>? best;
+    var bestScore = -1;
+    for (final r in results) {
+      final url = r['previewUrl'] as String?;
+      if (url == null || r['kind'] != 'music-video') continue;
+      final name = r['trackName'] as String? ?? '';
+      final title = Catalog.normalizeTitle(name);
+      final a = (r['artistName'] as String? ?? '').toLowerCase();
+      if (title != want || !(a.contains(artist) || artist.contains(a))) continue;
+      final score = (_isAlt(name) ? 0 : 2) + (a == artist ? 1 : 0);
+      if (score > bestScore) {
+        best = r;
+        bestScore = score;
+      }
+    }
+    if (best == null) return null;
+    final art = (best['artworkUrl100'] as String? ?? '').replaceAll('100x100bb', '600x600bb');
+    return MovieClip(best['previewUrl'] as String, art);
+  }
+
+  Future<List<Map<String, dynamic>>> _get(Map<String, String> q, [String path = '/search']) async {
+    final res = await _client.get(Uri.https('itunes.apple.com', path, q)).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) throw HttpException('iTunes ${res.statusCode}');
+    return (jsonDecode(res.body)['results'] as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Every music video of an artist — the keyword search misses many
+  /// (e.g. KATSEYE's "Gnarly"), the artist's own video list doesn't.
+  Future<List<Map<String, dynamic>>> _videosOf(String artist) => _artistVideos[artist.toLowerCase()] ??= () async {
+        final found = await _get({'term': artist, 'entity': 'musicArtist', 'limit': '5'});
+        final a = artist.toLowerCase();
+        final hit = found.firstWhere((r) => (r['artistName'] as String? ?? '').toLowerCase() == a, orElse: () => found.isEmpty ? const <String, dynamic>{} : found.first);
+        final id = hit['artistId'];
+        if (id == null) return <Map<String, dynamic>>[];
+        return _get({'id': '$id', 'entity': 'musicVideo', 'limit': '200'}, '/lookup');
+      }();
+
   Future<MovieClip?> _lookup(Song s) async {
     MovieClip? clip;
     try {
       final term = '${s.artistName} ${Catalog.normalizeTitle(s.title)}';
-      final uri = Uri.https('itunes.apple.com', '/search', {'term': term, 'entity': 'musicVideo', 'limit': '10'});
-      final res = await _client.get(uri).timeout(const Duration(seconds: 12));
-      if (res.statusCode != 200) return null; // transient: don't cache
-      final results = (jsonDecode(res.body)['results'] as List).cast<Map<String, dynamic>>();
-      final want = Catalog.normalizeTitle(s.title);
-      final artist = s.artistName.toLowerCase();
-      for (final r in results) {
-        final url = r['previewUrl'] as String?;
-        if (url == null) continue;
-        final title = Catalog.normalizeTitle(r['trackName'] as String? ?? '');
-        final a = (r['artistName'] as String? ?? '').toLowerCase();
-        if (title != want || !(a.contains(artist) || artist.contains(a))) continue;
-        final art = (r['artworkUrl100'] as String? ?? '').replaceAll('100x100bb', '600x600bb');
-        clip = MovieClip(url, art);
-        break;
-      }
+      clip = _match(s, await _get({'term': term, 'entity': 'musicVideo', 'limit': '25'}));
+      clip ??= _match(s, await _videosOf(s.artistName));
     } catch (e) {
       debugPrint('movie lookup: $e');
+      _artistVideos.remove(s.artistName.toLowerCase());
       return null; // network error: try again later
     }
     _cache[s.id] = clip;
+    if (clip == null) _noneAt[s.id] = DateTime.now().millisecondsSinceEpoch;
     _scheduleSave();
     notifyListeners();
     return clip;

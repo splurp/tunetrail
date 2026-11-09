@@ -72,11 +72,24 @@ class LocalMarket extends MarketBackend {
     }
     // Clean up older saves: bot folders that repeat a song (impossible —
     // duplicates don't exist) and the repetitive bot showcases.
-    for (final l in engine.listings.values.where((l) => l.sellerId.startsWith('bot')).toList()) {
-      final ids = [for (final it in l.items) it.card.songId];
-      if (ids.toSet().length != ids.length) engine.cancelListing(l.sellerId, l.id);
+    final botListings = engine.listings.values.where((l) => l.sellerId.startsWith('bot')).toList();
+    final seen = <int, int>{};
+    for (final l in botListings) {
+      for (final it in l.items) {
+        seen[it.card.songId] = (seen[it.card.songId] ?? 0) + 1;
+      }
     }
-    engine.showcases.removeWhere((id, _) => id.startsWith('bot'));
+    for (final l in botListings) {
+      final ids = [for (final it in l.items) it.card.songId];
+      // Folders repeating a song, or songs flooding the market (stocked
+      // from a near-empty catalogue), are withdrawn and restocked.
+      if (ids.toSet().length != ids.length || ids.any((id) => (seen[id] ?? 0) > 2)) engine.cancelListing(l.sellerId, l.id);
+    }
+    engine.showcases.removeWhere((id, s) {
+      if (!id.startsWith('bot')) return false;
+      final ids = [for (final c in s.cards) c.songId];
+      return ids.toSet().length < 3;
+    });
     engine.onChanged = () {
       _save?.cancel();
       _save = Timer(const Duration(seconds: 2), () async {
@@ -114,11 +127,16 @@ class LocalMarket extends MarketBackend {
   }
 
   void _simulate({bool initial = false}) {
-    if (catalog.size == 0) return;
+    // Wait for a real catalogue: right after a fresh install it can hold
+    // just a handful of songs (e.g. the sample library), and every bot
+    // listing and showcase would be the same song.
+    if (catalog.size < 300) return;
     final bots = engine.players.values.where((p) => p.isBot).toList();
     // Bots keep the market stocked.
     final botListings = engine.listings.values.where((l) => l.sellerId.startsWith('bot')).length;
-    final want = initial ? 80 : 60;
+    // Restock in one go after the catalogue first fills up.
+    final fill = initial || botListings < 30;
+    final want = fill ? 80 : 60;
     const notes = [
       '', '', '', 'Clearing out my crate', 'Bundle deal!', 'Open to offers', 'Taking shinies in trade',
       'Price is firm', 'Looking for Legendaries', 'Quick sale', 'Fresh from the trail',
@@ -138,7 +156,7 @@ class LocalMarket extends MarketBackend {
       final discounted = items.length > 1 && _r.nextBool() ? (total * (0.75 + _r.nextDouble() * 0.2)).round() : null;
       engine.createListing(bot.id, items,
           folderPrice: discounted, note: notes[_r.nextInt(notes.length)], acceptsTrades: _r.nextInt(3) == 0);
-      if (!initial && i > botListings + 3) break;
+      if (!fill && i > botListings + 3) break;
     }
     // Bots occasionally retire old listings.
     if (!initial && _r.nextInt(3) == 0) {

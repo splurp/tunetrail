@@ -57,6 +57,7 @@ class Game extends ChangeNotifier {
   void toast(String m) => _toasts.add(m);
 
   List<Spawn> spawns = [];
+  final Map<String, Spawn> _spawnMemo = {};
   LatLng? _spawnCenter;
   int _spawnWindow = -1;
   int _spawnCatalogVersion = -1;
@@ -393,7 +394,14 @@ class Game extends ChangeNotifier {
     final nowMs = now.millisecondsSinceEpoch;
     profile.spentSpawns.removeWhere((_, exp) => exp < nowMs);
     debugSpawns.removeWhere((d) => d.expiresAt.isBefore(now) || profile.spentSpawns.containsKey(d.id));
-    spawns = [...spawnEngine.around(location.position, exclude: profile.spentSpawns.keys.toSet()), ...debugSpawns];
+    // A spawn keeps the song it first showed until it expires — the
+    // catalogue keeps growing in the background, which would otherwise
+    // re-roll what an existing spawn contains.
+    _spawnMemo.removeWhere((_, s) => s.expiresAt.isBefore(now));
+    spawns = [
+      for (final s in spawnEngine.around(location.position, exclude: profile.spentSpawns.keys.toSet())) _spawnMemo.putIfAbsent(s.id, () => s),
+      ...debugSpawns,
+    ];
     zoneHere = zones.sample(location.position.latitude, location.position.longitude);
     _applyEditionAvailability();
   }
