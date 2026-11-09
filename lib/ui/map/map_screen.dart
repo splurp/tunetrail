@@ -65,11 +65,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   bool _gOverhead = false;
   List<(double, double, double, bool)> _prints = const [];
   String? _trailTarget;
-  DateTime _trailUntil = DateTime.fromMillisecondsSinceEpoch(0);
   final ValueNotifier<double> _trailReveal = ValueNotifier(0);
 
   /// 0 → 1 while the trail vanishes print by print, start to end.
-  late final AnimationController _trailVanish = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))
+  late final AnimationController _trailVanish = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600))
     ..addListener(() => _groundDirty.value++)
     ..addStatusListener((s) {
       if (s == AnimationStatus.completed) {
@@ -125,14 +124,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _lastDistance = _cam.distance;
     if (_guide.isAnimating) changed = true;
     if (_keyboardDriving && g.location.joystickMode) _applyKeys(g);
-    // Clear the footstep trail once the player reaches the song or it expires.
-    if (_prints.isNotEmpty && _trailTarget != null && !_guide.isAnimating) {
-      final target = g.spawns.where((s) => s.id == _trailTarget).firstOrNull;
-      final arrived = target == null || metersBetween(g.location.position, target.point) <= Game.catchRangeMeters;
-      // Walking well away from the trail also dismisses it.
-      final off = !_nearTrail(_cam.px, _cam.py, 120);
-      if (arrived || off || DateTime.now().isAfter(_trailUntil)) _dismissTrail();
-    }
+    // The footstep trail starts fading as soon as the camera has swung
+    // back down behind the player.
+    if (_prints.isNotEmpty && _trailTarget != null && !_guide.isAnimating) _dismissTrail();
     if (changed) _groundDirty.value++;
   }
 
@@ -254,14 +248,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  bool _nearTrail(double x, double y, double within) {
-    for (final p in _prints) {
-      final dx = p.$1 - x, dy = p.$2 - y;
-      if (dx * dx + dy * dy < within * within) return true;
-    }
-    return false;
-  }
-
   /// Nearby → tap a song: face it if it's in range, otherwise zoom out,
   /// draw footsteps along the roads to it and zoom back in facing it.
   void _guideTo(Game g, Spawn s) {
@@ -285,7 +271,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _prints = footprintsAlong(route);
     _trailTarget = s.id;
     _trailVanish.value = 0;
-    _trailUntil = DateTime.now().add(const Duration(seconds: 25));
     _trailReveal.value = 0;
     _gOverhead = true;
     _guide.duration = const Duration(milliseconds: 4200);
@@ -448,6 +433,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     palette: theme.palette,
                     catchRadius: Game.catchRangeMeters,
                     repaint: _groundDirty,
+                    // The footstep trail lies on the ground, under buildings.
+                    footsteps: () => _prints.isEmpty
+                        ? null
+                        : FootstepsPainter(camera: _cam, prints: _prints, reveal: _trailReveal.value, vanish: _trailVanish.value, opacity: 1, color: theme.accent),
                   ),
                 ),
               ),
@@ -463,15 +452,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-              // Footstep trail on the ground.
-              IgnorePointer(
-                child: ValueListenableBuilder<int>(
-                  valueListenable: _groundDirty,
-                  builder: (context, _, _) => CustomPaint(
-                    painter: FootstepsPainter(camera: _cam, prints: _prints, reveal: _trailReveal.value, vanish: _trailVanish.value, opacity: 1, color: theme.accent),
-                  ),
-                ),
-              ),
               // Songs behind the player, then the player, then songs in front.
               ValueListenableBuilder<double>(
                 valueListenable: _clock,

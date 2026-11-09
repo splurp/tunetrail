@@ -30,8 +30,11 @@ class _Buf {
 /// Paints the stylised 3D ground: sky, land layers, roads, water, mega
 /// buildings, catch radius and distance fog.
 class GroundPainter extends CustomPainter {
-  GroundPainter({required this.camera, required this.map, required this.palette, required this.catchRadius, required Listenable repaint})
+  GroundPainter({required this.camera, required this.map, required this.palette, required this.catchRadius, required Listenable repaint, this.footsteps})
       : super(repaint: repaint);
+
+  /// Ground decals drawn before buildings (built fresh at paint time).
+  final CustomPainter? Function()? footsteps;
 
   final Camera3D camera;
   final MapData map;
@@ -70,6 +73,7 @@ class GroundPainter extends CustomPainter {
     }
 
     _catchRing(canvas, cam);
+    footsteps?.call()?.paint(canvas, size);
     if (map.buildingsEnabled) {
       CityBuildingRenderer.paint(canvas, cam, map.buildingTiles.values, palette);
     } else {

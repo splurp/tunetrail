@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/profile.dart';
 import '../../game/store_catalog.dart';
 import '../app.dart';
+import '../widgets/figure_preview.dart';
 import '../widgets/cards.dart';
 import '../widgets/stick_figure.dart';
 import 'card_detail_screen.dart';
@@ -58,7 +59,7 @@ class ProfileScreen extends StatelessWidget {
         flex: const [5, 6, 5],
         panes: [
           [
-            Center(child: StickFigure(look: look, size: 150)),
+            Center(child: Figure3DPreview(look: look, size: 190)),
             Center(
               child: TextButton.icon(
                 icon: const Icon(Icons.edit, size: 16),
@@ -140,12 +141,7 @@ class ProfileScreen extends StatelessWidget {
             _NavTile(icon: Icons.assignment, title: 'Quests', subtitle: 'Daily tasks, artist spotlights & milestones', page: const QuestsScreen()),
             _NavTile(icon: Icons.recycling_rounded, title: 'Scrapyard', subtitle: '${p.cardsScrapped} songs scrapped', page: const ScrapyardScreen()),
             _NavTile(icon: Icons.queue_music, title: 'Playlists', subtitle: '${p.playlists.length} playlists', page: const PlaylistsScreen()),
-            _NavTile(
-              icon: Icons.settings,
-              title: 'Settings',
-              subtitle: p.debugEnabled ? 'Debug menu enabled' : 'Audio, market server, debug',
-              page: const SettingsScreen(),
-            ),
+            _NavTile(icon: Icons.settings, title: 'Settings', subtitle: p.debugEnabled ? 'Debug menu enabled' : 'Audio, market server, debug', page: const SettingsScreen()),
           ],
         ],
       ),

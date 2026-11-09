@@ -151,10 +151,14 @@ class Figure3DPainter extends CustomPainter {
       return (k.$1 + math.sin(a - bend) * legLen / 2, side * 0.55 * s, math.max(0.0, k.$3 - math.cos(a - bend) * legLen / 2));
     }
 
-    (double, double, double) elbow(double side, double a) => (math.sin(a) * armLen / 2, side * 1.0 * s, shZ - math.cos(a) * armLen / 2);
+    // Arms hang clear of the torso — a little wider with backpack straps
+    // round the chest, so the straps pass under them, not through them.
+    final strapped = look.backpack != null && look.backpack != 'bag_wings';
+    final spread = strapped ? 1.68 : 1.3;
+    (double, double, double) elbow(double side, double a) => (math.sin(a) * armLen / 2, side * spread * s, shZ - math.cos(a) * armLen / 2);
     (double, double, double) hand(double side, double a) {
       final e = elbow(side, a);
-      return (e.$1 + math.sin(a + 0.35) * armLen / 2, side * 1.25 * s, e.$3 - math.cos(a + 0.35) * armLen / 2);
+      return (e.$1 + math.sin(a + 0.35) * armLen / 2, side * (spread + 0.22) * s, e.$3 - math.cos(a + 0.35) * armLen / 2);
     }
 
     return _Pose({

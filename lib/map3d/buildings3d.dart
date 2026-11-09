@@ -93,7 +93,7 @@ class CityBuildingRenderer {
   static final _col = <int>[];
 
   static void paint(Canvas canvas, Camera3D cam, Iterable<CityBuildingTile> tiles, MapPalette palette, {double maxDistance = 700}) {
-    final visible = <(double, CityBuilding)>[];
+    final visible = <(double, CityBuilding, double)>[];
     final halfFov = cam.size.width / 2;
     for (final t in tiles) {
       for (final b in t.buildings) {
@@ -111,8 +111,15 @@ class CityBuildingRenderer {
         // the camera and the player, nothing right around the player.
         final dx = b.cx - cam.px, dy = b.cy - cam.py;
         final dist = math.sqrt(dx * dx + dy * dy) - b.radius;
-        if (dist < 45 || ya - b.radius < 25) continue;
-        visible.add((cam.depth(ya, b.height / 2), b));
+        // ...fading out as you walk up instead of popping out of existence.
+        double fade(double v, double from, double to) {
+          final t = ((v - from) / (to - from)).clamp(0.0, 1.0);
+          return t * t * (3 - 2 * t);
+        }
+
+        final alpha = math.min(fade(dist, 40, 150), fade(ya - b.radius, 20, 110));
+        if (alpha <= 0.02) continue;
+        visible.add((cam.depth(ya, b.height / 2), b, alpha));
       }
     }
     if (visible.isEmpty) return;
@@ -126,9 +133,9 @@ class CityBuildingRenderer {
     const lx = 0.55, ly = 0.83;
     final wall = palette.buildingWall, roofC = palette.buildingRoof;
     final fog = palette.skyBottom;
-    int argb(Color c, double k, double fogT) {
+    int argb(Color c, double k, double fogT, double alpha) {
       double ch(double v, double f) => ((v * k) + (f - v * k) * fogT).clamp(0.0, 1.0) * 255;
-      return 0xFF000000 | (ch(c.r, fog.r).round() << 16) | (ch(c.g, fog.g).round() << 8) | ch(c.b, fog.b).round();
+      return ((alpha * 255).round() << 24) | (ch(c.r, fog.r).round() << 16) | (ch(c.g, fog.g).round() << 8) | ch(c.b, fog.b).round();
     }
 
     void vert(double x, double y, double z) {
@@ -139,7 +146,7 @@ class CityBuildingRenderer {
         ..add(cam.sy(ya, z, zc));
     }
 
-    for (final (d, b) in visible) {
+    for (final (d, b, alpha) in visible) {
       final r = b.ring, cnt = r.length ~/ 2, h = b.height;
       final fogT = ((d - 300) / (maxDistance * 1.2)).clamp(0.0, 0.75);
       var area = 0.0;
@@ -157,7 +164,7 @@ class CityBuildingRenderer {
         ny /= nl;
         // Back-face cull: the wall faces away from the camera.
         if (nx * (camX - (ax + bx) / 2) + ny * (camY - (ay + by) / 2) <= 0) continue;
-        final c = argb(wall, 0.55 + 0.45 * ((nx * lx + ny * ly) * 0.5 + 0.5), fogT);
+        final c = argb(wall, 0.55 + 0.45 * ((nx * lx + ny * ly) * 0.5 + 0.5), fogT, alpha);
         vert(ax, ay, 0);
         vert(bx, by, 0);
         vert(bx, by, h);
@@ -169,7 +176,7 @@ class CityBuildingRenderer {
         }
       }
       final roof = b.roof;
-      final rc = argb(roofC, 1, fogT);
+      final rc = argb(roofC, 1, fogT, alpha);
       for (var i = 0; i + 1 < roof.length; i += 2) {
         vert(roof[i], roof[i + 1], h);
         _col.add(rc);

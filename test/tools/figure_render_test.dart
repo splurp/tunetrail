@@ -27,7 +27,7 @@ void main() {
         canvas.save();
         canvas.translate(c * size.width, r * size.height);
         canvas.clipRect(Offset.zero & size);
-        final cam = Camera3D()..distance = 120;
+        final cam = Camera3D()..distance = double.parse(Platform.environment["FIG_DIST"] ?? "120");
         final idle = IdleDirector(1)..walk = 1;
         Figure3DPainter(camera: cam, look: looks[r], time: 0.3, idle: idle, facing: facings[c], accent: Colors.purpleAccent, contrast: Colors.orange)
             .paint(canvas, size);

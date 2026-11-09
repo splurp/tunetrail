@@ -183,8 +183,8 @@ void buildShirt(OutfitBuilder o, String id, Map<String, V3> j, double s, Color b
     // don't cut through the shirt as the arms swing.
     final start = _add(sh, (0, (side == 'L' ? -1 : 1) * 1.06 * s, -0.2 * s));
     final end = long ? _lerp(el, hand, 0.75) : _lerp(start, el, 0.62);
-    o.tube(start, long ? el : end, 0.5 * s, long ? 0.42 * s : 0.44 * s, 6, sleeveColor);
-    if (long) o.tube(el, end, 0.42 * s, 0.36 * s, 6, sleeveColor);
+    o.tube(start, long ? el : end, 0.42 * s, long ? 0.38 * s : 0.38 * s, 6, sleeveColor);
+    if (long) o.tube(el, end, 0.38 * s, 0.34 * s, 6, sleeveColor);
   }
   if (id == 'shirt_hoodie') {
     // Hood resting on the upper back.
@@ -246,8 +246,10 @@ void buildBackpack(OutfitBuilder o, String id, Map<String, V3> j, double s, doub
       _add(sh, (-0.1 * s, side * 0.64 * s, 0.6 * s)),
       _add(sh, (0.66 * s, side * 0.62 * s, 0.05 * s)),
       _add(sh, (0.7 * s, side * 0.72 * s, -1.1 * s)),
-      _add(sh, (0.15 * s, side * 1.14 * s, -1.45 * s)), // under the arm
-      _add(sh, (backZ - 0.05 * s, side * 0.78 * s, -1.75 * s)),
+      // Round the ribs, hugging the torso (inside the arm, which hangs
+      // clear of it), and back to the bottom of the pack.
+      _add(sh, (0.1 * s, side * 1.12 * s, -1.35 * s)),
+      _add(sh, (backZ - 0.05 * s, side * 0.86 * s, -1.7 * s)),
     ];
     for (var i = 0; i + 1 < pts.length; i++) {
       o.tube(pts[i], pts[i + 1], 0.12 * s, 0.12 * s, 4, strap);

@@ -23,6 +23,18 @@ class LowPolyMesh {
 
   /// Horizontal extent from the origin (for culling; computed once).
   double? _radius;
+  /// Highest vertex above the ground.
+  double get height {
+    if (_height != null) return _height!;
+    var h = 0.0;
+    for (var i = 2; i < v.length; i += 3) {
+      h = math.max(h, v[i]);
+    }
+    return _height = h;
+  }
+
+  double? _height;
+
   double get radius {
     if (_radius != null) return _radius!;
     var r = 0.0;
@@ -572,6 +584,13 @@ class PropsPainter extends CustomPainter {
   /// Colossal monuments stand far out in the world, one per ~3.4 km cell
   /// (so they never cluster), anchored in place so they drift with
   /// parallax as you walk — and stay put if you walk right up to them.
+  /// Like the sakura trees: a monument [size] tall is invisible around
+  /// the player and fades back in as they walk away.
+  static double _nearFade(double d, double size) {
+    final t = ((d - size * 1.1) / (size * 0.9)).clamp(0.0, 1.0);
+    return t * t * (3 - 2 * t);
+  }
+
   List<PropInstance> _vaporInstances(Camera3D cam) {
     final (procBust, column, broken) = _vapor;
     const cell = 3400.0;
@@ -590,10 +609,14 @@ class PropsPainter extends CustomPainter {
           // statue doesn't turn to follow you).
           final yaw = _h(gx, gy, 24) * math.pi * 2;
           final mesh = (d > 4200 ? _scanLo : _scanHi) ?? procBust;
-          out.add(PropInstance(mesh, x, y, scale: 3.4 + 0.9 * _h(gx, gy, 25), yaw: yaw));
+          final scale = 3.4 + 0.9 * _h(gx, gy, 25);
+          final a = _nearFade(d, mesh.height * scale);
+          if (a > 0) out.add(PropInstance(mesh, x, y, scale: scale, yaw: yaw, alpha: a));
         } else {
           final m = kind < 0.62 ? column : broken;
-          out.add(PropInstance(m, x, y, scale: 2.6 + _h(gx, gy, 28) * 0.9, yaw: _h(gx, gy, 26) * math.pi));
+          final scale = 2.6 + _h(gx, gy, 28) * 0.9;
+          final a = _nearFade(d, m.height * scale);
+          if (a > 0) out.add(PropInstance(m, x, y, scale: scale, yaw: _h(gx, gy, 26) * math.pi, alpha: a));
         }
       }
     }
