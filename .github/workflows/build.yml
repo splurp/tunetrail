@@ -85,13 +85,27 @@ jobs:
           TUNETRAIL_KEYSTORE_PASSWORD: ${{ secrets.TUNETRAIL_KEYSTORE_PASSWORD }}
           TUNETRAIL_KEY_ALIAS: ${{ secrets.TUNETRAIL_KEY_ALIAS }}
           TUNETRAIL_KEY_PASSWORD: ${{ secrets.TUNETRAIL_KEY_PASSWORD }}
-        run: flutter build apk --release --no-tree-shake-icons --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
+        # Retried: plugin build hooks download prebuilt libraries from
+        # GitHub, which occasionally answers 502/504.
+        run: |
+          for i in 1 2 3; do
+            flutter build apk --release --no-tree-shake-icons --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} && exit 0
+            echo "::warning::build attempt $i failed, retrying"; sleep 20
+          done
+          exit 1
       - name: Build per-ABI APKs (smaller downloads)
         env:
           TUNETRAIL_KEYSTORE_PASSWORD: ${{ secrets.TUNETRAIL_KEYSTORE_PASSWORD }}
           TUNETRAIL_KEY_ALIAS: ${{ secrets.TUNETRAIL_KEY_ALIAS }}
           TUNETRAIL_KEY_PASSWORD: ${{ secrets.TUNETRAIL_KEY_PASSWORD }}
-        run: flutter build apk --release --split-per-abi --no-tree-shake-icons --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
+        # Retried: plugin build hooks download prebuilt libraries from
+        # GitHub, which occasionally answers 502/504.
+        run: |
+          for i in 1 2 3; do
+            flutter build apk --release --split-per-abi --no-tree-shake-icons --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} && exit 0
+            echo "::warning::build attempt $i failed, retrying"; sleep 20
+          done
+          exit 1
       - name: Collect APKs
         run: |
           mkdir -p dist
