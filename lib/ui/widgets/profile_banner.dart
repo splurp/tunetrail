@@ -191,7 +191,7 @@ class ProfileThemePicker extends StatelessWidget {
                 content: SizedBox(height: 90, child: ProfileThemeBackground(theme: t, radius: 14)),
                 actions: [
                   TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                  FilledButton(onPressed: p.coins < t.price ? null : () => Navigator.pop(ctx, true), child: Text('Buy · ${formatNumber(t.price)} coins')),
+                  FilledButton(onPressed: p.bits < t.price ? null : () => Navigator.pop(ctx, true), child: Text('Buy · ${formatNumber(t.price)} bits')),
                 ],
               ),
             );
@@ -220,7 +220,7 @@ class ProfileThemePicker extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(20)),
-                        child: CoinPrice(t.price, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                        child: Text('${formatNumber(t.price)} bits', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
                       ),
                   ]),
                   const Spacer(),
@@ -237,7 +237,7 @@ class ProfileThemePicker extends StatelessWidget {
     if (embedded) return grid;
     return Scaffold(
       appBar: AppBar(title: const Text('Profile theme'), actions: [
-        Padding(padding: const EdgeInsets.only(right: 12), child: CurrencyChip(icon: kCoinIcon, value: p.coins, color: kCoinColor)),
+        Padding(padding: const EdgeInsets.only(right: 12), child: CurrencyChip(icon: kBitsIcon, value: p.bits, color: kBitsColor)),
       ]),
       body: Column(children: [
         Padding(

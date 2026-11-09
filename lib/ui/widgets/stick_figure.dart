@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../game/audio_service.dart';
+
 /// Equipped look for the player's stick figure.
 class FigureLook {
   const FigureLook({required this.color, this.hat, this.shirt, this.pet, this.backpack});
@@ -424,11 +426,21 @@ class StickFigurePainter extends CustomPainter {
         canvas.drawPath(Path()..moveTo(8, base.dy + fly.dy)..lineTo(13, base.dy + fly.dy + 2)..lineTo(8, base.dy + fly.dy + 3)..close(), Paint()..color = Colors.orange);
         canvas.drawCircle(base + fly + const Offset(3, -2), 1.5, eye);
       case 'pet_slime':
-        final squish = 1 + math.sin(phase * 2) * 0.12;
-        canvas.drawOval(Rect.fromCenter(center: base + const Offset(0, 2), width: 24 * squish, height: 18 / squish),
-            Paint()..color = const Color(0xFF76FF03).withValues(alpha: 0.85));
-        canvas.drawCircle(base + const Offset(-4, 0), 2, eye);
-        canvas.drawCircle(base + const Offset(4, 0), 2, eye);
+        // Bounces to the beat of whatever the game is playing: lands (and
+        // squashes) on every beat, springs up between them.
+        final beat = AudioService.instance?.beatPhase();
+        final double squish, lift;
+        if (beat != null) {
+          squish = 1 + 0.28 * math.pow(1 - beat, 4);
+          lift = -9 * math.sin(math.pi * beat);
+        } else {
+          squish = 1 + math.sin(phase * 2) * 0.12;
+          lift = 0;
+        }
+        final c = base + Offset(0, 2 + lift);
+        canvas.drawOval(Rect.fromCenter(center: c, width: 24 * squish, height: 18 / squish), Paint()..color = const Color(0xFF76FF03).withValues(alpha: 0.85));
+        canvas.drawCircle(c + const Offset(-4, -2), 2, eye);
+        canvas.drawCircle(c + const Offset(4, -2), 2, eye);
       case 'pet_robot':
         final p = Paint()..color = const Color(0xFF90A4AE);
         canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: base, width: 20, height: 18), const Radius.circular(4)), p);
@@ -470,21 +482,6 @@ class StickFigurePainter extends CustomPainter {
         canvas.drawCircle(b + const Offset(-3.5, -3.1), 0.55, Paint()..color = Colors.white);
         canvas.drawCircle(b + const Offset(4.5, -3.1), 0.55, Paint()..color = Colors.white);
         canvas.drawCircle(b + const Offset(0, 0.3), 1.1, pink); // nose
-      case 'pet_dragon':
-        final p = Paint()..color = const Color(0xFFD50000);
-        final flap = math.sin(phase * 4) * 0.4;
-        canvas.save();
-        canvas.translate(base.dx, base.dy - 4);
-        for (final d in [-1.0, 1.0]) {
-          canvas.save();
-          canvas.rotate(d * (0.4 + flap));
-          canvas.drawPath(Path()..moveTo(0, 0)..lineTo(d * 16, -12)..lineTo(d * 12, 2)..close(), Paint()..color = const Color(0xFFFF6D00));
-          canvas.restore();
-        }
-        canvas.restore();
-        canvas.drawOval(Rect.fromCenter(center: base, width: 22, height: 18), p);
-        canvas.drawCircle(base + const Offset(-4, -2), 1.8, Paint()..color = Colors.yellow);
-        canvas.drawCircle(base + const Offset(4, -2), 1.8, Paint()..color = Colors.yellow);
     }
   }
 

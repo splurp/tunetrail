@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../build_flags.dart';
+
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/models.dart';
@@ -40,9 +41,9 @@ class ShopScreen extends StatelessWidget {
             tabs: [
               Tab(text: 'Packs'),
               Tab(text: 'Bits'),
-              Tab(text: 'Map themes'),
-              Tab(text: 'Style'),
-              Tab(text: 'Profiles'),
+              Tab(text: 'Map Themes'),
+              Tab(text: 'Profile Themes'),
+              Tab(text: 'Cosmetics'),
             ],
           ),
         ),
@@ -57,7 +58,7 @@ class ShopScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(6),
                   child: const Text('DEBUG: real-money purchases are free (no charge)', textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
                 ),
-              const Expanded(child: TabBarView(children: [_Packs(), _Bits(), _Themes(), _Style(), ProfileThemePicker(embedded: true)])),
+              const Expanded(child: TabBarView(children: [_Packs(), _Bits(), _Themes(), ProfileThemePicker(embedded: true), _Style()])),
             ],
           ),
         ),
@@ -68,18 +69,37 @@ class ShopScreen extends StatelessWidget {
 
 Future<void> buyProduct(BuildContext context, Product p) async {
   final g = GameScope.read(context);
-  final r = await g.purchase(p);
-  switch (r) {
-    case PurchaseResult.granted:
-      break;
-    case PurchaseResult.pending:
-      g.toast('Purchase pending…');
-    case PurchaseResult.cancelled:
-      g.toast('Purchase cancelled');
-    case PurchaseResult.unavailable:
-      g.toast('Store unavailable on this device. (Developer build: enable Debug → Free purchases.)');
-    case PurchaseResult.error:
-      g.toast('Purchase failed');
+  // Real-money purchases aren't live yet (admin builds can still test the
+  // store flow with free purchases).
+  if (p.realMoney && !(kAdminBuild && g.profile.debugEnabled && g.profile.freePurchases)) {
+    final gift = p.bundleOf != null;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sorry, you can\'t purchase this yet.'),
+        content: gift ? const Text('... but I\'ll give it to you for free. Just this once! Thanks for supporting Tunetrail :)') : null,
+        actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(gift ? 'Thanks!' : 'OK'))],
+      ),
+    );
+    if (gift) g.grantFree(p);
+    return;
+  }
+  try {
+    final r = await g.purchase(p);
+    switch (r) {
+      case PurchaseResult.granted:
+        break;
+      case PurchaseResult.pending:
+        g.toast('Purchase pending…');
+      case PurchaseResult.cancelled:
+        g.toast('Purchase cancelled');
+      case PurchaseResult.unavailable:
+        g.toast('Store unavailable on this device');
+      case PurchaseResult.error:
+        g.toast('Purchase failed');
+    }
+  } catch (e) {
+    g.toast('$e');
   }
 }
 
@@ -145,7 +165,11 @@ class _Packs extends StatelessWidget {
                           onPressed: () => _showOdds(context, p),
                           child: const Text('View drop rates'),
                         ),
-                        FilledButton.icon(icon: const Icon(kBitsIcon, size: 18), label: Text('${p.bits} bits'), onPressed: g.profile.bits < p.bits ? null : () => _open(context, p)),
+                        FilledButton.icon(
+                          icon: const Icon(kBitsIcon, size: 18),
+                          label: Text('${p.bits} bits'),
+                          onPressed: g.profile.bits < p.bits ? null : () => _open(context, p),
+                        ),
                       ],
                     ),
                   ),
@@ -153,29 +177,16 @@ class _Packs extends StatelessWidget {
               ),
             ),
           ),
-        if (g.profile.bits < kPacks.first.bits) TextButton(onPressed: () => DefaultTabController.of(context).animateTo(1), child: const Text('Get more bits →')),
+        if (g.profile.bits < kPacks.first.bits)
+          TextButton(onPressed: () => DefaultTabController.of(context).animateTo(1), child: const Text('Get more bits →')),
       ],
     );
   }
 
   Future<void> _open(BuildContext context, PackDef p) async {
     final g = GameScope.read(context);
-    int? genre;
-    if (p.genreChoice) {
-      genre = await showDialog<int>(
-        context: context,
-        builder: (ctx) => SimpleDialog(
-          title: const Text('Choose a genre'),
-          children: [
-            for (final gd in kGenres)
-              if (g.catalog.poolFor(gd.id).isNotEmpty) SimpleDialogOption(onPressed: () => Navigator.pop(ctx, gd.id), child: Text('${gd.name}  (${g.catalog.poolFor(gd.id).length} songs)')),
-          ],
-        ),
-      );
-      if (genre == null) return;
-    }
     try {
-      final cards = g.openPack(p, genreId: genre);
+      final cards = await g.openPack(p);
       if (!context.mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -209,7 +220,9 @@ class _Packs extends StatelessWidget {
                   ],
                 ),
             const SizedBox(height: 8),
-            Text('Shiny chance per card: ${p.guaranteedShiny ? 'one guaranteed, others ' : ''}1 in ${p.shinyOdds}'),
+            if (p.guaranteedShiny) const Text('At least one Shiny') else if (p.shinyOdds > 0) Text('Shiny chance per card: 1 in ${p.shinyOdds}'),
+            if (p.canvasOdds > 0) Text('Canvas edition: 1 pack in ${p.canvasOdds}'),
+            const Text('Favourite artists turn up more often (regular cards only). No Sample or Live editions.'),
             if (p.guaranteedMin != null) Text('Guaranteed: at least one ${p.guaranteedMin!.label} or better'),
             const SizedBox(height: 8),
             const Text('Rates are per card before guarantees are applied.', style: TextStyle(fontSize: 12, color: Colors.white54)),
@@ -256,7 +269,7 @@ class _Bits extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        const Text('Bits are used to buy song packs.', style: TextStyle(color: Colors.white60)),
+        const Text('Bits buy song packs, profile themes, pets, showcases and more.', style: TextStyle(color: Colors.white60)),
         const SizedBox(height: 8),
         for (final p in kBitsBundles)
           Card(
@@ -374,7 +387,12 @@ class _MiniWorldPainter extends CustomPainter {
     final horizon = h * 0.22;
     canvas.drawRect(
       Rect.fromLTWH(0, 0, w, horizon),
-      Paint()..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [p.skyTop, p.skyBottom]).createShader(Rect.fromLTWH(0, 0, w, horizon)),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [p.skyTop, p.skyBottom],
+        ).createShader(Rect.fromLTWH(0, 0, w, horizon)),
     );
     canvas.drawRect(Rect.fromLTWH(0, horizon, w, h - horizon), Paint()..color = p.ground);
     final vp = Offset(w * 0.5, horizon);
@@ -427,66 +445,88 @@ class _Style extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = GameScope.of(context);
     final p = g.profile;
-    Widget section(String title, ProductKind kind, List<Product> items, String? equipped) => Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-          child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-        ),
-        SizedBox(
-          height: 210,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            itemCount: items.length,
-            itemBuilder: (context, i) {
-              final it = items[i];
-              final owned = p.owned.contains(it.id);
-              final on = equipped == it.id;
-              final look = FigureLook(
-                color: Color(p.figureColor),
-                hat: kind == ProductKind.hat ? it.id : p.hat,
-                shirt: kind == ProductKind.shirt ? it.id : p.shirt,
-                pet: kind == ProductKind.pet ? it.id : null,
-                backpack: kind == ProductKind.backpack ? it.id : p.backpack,
-              );
-              return Container(
-                width: 140,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                decoration: BoxDecoration(
-                  color: kSurface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: on ? it.color : Colors.white12, width: on ? 2 : 1),
+    Widget section(String title, ProductKind kind, List<Product> items, String? equipped) {
+      final bundle = kind == ProductKind.pet ? null : bundleFor(kind);
+      final haveAll = items.every((it) => p.owned.contains(it.id));
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                 ),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Center(child: Figure3DPreview(look: look, size: 130, animate: on, facing: kind == ProductKind.backpack ? 30 : 200)),
-                    ),
-                    Text(
-                      it.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: owned
-                            ? FilledButton.tonal(onPressed: () => g.equip(kind, on ? null : it.id), child: Text(on ? 'Unequip' : 'Equip'))
-                            : FilledButton(onPressed: () => buyProduct(context, it), child: Text(g.purchases.priceFor(it))),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                if (bundle != null && !haveAll)
+                  FilledButton.icon(
+                    icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                    label: Text('Get all ${items.length} · ${g.purchases.priceFor(bundle)}'),
+                    onPressed: () => buyProduct(context, bundle),
+                  ),
+                if (kind == ProductKind.pet) const Text('500 bits each', style: TextStyle(color: kTextTertiary)),
+              ],
+            ),
           ),
-        ),
-      ],
-    );
+          SizedBox(
+            height: 210,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              itemCount: items.length,
+              itemBuilder: (context, i) {
+                final it = items[i];
+                final owned = p.owned.contains(it.id);
+                final on = equipped == it.id;
+                final look = FigureLook(
+                  color: Color(p.figureColor),
+                  hat: kind == ProductKind.hat ? it.id : p.hat,
+                  shirt: kind == ProductKind.shirt ? it.id : p.shirt,
+                  pet: kind == ProductKind.pet ? it.id : null,
+                  backpack: kind == ProductKind.backpack ? it.id : p.backpack,
+                );
+                return Container(
+                  width: 140,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: kSurface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: on ? it.color : Colors.white12, width: on ? 2 : 1),
+                  ),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Center(
+                          child: Figure3DPreview(look: look, size: 130, animate: on, facing: kind == ProductKind.backpack ? 30 : 200),
+                        ),
+                      ),
+                      Text(
+                        it.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: owned
+                              ? FilledButton.tonal(onPressed: () => g.equip(kind, on ? null : it.id), child: Text(on ? 'Unequip' : 'Equip'))
+                              : kind == ProductKind.pet
+                              ? FilledButton(onPressed: p.bits < it.bitsPrice ? null : () => buyProduct(context, it), child: Text('${it.bitsPrice} bits'))
+                              : const OutlinedButton(onPressed: null, child: Text('In bundle')),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
     return ListView(
       children: [
         section('Hats', ProductKind.hat, kHatProducts, p.hat),
@@ -532,7 +572,14 @@ class _BlindBoxScreenState extends State<BlindBoxScreen> {
     try {
       final pull = await g.openArtistBlindBox(a);
       if (!mounted) return;
-      final pack = PackDef(id: 'blind_${a.id}', name: '${a.name} Blind Box', bits: Game.blindBoxPrice(a.fans), cards: 1, description: '', color: const Color(0xFFFF6F91));
+      final pack = PackDef(
+        id: 'blind_${a.id}',
+        name: '${a.name} Blind Box',
+        bits: Game.blindBoxPrice(a.fans),
+        cards: 1,
+        description: '',
+        color: const Color(0xFFFF6F91),
+      );
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => PackOpeningScreen(pack: pack, cards: [pull]),

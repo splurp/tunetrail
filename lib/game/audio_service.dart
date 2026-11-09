@@ -26,7 +26,29 @@ class BeatInfo {
 /// Plays 30-second Deezer previews (singly, as a queue, or as staged
 /// sample breakdowns) with precise timing, using SoLoud.
 class AudioService extends ChangeNotifier {
-  AudioService(this.catalog);
+  AudioService(this.catalog) {
+    instance = this;
+  }
+
+  /// The running game's audio (for things drawn in time with the music).
+  static AudioService? instance;
+  final Set<int> _beatRequested = {};
+
+  /// Where the music is within the current beat (0 = on the beat, rising
+  /// to 1 just before the next), or null when nothing is playing or the
+  /// beat isn't known yet.
+  double? beatPhase() {
+    final s = current;
+    if (!playing || s == null) return null;
+    final b = _beats[s.id];
+    if (b == null) {
+      if (_beatRequested.add(s.id)) beatInfo(s.id).catchError((_) => null);
+      return null;
+    }
+    final pos = exactPosition;
+    if (pos == null || pos < b.phase) return null;
+    return ((pos - b.phase) / b.period) % 1.0;
+  }
 
   final Catalog catalog;
   final SoLoud _sl = SoLoud.instance;

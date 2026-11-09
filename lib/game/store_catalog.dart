@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
-enum ProductKind { bits, theme, hat, shirt, pet, backpack }
+enum ProductKind { bits, theme, hat, shirt, pet, backpack, bundle }
 
 /// A real-money store item (bits bundles, map themes, cosmetics).
 class Product {
@@ -14,7 +14,15 @@ class Product {
     this.description = '',
     this.color = const Color(0xFF00E5FF),
     this.icon = Icons.star,
+    this.bitsPrice = 0,
+    this.bundleOf,
   });
+
+  /// Bought with in-game bits instead of real money (pets).
+  final int bitsPrice;
+
+  /// A bundle unlocks every product of this kind.
+  final ProductKind? bundleOf;
 
   /// Store SKU. The same id is used for Google Play / App Store products.
   final String id;
@@ -27,7 +35,10 @@ class Product {
   final IconData icon;
 
   bool get consumable => kind == ProductKind.bits;
-  String get priceLabel => usd == 0 ? 'Free' : '\$${usd.toStringAsFixed(2)}';
+  String get priceLabel => bitsPrice > 0 ? '$bitsPrice bits' : (usd == 0 ? 'Free' : '\$${usd.toStringAsFixed(2)}');
+
+  /// Costs real money (through the app store).
+  bool get realMoney => usd > 0 && bitsPrice == 0;
   String get storeId => 'tt_$id';
 }
 
@@ -41,17 +52,17 @@ const kBitsBundles = [
 
 const kThemeProducts = [
   Product(id: 'theme_classic', name: 'Obsidian', kind: ProductKind.theme, usd: 0, description: 'Default. Black and graphite streets with a soft violet glow.', color: Color(0xFF9A8CF0), icon: Icons.dark_mode),
-  Product(id: 'theme_midnight', name: 'Midnight', kind: ProductKind.theme, usd: 1.99, description: 'Deep blue night streets with glowing roads.', color: Color(0xFF3F51B5), icon: Icons.nightlight),
-  Product(id: 'theme_synthwave', name: 'Synthwave', kind: ProductKind.theme, usd: 2.99, description: 'Neon magenta grid and a retro sunset haze.', color: Color(0xFFFF00C8), icon: Icons.grid_on),
-  Product(id: 'theme_vaporwave', name: 'Vaporwave', kind: ProductKind.theme, usd: 2.99, description: 'Pastel pink and teal aesthetic.', color: Color(0xFFFF9FF3), icon: Icons.landscape),
-  Product(id: 'theme_noir', name: 'Noir', kind: ProductKind.theme, usd: 1.99, description: 'Black & white film grain with falling rain.', color: Color(0xFFBDBDBD), icon: Icons.movie),
-  Product(id: 'theme_vinyl', name: 'Vintage Vinyl', kind: ProductKind.theme, usd: 1.99, description: 'Warm sepia tones and record-shop dust.', color: Color(0xFFD7A86E), icon: Icons.album),
-  Product(id: 'theme_matrix', name: 'Digital Rain', kind: ProductKind.theme, usd: 2.99, description: 'Green code cascades over the city.', color: Color(0xFF00FF66), icon: Icons.code),
-  Product(id: 'theme_arctic', name: 'Arctic', kind: ProductKind.theme, usd: 1.99, description: 'Icy blues with gentle snowfall.', color: Color(0xFF80DEEA), icon: Icons.ac_unit),
-  Product(id: 'theme_lava', name: 'Magma', kind: ProductKind.theme, usd: 2.99, description: 'Molten streets and drifting embers.', color: Color(0xFFFF5722), icon: Icons.local_fire_department),
-  Product(id: 'theme_aurora', name: 'Aurora', kind: ProductKind.theme, usd: 3.99, description: 'Shimmering northern lights over dark streets.', color: Color(0xFF69F0AE), icon: Icons.auto_awesome),
-  Product(id: 'theme_candy', name: 'Candy', kind: ProductKind.theme, usd: 2.99, description: 'Giant lollipops and wrapped sweets drifting down from a sugar-pink sky.', color: Color(0xFFFF4FA3), icon: Icons.cake),
-  Product(id: 'theme_sakura', name: 'Sakura', kind: ProductKind.theme, usd: 2.99, description: 'Soft pink blossoms drifting through town.', color: Color(0xFFF8BBD0), icon: Icons.local_florist),
+  Product(id: 'theme_midnight', name: 'Midnight', kind: ProductKind.theme, usd: 0.99, description: 'Deep blue night streets with glowing roads.', color: Color(0xFF3F51B5), icon: Icons.nightlight),
+  Product(id: 'theme_synthwave', name: 'Synthwave', kind: ProductKind.theme, usd: 0.99, description: 'Neon magenta grid and a retro sunset haze.', color: Color(0xFFFF00C8), icon: Icons.grid_on),
+  Product(id: 'theme_vaporwave', name: 'Vaporwave', kind: ProductKind.theme, usd: 0.99, description: 'Pastel pink and teal aesthetic.', color: Color(0xFFFF9FF3), icon: Icons.landscape),
+  Product(id: 'theme_noir', name: 'Noir', kind: ProductKind.theme, usd: 0.99, description: 'Black & white film grain with falling rain.', color: Color(0xFFBDBDBD), icon: Icons.movie),
+  Product(id: 'theme_vinyl', name: 'Vintage Vinyl', kind: ProductKind.theme, usd: 0.99, description: 'Warm sepia tones and record-shop dust.', color: Color(0xFFD7A86E), icon: Icons.album),
+  Product(id: 'theme_matrix', name: 'Digital Rain', kind: ProductKind.theme, usd: 0.99, description: 'Green code cascades over the city.', color: Color(0xFF00FF66), icon: Icons.code),
+  Product(id: 'theme_arctic', name: 'Arctic', kind: ProductKind.theme, usd: 0.99, description: 'Icy blues with gentle snowfall.', color: Color(0xFF80DEEA), icon: Icons.ac_unit),
+  Product(id: 'theme_lava', name: 'Magma', kind: ProductKind.theme, usd: 0.99, description: 'Molten streets and drifting embers.', color: Color(0xFFFF5722), icon: Icons.local_fire_department),
+  Product(id: 'theme_aurora', name: 'Aurora', kind: ProductKind.theme, usd: 0.99, description: 'Shimmering northern lights over dark streets.', color: Color(0xFF69F0AE), icon: Icons.auto_awesome),
+  Product(id: 'theme_candy', name: 'Candy', kind: ProductKind.theme, usd: 0.99, description: 'Giant lollipops and wrapped sweets drifting down from a sugar-pink sky.', color: Color(0xFFFF4FA3), icon: Icons.cake),
+  Product(id: 'theme_sakura', name: 'Sakura', kind: ProductKind.theme, usd: 0.99, description: 'Soft pink blossoms drifting through town.', color: Color(0xFFF8BBD0), icon: Icons.local_florist),
 ];
 
 const kHatProducts = [
@@ -78,14 +89,13 @@ const kShirtProducts = [
 ];
 
 const kPetProducts = [
-  Product(id: 'pet_cat', name: 'Vinyl Cat', kind: ProductKind.pet, usd: 2.99, color: Color(0xFFFF9800), icon: Icons.pets),
-  Product(id: 'pet_dog', name: 'Beat Pup', kind: ProductKind.pet, usd: 2.99, color: Color(0xFF8D6E63), icon: Icons.pets),
-  Product(id: 'pet_bird', name: 'Songbird', kind: ProductKind.pet, usd: 2.49, color: Color(0xFF29B6F6), icon: Icons.flutter_dash),
-  Product(id: 'pet_slime', name: 'Bass Slime', kind: ProductKind.pet, usd: 1.99, color: Color(0xFF76FF03), icon: Icons.bubble_chart),
-  Product(id: 'pet_robot', name: 'Drum Bot', kind: ProductKind.pet, usd: 3.49, color: Color(0xFF90A4AE), icon: Icons.smart_toy),
-  Product(id: 'pet_ghost', name: 'Echo Ghost', kind: ProductKind.pet, usd: 2.99, color: Color(0xFFE0E0E0), icon: Icons.blur_on),
-  Product(id: 'pet_hamster', name: 'Hip-Hop Hamster', kind: ProductKind.pet, usd: 2.49, color: Color(0xFFE0A15E), icon: Icons.cruelty_free),
-  Product(id: 'pet_dragon', name: 'Mini Dragon', kind: ProductKind.pet, usd: 4.99, color: Color(0xFFD50000), icon: Icons.whatshot),
+  Product(id: 'pet_cat', name: 'Vinyl Cat', kind: ProductKind.pet, usd: 0, bitsPrice: 500, color: Color(0xFFFF9800), icon: Icons.pets),
+  Product(id: 'pet_dog', name: 'Beat Pup', kind: ProductKind.pet, usd: 0, bitsPrice: 500, color: Color(0xFF8D6E63), icon: Icons.pets),
+  Product(id: 'pet_bird', name: 'Songbird', kind: ProductKind.pet, usd: 0, bitsPrice: 500, color: Color(0xFF29B6F6), icon: Icons.flutter_dash),
+  Product(id: 'pet_slime', name: 'Bass Slime', kind: ProductKind.pet, usd: 0, bitsPrice: 500, color: Color(0xFF76FF03), icon: Icons.bubble_chart),
+  Product(id: 'pet_robot', name: 'Drum Bot', kind: ProductKind.pet, usd: 0, bitsPrice: 500, color: Color(0xFF90A4AE), icon: Icons.smart_toy),
+  Product(id: 'pet_ghost', name: 'Echo Ghost', kind: ProductKind.pet, usd: 0, bitsPrice: 500, color: Color(0xFFE0E0E0), icon: Icons.blur_on),
+  Product(id: 'pet_hamster', name: 'Hip-Hop Hamster', kind: ProductKind.pet, usd: 0, bitsPrice: 500, color: Color(0xFFE0A15E), icon: Icons.cruelty_free),
 ];
 
 const kBackpackProducts = [
@@ -97,7 +107,27 @@ const kBackpackProducts = [
   Product(id: 'bag_wings', name: 'Angel Wings', kind: ProductKind.backpack, usd: 3.99, color: Color(0xFFFFFFFF), icon: Icons.flight),
 ];
 
+/// Hats, shirts and backpacks are sold as bundles of the whole set.
+const kBundleProducts = [
+  Product(id: 'bundle_hats', name: 'Hat Bundle', kind: ProductKind.bundle, bundleOf: ProductKind.hat, usd: 2.99, description: 'Every hat', color: Color(0xFFFFC107), icon: Icons.face),
+  Product(id: 'bundle_shirts', name: 'Shirt Bundle', kind: ProductKind.bundle, bundleOf: ProductKind.shirt, usd: 2.99, description: 'Every shirt', color: Color(0xFF7E57C2), icon: Icons.checkroom),
+  Product(id: 'bundle_backpacks', name: 'Backpack Bundle', kind: ProductKind.bundle, bundleOf: ProductKind.backpack, usd: 2.99, description: 'Every backpack', color: Color(0xFF1565C0), icon: Icons.backpack),
+];
+
+List<Product> productsOfKind(ProductKind k) => switch (k) {
+      ProductKind.hat => kHatProducts,
+      ProductKind.shirt => kShirtProducts,
+      ProductKind.backpack => kBackpackProducts,
+      ProductKind.pet => kPetProducts,
+      ProductKind.theme => kThemeProducts,
+      ProductKind.bits => kBitsBundles,
+      ProductKind.bundle => kBundleProducts,
+    };
+
+Product bundleFor(ProductKind k) => kBundleProducts.firstWhere((b) => b.bundleOf == k);
+
 final List<Product> kAllProducts = [
+  ...kBundleProducts,
   ...kBitsBundles,
   ...kThemeProducts,
   ...kHatProducts,
@@ -128,7 +158,11 @@ class PackDef {
     this.shinyOdds = kShinyOdds,
     this.genreChoice = false,
     this.guaranteedShiny = false,
+    this.canvasOdds = 0,
   });
+
+  /// 1 in [canvasOdds] packs holds a random Canvas edition (0 = never).
+  final int canvasOdds;
   final String id;
   final String name;
   final int bits;
@@ -144,6 +178,7 @@ class PackDef {
 
   /// Multiplier on rare+ weights.
   final double luck;
+  /// 1 in [shinyOdds] per card (0 = no random shinies).
   final int shinyOdds;
 
   /// Player picks a genre first.
@@ -155,50 +190,37 @@ class PackDef {
 
 const kPacks = [
   PackDef(
-      id: 'pack_standard',
-      name: 'Street Pack',
+      id: 'pack_gold',
+      name: 'Gold Pack',
       bits: 100,
-      cards: 5,
-      description: '5 songs from any genre. At least one Uncommon or better.',
-      color: Color(0xFF7A7A86),
-      guaranteedMin: Rarity.uncommon),
-  PackDef(
-      id: 'pack_genre',
-      name: 'Genre Pack',
-      bits: 150,
-      cards: 5,
-      description: 'Pick a genre. 5 songs, at least one Rare or better.',
-      color: Color(0xFF5E8C6A),
-      guaranteedMin: Rarity.rare,
-      genreChoice: true),
-  PackDef(
-      id: 'pack_rare',
-      name: 'Hi-Fi Pack',
-      bits: 350,
-      cards: 5,
-      description: 'All Uncommon or better, one Epic or better, boosted luck.',
-      color: Color(0xFF4E6FA8),
-      allMin: Rarity.uncommon,
-      guaranteedMin: Rarity.epic,
-      luck: 1.5),
-  PackDef(
-      id: 'pack_legend',
-      name: 'Platinum Pack',
-      bits: 1000,
-      cards: 3,
-      description: 'All Rare or better, with a guaranteed Legendary.',
-      color: Color(0xFFB39550),
+      cards: 10,
+      description: '10 songs, all Rare or better, at least one Epic — and a small chance of a Legendary.',
+      color: Color(0xFFD4A537),
       allMin: Rarity.rare,
-      guaranteedMin: Rarity.legendary,
-      luck: 2.0,
-      shinyOdds: 48),
+      guaranteedMin: Rarity.epic,
+      luck: 1.0,
+      shinyOdds: 0),
   PackDef(
-      id: 'pack_shiny',
-      name: 'Prism Pack',
-      bits: 1200,
-      cards: 3,
-      description: '3 songs with one guaranteed Shiny variant (any rarity).',
-      color: Color(0xFF8A7AD6),
-      luck: 1.5,
-      guaranteedShiny: true),
+      id: 'pack_platinum',
+      name: 'Platinum Pack',
+      bits: 500,
+      cards: 10,
+      description: '10 songs, all Epic or better, at least one Legendary — with a small chance of a Shiny.',
+      color: Color(0xFF9FB4C7),
+      allMin: Rarity.epic,
+      guaranteedMin: Rarity.legendary,
+      luck: 1.0,
+      shinyOdds: 100),
+  PackDef(
+      id: 'pack_prismatic',
+      name: 'Prismatic Pack',
+      bits: 1000,
+      cards: 10,
+      description: '10 songs, all Epic or better, at least one Shiny — with a small chance of a Canvas edition.',
+      color: Color(0xFFB388FF),
+      allMin: Rarity.epic,
+      luck: 1.0,
+      shinyOdds: 0,
+      guaranteedShiny: true,
+      canvasOdds: 20),
 ];

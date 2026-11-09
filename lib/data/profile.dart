@@ -331,6 +331,7 @@ class PlayerProfile extends ChangeNotifier {
     hat = j['hat'] as String?;
     shirt = j['shirt'] as String?;
     pet = j['pet'] as String?;
+    if (pet == 'pet_dragon') pet = null; // retired
     backpack = j['backpack'] as String?;
     playlists = [
       for (final p in (j['playlists'] as List? ?? const []))

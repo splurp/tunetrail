@@ -414,12 +414,12 @@ class Game extends ChangeNotifier {
     profile.changed();
   }
 
-  /// Buys a profile theme with coins and puts it on.
+  /// Buys a profile theme with bits and puts it on.
   void buyProfileTheme(ProfileTheme t) {
     if (profile.owned.contains(t.id)) return setProfileTheme(t.id);
     if (!(kAdminBuild && profile.freePurchases && profile.debugEnabled)) {
-      if (profile.coins < t.price) throw MarketException('Not enough coins');
-      profile.coins -= t.price;
+      if (profile.bits < t.price) throw MarketException('Not enough bits');
+      profile.bits -= t.price;
     }
     profile.owned.add(t.id);
     profile.profileTheme = t.id;
@@ -812,42 +812,73 @@ class Game extends ChangeNotifier {
   }
 
   // ----------------------------------------------------------------- packs
+  /// A song by one of the player's favourite artists, at least [min].
+  Song? _favoriteSong(Rng rng, Rarity min) {
+    final favs = catalog.favoriteArtists;
+    if (favs.isEmpty) return null;
+    final pool = [for (final s in catalog.songs.values) if (favs.contains(s.artistId) && catalog.rarityOf(s).index >= min.index) s];
+    return pool.isEmpty ? null : pool[rng.nextInt(pool.length)];
+  }
+
+  /// A song of at least [min] rarity (rolled with the pack's odds).
+  Song _packSong(Rng rng, PackDef p, Rarity min, {bool favorites = false}) {
+    // Regular cards lean towards favourite artists (1 in 3); Shiny and
+    // Canvas cards never do.
+    if (favorites && rng.nextInt(3) == 0) {
+      final f = _favoriteSong(rng, min);
+      if (f != null) return f;
+    }
+    for (var tries = 0; tries < 12; tries++) {
+      final cand = catalog.pickSong(rng, rarity: rng.rollRarity(minIndex: min.index, luck: p.luck));
+      if (cand != null && catalog.rarityOf(cand).index >= min.index) return cand;
+    }
+    return catalog.pickSong(rng, rarity: min) ?? catalog.pickSong(rng)!;
+  }
+
   /// Opens a pack; returns the new cards. Throws if not enough bits.
-  List<PackPull> openPack(PackDef p, {int? genreId}) {
+  /// Packs never contain Sample or Live editions.
+  Future<List<PackPull>> openPack(PackDef p) async {
     if (profile.bits < p.bits) throw MarketException('Not enough bits');
     if (catalog.size == 0) throw MarketException('Song catalog still loading');
     profile.bits -= p.bits;
+    profile.changed();
     final rng = Rng(DateTime.now().microsecondsSinceEpoch ^ profile.packsOpened * 7919);
-    final rolls = <(Song, Rarity, bool)>[];
+    // Which slots are special: shinies, and maybe one Canvas.
+    final shiny = List.generate(p.cards, (_) => p.shinyOdds > 0 && rng.chance(p.shinyOdds));
+    if (p.guaranteedShiny && !shiny.contains(true)) shiny[rng.nextInt(p.cards)] = true;
+    var canvasSlot = -1;
+    if (p.canvasOdds > 0 && rng.nextInt(p.canvasOdds) == 0) {
+      canvasSlot = [for (var i = 0; i < p.cards; i++) if (!shiny[i]) i].firstOrNull ?? -1;
+    }
+    final rolls = <(Song, bool, bool)>[]; // song, shiny, canvas
     for (var i = 0; i < p.cards; i++) {
-      final song = catalog.pickSong(rng, genreId: genreId, rarity: rng.rollRarity(minIndex: p.allMin.index, luck: p.luck))!;
-      rolls.add((song, catalog.rarityOf(song), rng.chance(p.shinyOdds)));
+      final special = shiny[i] || i == canvasSlot;
+      rolls.add((_packSong(rng, p, p.allMin, favorites: !special), shiny[i], i == canvasSlot));
     }
-    // Enforce guarantees on the last card (classic "pity slot"). Rarity is a
-    // property of the song, so the slot draws a song of that rarity.
-    if (p.guaranteedMin != null && !rolls.any((x) => x.$2.index >= p.guaranteedMin!.index)) {
-      final last = rolls.removeLast();
-      Song? pick;
-      for (var tries = 0; tries < 12; tries++) {
-        final cand = catalog.pickSong(rng, genreId: genreId, rarity: rng.rollRarity(minIndex: p.guaranteedMin!.index, luck: p.luck));
-        if (cand != null && catalog.rarityOf(cand).index >= p.guaranteedMin!.index) {
-          pick = cand;
-          break;
-        }
-      }
-      pick ??= catalog.pickSong(rng, rarity: p.guaranteedMin);
-      rolls.add(pick == null ? last : (pick, catalog.rarityOf(pick), last.$3));
-    }
-    if (p.guaranteedShiny && !rolls.any((x) => x.$3)) {
-      final i = rng.nextInt(rolls.length);
-      rolls[i] = (rolls[i].$1, rolls[i].$2, true);
+    // Guarantee: the last regular slot is redrawn at the guaranteed rarity.
+    final g = p.guaranteedMin;
+    if (g != null && !rolls.any((r) => catalog.rarityOf(r.$1).index >= g.index)) {
+      final i = rolls.lastIndexWhere((r) => !r.$2 && !r.$3);
+      final at = i < 0 ? rolls.length - 1 : i;
+      rolls[at] = (_packSong(rng, p, g, favorites: !rolls[at].$2 && !rolls[at].$3), rolls[at].$2, rolls[at].$3);
     }
     final out = <PackPull>[];
     for (final r in rolls) {
-      // Songs with known sample data sometimes come as Sample editions.
-      const ed = Edition.standard;
-      final card = acquire(r.$1.id, r.$2, r.$3, ed, CardSource.pack, notify: false, announce: false);
-      out.add(PackPull(card ?? OwnedCard(-1, r.$1, r.$2, r.$3, false, DateTime.now(), CardSource.pack, ed), card == null ? lastDuplicateCoins : 0));
+      var ed = Edition.standard;
+      var serial = 0;
+      if (r.$3) {
+        try {
+          final n = await market.claimSerial(r.$1.id, Edition.canvas);
+          if (n != null) {
+            ed = Edition.canvas;
+            serial = n;
+          }
+        } catch (_) {}
+      }
+      final rarity = catalog.rarityOf(r.$1);
+      final isShiny = r.$2 && ed == Edition.standard;
+      final card = acquire(r.$1.id, rarity, isShiny, ed, CardSource.pack, notify: false, announce: false, serial: serial);
+      out.add(PackPull(card ?? OwnedCard(-1, r.$1, rarity, isShiny, false, DateTime.now(), CardSource.pack, ed), card == null ? lastDuplicateCoins : 0));
     }
     collection.notifyListeners();
     unawaited(collection.save());
@@ -913,14 +944,36 @@ class Game extends ChangeNotifier {
     if (p.kind != ProductKind.bits && profile.owned.contains(p.id)) {
       return PurchaseResult.granted;
     }
+    if (p.bitsPrice > 0) {
+      buyWithBits(p);
+      return PurchaseResult.granted;
+    }
     final r = await purchases.buy(p, debugFree: kAdminBuild && profile.debugEnabled && profile.freePurchases);
     return r;
   }
+
+  /// Buys a bits-priced item (pets).
+  void buyWithBits(Product p) {
+    if (profile.owned.contains(p.id)) return;
+    if (profile.bits < p.bitsPrice) throw MarketException('Not enough bits');
+    profile.bits -= p.bitsPrice;
+    profile.owned.add(p.id);
+    profile.changed();
+    toast('Unlocked ${p.name}');
+  }
+
+  /// Gives a store item away (while real-money purchases aren't live).
+  void grantFree(Product p) => _grantProduct(p);
 
   void _grantProduct(Product p) {
     if (p.kind == ProductKind.bits) {
       profile.bits += p.bits;
       toast('+${p.bits} bits');
+    } else if (p.bundleOf != null) {
+      profile.owned
+        ..add(p.id)
+        ..addAll(productsOfKind(p.bundleOf!).map((x) => x.id));
+      toast('Unlocked the ${p.name}');
     } else {
       profile.owned.add(p.id);
       toast('Unlocked ${p.name}');
@@ -942,6 +995,7 @@ class Game extends ChangeNotifier {
       case ProductKind.theme:
         profile.activeTheme = id ?? 'theme_classic';
       case ProductKind.bits:
+      case ProductKind.bundle:
         break;
     }
     profile.changed();
