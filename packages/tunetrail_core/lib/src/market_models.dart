@@ -12,7 +12,9 @@ class MarketPlayer {
     Map<String, num>? stats,
     List<CardPayload>? editionShowcase,
     Set<String>? blocked,
-  })  : stats = stats ?? {},
+    List<FavoriteArtist>? favoriteArtists,
+  })  : favoriteArtists = favoriteArtists ?? [],
+        stats = stats ?? {},
         editionShowcase = editionShowcase ?? [],
         blocked = blocked ?? {};
   final String id;
@@ -32,6 +34,9 @@ class MarketPlayer {
   /// Players this player has blocked (no messages or offers from them).
   Set<String> blocked;
 
+  /// Shown on the player's profile.
+  List<FavoriteArtist> favoriteArtists;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
@@ -43,6 +48,7 @@ class MarketPlayer {
         if (stats.isNotEmpty) 'stats': stats,
         if (editionShowcase.isNotEmpty) 'editions': [for (final c in editionShowcase) c.toJson()],
         if (blocked.isNotEmpty) 'blocked': blocked.toList(),
+        if (favoriteArtists.isNotEmpty) 'favArtists': [for (final a in favoriteArtists) a.toJson()],
       };
   factory MarketPlayer.fromJson(Map<String, dynamic> j) => MarketPlayer(
         id: j['id'] as String,
@@ -55,6 +61,7 @@ class MarketPlayer {
         stats: {for (final e in (j['stats'] as Map<String, dynamic>? ?? const {}).entries) if (e.value is num) e.key: e.value as num},
         editionShowcase: [for (final c in (j['editions'] as List? ?? const [])) CardPayload.fromJson(c as Map<String, dynamic>)],
         blocked: {for (final x in (j['blocked'] as List? ?? const [])) x as String},
+        favoriteArtists: [for (final a in (j['favArtists'] as List? ?? const [])) FavoriteArtist.fromJson(a as Map<String, dynamic>)],
       );
 }
 
@@ -242,6 +249,9 @@ class FavoriteArtist {
   factory FavoriteArtist.fromJson(Map<String, dynamic> j) =>
       FavoriteArtist(id: (j['id'] as num).toInt(), name: j['name'] as String? ?? '', picMd5: j['pic'] as String? ?? '');
 }
+
+/// Cards in a player's showcase.
+const int kMaxShowcaseCards = 10;
 
 /// Sanity limit on favourite artists per player (effectively unlimited;
 /// only guards the server against absurd payloads).

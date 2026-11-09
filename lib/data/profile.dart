@@ -83,6 +83,9 @@ class PlayerProfile extends ChangeNotifier {
 
   // Showcase.
   String showcaseTitle = '';
+
+  /// A showcase is up on the market (published for bits).
+  bool showcasePublished = false;
   List<int> showcaseCards = [];
 
   /// Up to three Canvas / Sample cards shown on the player's profile.
@@ -267,6 +270,7 @@ class PlayerProfile extends ChangeNotifier {
         'spent': spentSpawns,
         'favArtists': [for (final a in favoriteArtists) a.toJson()],
         'showcaseTitle': showcaseTitle,
+        'showcaseUp': showcasePublished,
         'showcaseCards': showcaseCards,
         'edShowcase': editionShowcase,
         'showcasePlaylists': showcasePlaylists,
@@ -357,6 +361,7 @@ class PlayerProfile extends ChangeNotifier {
     };
     favoriteArtists = [for (final a in (j['favArtists'] as List? ?? const [])) FavoriteArtist.fromJson(a as Map<String, dynamic>)];
     showcaseTitle = j['showcaseTitle'] as String? ?? '';
+    showcasePublished = j['showcaseUp'] as bool? ?? false;
     showcaseCards = [for (final x in (j['showcaseCards'] as List? ?? const [])) (x as num).toInt()];
     editionShowcase = [for (final x in (j['edShowcase'] as List? ?? const [])) (x as num).toInt()];
     showcasePlaylists = [for (final x in (j['showcasePlaylists'] as List? ?? const [])) x as String];

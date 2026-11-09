@@ -209,7 +209,10 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
             theme: b['theme'] as String?,
             level: (b['level'] as num?)?.toInt(),
             stats: b['stats'] == null ? null : {for (final e in (b['stats'] as Map<String, dynamic>).entries) if (e.value is num) e.key: e.value as num},
-            editionShowcase: b['editions'] == null ? null : cards(b['editions']));
+            editionShowcase: b['editions'] == null ? null : cards(b['editions']),
+            favoriteArtists: b['favArtists'] == null
+                ? null
+                : [for (final a in (b['favArtists'] as List)) FavoriteArtist.fromJson(a as Map<String, dynamic>)]);
         return ok({'ok': true});
       }));
   r.put('/me/collection', (Request req) => guard(() async {
@@ -341,6 +344,10 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
                 FavoriteArtist.fromJson(a as Map<String, dynamic>)
             ]);
         return ok(s.toJson());
+      }));
+  r.post('/showcases/me/remove', (Request req) => guard(() async {
+        m.removeShowcase(pid(req));
+        return ok({'ok': true});
       }));
   r.post('/showcases/<owner>/like', (Request req, String owner) => guard(() async =>
       ok({'likes': m.likeShowcase(pid(req), owner)})));

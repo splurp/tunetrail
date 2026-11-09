@@ -54,114 +54,119 @@ class ProfileScreen extends StatelessWidget {
     final p = g.profile;
     final look = FigureLook(color: Color(p.figureColor), hat: p.hat, shirt: p.shirt, pet: p.pet, backpack: p.backpack);
     final hsv = HSVColor.fromColor(Color(p.figureColor));
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen())),
-          ),
-        ],
-      ),
-      body: AdaptivePanes(
-        flex: const [5, 6, 5],
-        panes: [
-          [
-            ProfileBanner(
-              themeId: p.profileTheme,
-              name: p.name,
-              subtitle: 'Level ${p.level} • ${formatNumber(p.xp)} XP',
-              actions: [
-                _BannerButton(icon: Icons.edit, tooltip: 'Change username', onTap: () => showChangeUsername(context)),
-                const SizedBox(width: 6),
-                _BannerButton(
-                  icon: Icons.palette_outlined,
-                  tooltip: 'Profile theme',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ProfileThemePicker())),
-                ),
-                const SizedBox(width: 6),
-                _BannerButton(
-                  icon: Icons.visibility_outlined,
-                  tooltip: 'See my profile as others do',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PlayerScreen(playerId: p.playerId))),
-                ),
-              ],
+    return ProfileThemePage(
+      themeId: p.profileTheme,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          title: const Text('Profile'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen())),
             ),
-            const SizedBox(height: 8),
-            Center(child: Figure3DPreview(look: look, size: 190)),
-            const SizedBox(height: 16),
-            const Text('Figure colour (free)', style: TextStyle(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final c in _palette)
-                  GestureDetector(
-                    onTap: () {
-                      p.figureColor = c;
-                      p.changed();
-                    },
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: Color(c),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: p.figureColor == c ? Colors.white : Colors.transparent, width: 3),
+          ],
+        ),
+        body: AdaptivePanes(
+          flex: const [5, 6, 5],
+          panes: [
+            [
+              ProfileBanner(
+                themeId: p.profileTheme,
+                name: p.name,
+                subtitle: 'Level ${p.level} • ${formatNumber(p.xp)} XP',
+                actions: [
+                  _BannerButton(icon: Icons.edit, tooltip: 'Change username', onTap: () => showChangeUsername(context)),
+                  const SizedBox(width: 6),
+                  _BannerButton(
+                    icon: Icons.palette_outlined,
+                    tooltip: 'Profile theme',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ProfileThemePicker())),
+                  ),
+                  const SizedBox(width: 6),
+                  _BannerButton(
+                    icon: Icons.visibility_outlined,
+                    tooltip: 'See my profile as others do',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PlayerScreen(playerId: p.playerId))),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Center(child: Figure3DPreview(look: look, size: 190)),
+              const SizedBox(height: 16),
+              const Text('Figure colour (free)', style: TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final c in _palette)
+                    GestureDetector(
+                      onTap: () {
+                        p.figureColor = c;
+                        p.changed();
+                      },
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: Color(c),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: p.figureColor == c ? Colors.white : Colors.transparent, width: 3),
+                        ),
                       ),
                     ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Text('Hue'),
+                  Expanded(
+                    child: Slider(
+                      value: hsv.hue,
+                      max: 360,
+                      onChanged: (v) {
+                        p.figureColor = HSVColor.fromAHSV(1, v, hsv.saturation.clamp(0.6, 1.0), hsv.value.clamp(0.8, 1.0)).toColor().toARGB32();
+                        p.changed();
+                      },
+                    ),
                   ),
-              ],
-            ),
-            Row(
-              children: [
-                const Text('Hue'),
-                Expanded(
-                  child: Slider(
-                    value: hsv.hue,
-                    max: 360,
-                    onChanged: (v) {
-                      p.figureColor = HSVColor.fromAHSV(1, v, hsv.saturation.clamp(0.6, 1.0), hsv.value.clamp(0.8, 1.0)).toColor().toARGB32();
-                      p.changed();
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text('Equipped', style: TextStyle(fontWeight: FontWeight.w800)),
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final e in {ProductKind.hat: p.hat, ProductKind.shirt: p.shirt, ProductKind.backpack: p.backpack, ProductKind.pet: p.pet}.entries)
-                  if (e.value != null) InputChip(label: Text(productById(e.value!)?.name ?? e.value!), onDeleted: () => g.equip(e.key, null)),
-                ActionChip(avatar: const Icon(Icons.checkroom, size: 16), label: const Text('Wardrobe & store'), onPressed: () => HomeShell.goTo(context, 3)),
-              ],
-            ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text('Equipped', style: TextStyle(fontWeight: FontWeight.w800)),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final e in {ProductKind.hat: p.hat, ProductKind.shirt: p.shirt, ProductKind.backpack: p.backpack, ProductKind.pet: p.pet}.entries)
+                    if (e.value != null) InputChip(label: Text(productById(e.value!)?.name ?? e.value!), onDeleted: () => g.equip(e.key, null)),
+                  ActionChip(avatar: const Icon(Icons.checkroom, size: 16), label: const Text('Wardrobe & store'), onPressed: () => HomeShell.goTo(context, 3)),
+                ],
+              ),
+            ],
+            [
+              if (!isWideLayout(context)) const SizedBox(height: 16),
+              const _EditionShowcase(),
+              const SizedBox(height: 16),
+              FavoriteArtistsTab(
+                artists: p.favoriteArtists,
+                onEdit: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FavoriteArtistsScreen())),
+              ),
+              const SizedBox(height: 12),
+              _Stats(p: p, cards: g.collection.length, unique: g.collection.uniqueSongCount),
+            ],
+            [
+              if (!isWideLayout(context)) const SizedBox(height: 12),
+              _NavTile(icon: Icons.chat_bubble_outline, title: 'Messages', subtitle: 'Chats with other players', page: const ConversationsScreen()),
+              _NavTile(icon: Icons.palette_outlined, title: 'Profile theme', subtitle: 'How your profile looks to others', page: const ProfileThemePicker()),
+              _NavTile(icon: Icons.assignment, title: 'Quests', subtitle: 'Daily tasks, artist spotlights & milestones', page: const QuestsScreen()),
+              _NavTile(icon: Icons.recycling_rounded, title: 'Scrapyard', subtitle: '${p.cardsScrapped} songs scrapped', page: const ScrapyardScreen()),
+              _NavTile(icon: Icons.queue_music, title: 'Playlists', subtitle: '${p.playlists.length} playlists', page: const PlaylistsScreen()),
+              _NavTile(icon: Icons.settings, title: 'Settings', subtitle: 'Audio, graphics, account', page: const SettingsScreen()),
+            ],
           ],
-          [
-            if (!isWideLayout(context)) const SizedBox(height: 16),
-            const _EditionShowcase(),
-            const SizedBox(height: 16),
-            FavoriteArtistsTab(
-              artists: p.favoriteArtists,
-              onEdit: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FavoriteArtistsScreen())),
-            ),
-            const SizedBox(height: 12),
-            _Stats(p: p, cards: g.collection.length, unique: g.collection.uniqueSongCount),
-          ],
-          [
-            if (!isWideLayout(context)) const SizedBox(height: 12),
-            _NavTile(icon: Icons.chat_bubble_outline, title: 'Messages', subtitle: 'Chats with other players', page: const ConversationsScreen()),
-            _NavTile(icon: Icons.palette_outlined, title: 'Profile theme', subtitle: 'How your profile looks to others', page: const ProfileThemePicker()),
-            _NavTile(icon: Icons.assignment, title: 'Quests', subtitle: 'Daily tasks, artist spotlights & milestones', page: const QuestsScreen()),
-            _NavTile(icon: Icons.recycling_rounded, title: 'Scrapyard', subtitle: '${p.cardsScrapped} songs scrapped', page: const ScrapyardScreen()),
-            _NavTile(icon: Icons.queue_music, title: 'Playlists', subtitle: '${p.playlists.length} playlists', page: const PlaylistsScreen()),
-            _NavTile(icon: Icons.settings, title: 'Settings', subtitle: 'Audio, graphics, account', page: const SettingsScreen()),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -174,13 +179,20 @@ class _BannerButton extends StatelessWidget {
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => Tooltip(
-        message: tooltip,
-        child: Material(
-          color: Colors.black.withValues(alpha: 0.45),
-          shape: const CircleBorder(),
-          child: InkWell(customBorder: const CircleBorder(), onTap: onTap, child: Padding(padding: const EdgeInsets.all(7), child: Icon(icon, size: 18, color: Colors.white))),
+    message: tooltip,
+    child: Material(
+      color: Colors.black.withValues(alpha: 0.45),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(7),
+          child: Icon(icon, size: 18, color: Colors.white),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _Stats extends StatelessWidget {
@@ -284,47 +296,57 @@ class _EditionShowcase extends StatelessWidget {
       p.changed();
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        const Text('Showcase', style: TextStyle(fontWeight: FontWeight.w800)),
-        const Spacer(),
-        Text('Canvas, Sample & Live', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
-      ]),
-      const SizedBox(height: 8),
-      LayoutBuilder(builder: (context, box) {
-        const gap = 8.0;
-        final w = (box.maxWidth - gap * 2) / 3;
-        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          for (var i = 0; i < 3; i++) ...[
-            if (i > 0) const SizedBox(width: gap),
-            SizedBox(
-              width: w,
-              child: i < cards.length
-                  ? _ShowcaseCard(
-                      card: cards[i],
-                      width: w,
-                      onRemove: () {
-                        p.editionShowcase = [...p.editionShowcase]..remove(cards[i].uid);
-                        p.changed();
-                      },
-                    )
-                  : GestureDetector(
-                      onTap: add,
-                      child: Container(
-                        height: w * 1.48,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(w * 0.07),
-                          border: Border.all(color: Colors.white24),
-                          color: Colors.white.withValues(alpha: 0.03),
-                        ),
-                        child: const Icon(Icons.add, color: Colors.white38),
-                      ),
-                    ),
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text('Showcase', style: TextStyle(fontWeight: FontWeight.w800)),
+            const Spacer(),
+            Text('Canvas, Sample & Live', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
           ],
-        ]);
-      }),
-    ]);
+        ),
+        const SizedBox(height: 8),
+        LayoutBuilder(
+          builder: (context, box) {
+            const gap = 8.0;
+            final w = (box.maxWidth - gap * 2) / 3;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < 3; i++) ...[
+                  if (i > 0) const SizedBox(width: gap),
+                  SizedBox(
+                    width: w,
+                    child: i < cards.length
+                        ? _ShowcaseCard(
+                            card: cards[i],
+                            width: w,
+                            onRemove: () {
+                              p.editionShowcase = [...p.editionShowcase]..remove(cards[i].uid);
+                              p.changed();
+                            },
+                          )
+                        : GestureDetector(
+                            onTap: add,
+                            child: Container(
+                              height: w * 1.48,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(w * 0.07),
+                                border: Border.all(color: Colors.white24),
+                                color: Colors.white.withValues(alpha: 0.03),
+                              ),
+                              child: const Icon(Icons.add, color: Colors.white38),
+                            ),
+                          ),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+      ],
+    );
   }
 }
 
@@ -341,41 +363,43 @@ class _ShowcaseCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CardDetailScreen(uid: card.uid))),
       onLongPress: onRemove,
-      child: Stack(children: [
-        SongCardView(song: card.song, rarity: card.rarity, shiny: card.shiny, edition: card.edition, serial: card.serial, width: width),
-        Positioned(
-          right: 4,
-          bottom: 4,
-          child: ListenableBuilder(
-            listenable: Listenable.merge([g.audio, g.samples]),
-            builder: (context, _) {
-              final playing = sample != null
-                  ? g.samples.value.songId == card.song.id && g.samples.value.active
-                  : g.audio.playing && g.audio.current?.id == card.song.id;
-              return Material(
-                color: Colors.black.withValues(alpha: 0.6),
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: () {
-                    if (playing) {
-                      sample != null ? g.samples.stop() : g.audio.stop();
-                    } else if (sample != null) {
-                      g.samples.play(sample);
-                    } else {
-                      g.audio.playOne(card.song.id);
-                    }
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(5),
-                    child: Icon(playing ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 18, color: Colors.white),
+      child: Stack(
+        children: [
+          SongCardView(song: card.song, rarity: card.rarity, shiny: card.shiny, edition: card.edition, serial: card.serial, width: width),
+          Positioned(
+            right: 4,
+            bottom: 4,
+            child: ListenableBuilder(
+              listenable: Listenable.merge([g.audio, g.samples]),
+              builder: (context, _) {
+                final playing = sample != null
+                    ? g.samples.value.songId == card.song.id && g.samples.value.active
+                    : g.audio.playing && g.audio.current?.id == card.song.id;
+                return Material(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () {
+                      if (playing) {
+                        sample != null ? g.samples.stop() : g.audio.stop();
+                      } else if (sample != null) {
+                        g.samples.play(sample);
+                      } else {
+                        g.audio.playOne(card.song.id);
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(5),
+                      child: Icon(playing ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 18, color: Colors.white),
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }

@@ -22,7 +22,7 @@ void main() {
       }
     });
     test('rejects markup, spaces, hidden and direction characters', () {
-      for (final n in ['<script>', 'a"b', "o'neil", 'back`tick', 'a\\b', 'a/b', 'two words', 'tab\tx', 'zero​width', 'rtl‮evil',
+      for (final n in ['<script>', 'a"b', "o'neil", 'back`tick', 'a\\b', 'a/b', 'two words', 'tab\tx', 'zero​width', 'rtl\u202Eevil',
           'bad\u0000', 'join‍me', 'nl\nx', 'ab', '', '...']) {
         expect(usernameError(n), isNotNull, reason: n.runes.toList().toString());
       }
@@ -45,7 +45,7 @@ void main() {
       expect(usernameKey('ＡＢＣ'), usernameKey('abc'));
     });
     test('clean text strips invisible characters', () {
-      expect(cleanUserText('hi‮ there\u0000', maxLength: 50), 'hi there');
+      expect(cleanUserText('hi\u202E there\u0000', maxLength: 50), 'hi there');
       expect(cleanUserText('a\n\n\n\nb', maxLength: 50, multiline: true), 'a\n\nb');
       expect(cleanUserText('x' * 600, maxLength: 500).length, 500);
     });
@@ -92,7 +92,7 @@ void main() {
     });
 
     test('messages, unread counts and blocking', () {
-      m.sendMessage('a', 'b', 'hello‮');
+      m.sendMessage('a', 'b', 'hello\u202E');
       expect(m.unreadCount('b'), 1);
       expect(m.thread('b', 'a').single.text, 'hello');
       expect(m.unreadCount('b'), 0);

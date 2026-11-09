@@ -10,10 +10,11 @@ import '../../data/models.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
 import '../widgets/net_image.dart';
+import '../widgets/showcase_strip.dart';
+import '../../game/game.dart';
 import 'canvas_checker_screen.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
-import 'favorite_artists_screen.dart';
 import 'listing_composer.dart';
 import 'messages_screen.dart';
 import 'player_screen.dart';
@@ -902,8 +903,8 @@ class _ShowcasesState extends State<_Showcases> {
           final list = snap.data ?? const [];
           return ListView(padding: const EdgeInsets.all(12), children: [
             FilledButton.tonalIcon(
-              icon: const Icon(Icons.edit),
-              label: const Text('Edit & publish my showcase'),
+              icon: const Icon(Icons.auto_awesome_outlined),
+              label: Text(g.profile.showcasePublished ? 'Edit my showcase' : 'Put up a showcase · ${Game.showcaseCost} bits'),
               onPressed: () async {
                 await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ShowcaseEditor()));
                 _load();
@@ -911,32 +912,29 @@ class _ShowcasesState extends State<_Showcases> {
             ),
             const SizedBox(height: 8),
             if (snap.connectionState == ConnectionState.waiting) const Center(child: CircularProgressIndicator()),
+            if (snap.connectionState == ConnectionState.done && list.isEmpty)
+              const Padding(padding: EdgeInsets.all(24), child: Text('No showcases yet — be the first!', textAlign: TextAlign.center, style: TextStyle(color: kTextTertiary))),
             for (final s in list)
               Card(
                 margin: const EdgeInsets.only(top: 10),
                 child: InkWell(
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ShowcaseView(showcase: s))),
                   child: Padding(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(12),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
-                        Expanded(child: Text(s.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+                        Expanded(child: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
                         const Icon(Icons.favorite, size: 16, color: kAccent),
                         const SizedBox(width: 4),
                         Text('${s.likes}'),
                       ]),
-                      Text('${s.playerName} • ${s.cards.length} cards • ${s.playlists.length} playlists', style: const TextStyle(fontSize: 12, color: Colors.white54)),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 120,
-                        child: ListView(scrollDirection: Axis.horizontal, children: [
-                          for (final c in s.cards.take(8))
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: SizedBox(width: 78, child: CardTile(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial)),
-                            ),
-                        ]),
+                      GestureDetector(
+                        onTap: () => openPlayer(context, s.playerId),
+                        child: Text('${s.playerName} · ${s.cards.length} cards · ${_ago(s.updatedAt)}',
+                            style: const TextStyle(fontSize: 12, color: Colors.white54, decoration: TextDecoration.underline, decorationColor: Colors.white24)),
                       ),
+                      const SizedBox(height: 10),
+                      ShowcaseStrip(cards: s.cards, cardWidth: 130, live: false),
                     ]),
                   ),
                 ),
@@ -948,6 +946,13 @@ class _ShowcasesState extends State<_Showcases> {
   }
 }
 
+String _ago(int ms) {
+  final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+  if (d.inHours < 1) return '${d.inMinutes.clamp(1, 59)}m ago';
+  if (d.inDays < 1) return '${d.inHours}h ago';
+  return '${d.inDays}d ago';
+}
+
 class ShowcaseView extends StatelessWidget {
   const ShowcaseView({super.key, required this.showcase});
   final Showcase showcase;
@@ -956,8 +961,9 @@ class ShowcaseView extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = GameScope.of(context);
     final s = showcase;
+    final w = MediaQuery.sizeOf(context).width;
     return Scaffold(
-      appBar: AppBar(title: Text(s.title), actions: [
+      appBar: AppBar(title: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis), actions: [
         IconButton(
           icon: const Icon(Icons.favorite_border),
           onPressed: () async {
@@ -975,37 +981,9 @@ class ShowcaseView extends StatelessWidget {
           onTap: () => openPlayer(context, s.playerId),
           child: Text('by ${s.playerName}', style: const TextStyle(color: kTextSecondary, decoration: TextDecoration.underline, decorationColor: kTextSecondary)),
         ),
-        if (s.favoriteArtists.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          FavoriteArtistsTab(artists: s.favoriteArtists),
-        ],
-        const SizedBox(height: 10),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 130, childAspectRatio: 0.64, crossAxisSpacing: 8, mainAxisSpacing: 8),
-          itemCount: s.cards.length,
-          itemBuilder: (_, i) {
-            final c = s.cards[i];
-            return CardTile(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial, onTap: () => g.audio.playOne(c.songId));
-          },
-        ),
-        for (final p in s.playlists) ...[
-          const SizedBox(height: 16),
-          Row(children: [
-            Expanded(child: Text(p.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-            IconButton(
-              icon: const Icon(Icons.play_circle),
-              onPressed: () {
-                for (final c in p.cards) {
-                  g.catalog.ensureFromPayload(c);
-                }
-                g.audio.playQueue([for (final c in p.cards) c.songId], name: '${s.playerName}: ${p.name}');
-              },
-            ),
-          ]),
-          for (final c in p.cards) CardRow(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial),
-        ],
+        const SizedBox(height: 12),
+        ShowcaseStrip(cards: s.cards, cardWidth: (w * 0.42).clamp(170.0, 260.0)),
+        const Text('Tap a card to see it in full · ▶ plays it', style: TextStyle(fontSize: 12, color: kTextTertiary)),
       ]),
     );
   }
@@ -1021,6 +999,18 @@ class _ShowcaseEditorState extends State<ShowcaseEditor> {
   late final TextEditingController _title = TextEditingController(text: GameScope.read(context).profile.showcaseTitle);
   bool _busy = false;
 
+  Future<void> _run(Future<void> Function() f, String done) async {
+    final g = GameScope.read(context);
+    setState(() => _busy = true);
+    try {
+      await f();
+      g.toast(done);
+    } catch (e) {
+      g.toast('$e');
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final g = GameScope.of(context);
@@ -1029,79 +1019,74 @@ class _ShowcaseEditorState extends State<ShowcaseEditor> {
     return Scaffold(
       appBar: AppBar(title: const Text('My showcase')),
       body: ListView(padding: const EdgeInsets.all(14), children: [
+        const Text('Show off up to 10 cards on the market\'s Showcases page. Putting a showcase up (or replacing it) costs '
+            '${Game.showcaseCost} bits; you can have one at a time.', style: TextStyle(color: kTextSecondary)),
+        const SizedBox(height: 14),
         TextField(
           controller: _title,
+          maxLength: 60,
           decoration: const InputDecoration(labelText: 'Showcase title'),
           onChanged: (v) {
             p.showcaseTitle = v;
             p.changed();
           },
         ),
-        const SizedBox(height: 14),
         Row(children: [
-          Text('Featured cards (${cards.length}/24)', style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text('Cards (${cards.length}/$kMaxShowcaseCards)', style: const TextStyle(fontWeight: FontWeight.w800)),
           const Spacer(),
           TextButton.icon(
             icon: const Icon(Icons.add),
             label: const Text('Add'),
-            onPressed: () async {
-              final picked = await pickCards(context, title: 'Pick showcase cards', max: 24 - cards.length, exclude: p.showcaseCards.toSet());
-              if (picked != null) {
-                p.showcaseCards.addAll(picked);
-                p.changed();
-              }
-            },
+            onPressed: cards.length >= kMaxShowcaseCards
+                ? null
+                : () async {
+                    final picked = await pickCards(context, title: 'Pick showcase cards', max: kMaxShowcaseCards - cards.length, exclude: p.showcaseCards.toSet());
+                    if (picked != null) {
+                      p.showcaseCards = [...p.showcaseCards.where((u) => g.collection.byUid(u) != null), ...picked].take(kMaxShowcaseCards).toList();
+                      p.changed();
+                    }
+                  },
           ),
         ]),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final c in cards)
-            SizedBox(
-              width: 92,
-              height: 144,
-              child: CardTile(
-                song: c.song,
-                rarity: c.rarity,
-                shiny: c.shiny,
-                edition: c.edition, serial: c.serial,
-                onLongPress: () {
-                  p.showcaseCards.remove(c.uid);
-                  p.changed();
-                },
-                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CardDetailScreen(uid: c.uid))),
-              ),
-            ),
-        ]),
+        SizedBox(
+          height: 170,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: cards.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, i) {
+              final c = cards[i];
+              return SizedBox(
+                width: 106,
+                child: CardTile(
+                  song: c.song,
+                  rarity: c.rarity,
+                  shiny: c.shiny,
+                  edition: c.edition,
+                  serial: c.serial,
+                  onLongPress: () {
+                    p.showcaseCards = [...p.showcaseCards]..remove(c.uid);
+                    p.changed();
+                  },
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CardDetailScreen(uid: c.uid))),
+                ),
+              );
+            },
+          ),
+        ),
         if (cards.isNotEmpty) const Padding(padding: EdgeInsets.only(top: 4), child: Text('Long-press a card to remove it', style: TextStyle(fontSize: 11, color: Colors.white38))),
-        const SizedBox(height: 16),
-        const Text('Featured playlists', style: TextStyle(fontWeight: FontWeight.w800)),
-        if (p.playlists.isEmpty) const Padding(padding: EdgeInsets.all(8), child: Text('Create playlists from the Profile tab.', style: TextStyle(color: Colors.white54))),
-        for (final pl in p.playlists)
-          CheckboxListTile(
-            value: p.showcasePlaylists.contains(pl.id),
-            title: Text(pl.name),
-            subtitle: Text('${pl.cardUids.length} songs'),
-            onChanged: (v) {
-              v == true ? p.showcasePlaylists.add(pl.id) : p.showcasePlaylists.remove(pl.id);
-              p.changed();
-            },
-          ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         FilledButton.icon(
           icon: _busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.publish),
-          label: const Text('Publish showcase'),
-          onPressed: _busy
-              ? null
-              : () async {
-                  setState(() => _busy = true);
-                  try {
-                    await g.publishShowcase();
-                    g.toast('Showcase published!');
-                  } catch (e) {
-                    g.toast('$e');
-                  }
-                  if (mounted) setState(() => _busy = false);
-                },
+          label: Text('${p.showcasePublished ? 'Replace my showcase' : 'Put up my showcase'} · ${Game.showcaseCost} bits'),
+          onPressed: _busy || cards.isEmpty || p.bits < Game.showcaseCost ? null : () => _run(g.publishShowcase, 'Showcase is up!'),
         ),
+        if (p.bits < Game.showcaseCost)
+          Padding(padding: const EdgeInsets.only(top: 6), child: Text('You have ${p.bits} bits.', textAlign: TextAlign.center, style: const TextStyle(color: kTextTertiary))),
+        if (p.showcasePublished) ...[
+          const SizedBox(height: 8),
+          OutlinedButton(onPressed: _busy ? null : () => _run(g.removeShowcase, 'Showcase taken down'), child: const Text('Take my showcase down')),
+        ],
       ]),
     );
   }

@@ -41,7 +41,8 @@ abstract class MarketBackend {
 
   /// Null when [name] can be used, else why not.
   Future<String?> checkUsername(String name);
-  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions});
+  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions, List<FavoriteArtist>? favoriteArtists});
+  Future<void> removeShowcase();
   Future<void> uploadCollection(List<CardPayload> cards);
   Future<List<PlayerSummary>> searchPlayers(String query);
   Future<PublicProfile> player(String id);
@@ -295,8 +296,10 @@ class LocalMarket extends MarketBackend {
   }
 
   @override
-  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions}) async =>
-      engine.setPublicProfile(playerId, theme: theme, level: level, stats: stats, editionShowcase: editions);
+  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions, List<FavoriteArtist>? favoriteArtists}) async =>
+      engine.setPublicProfile(playerId, theme: theme, level: level, stats: stats, editionShowcase: editions, favoriteArtists: favoriteArtists);
+  @override
+  Future<void> removeShowcase() async => engine.removeShowcase(playerId);
   @override
   Future<void> uploadCollection(List<CardPayload> cards) async {
     try {
@@ -462,13 +465,16 @@ class RemoteMarket extends MarketBackend {
   }
 
   @override
-  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions}) async =>
+  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions, List<FavoriteArtist>? favoriteArtists}) async =>
       _send('PUT', '/me/profile', body: {
         'theme': ?theme,
         'level': ?level,
         'stats': ?stats,
         if (editions != null) 'editions': [for (final c in editions) c.toJson()],
+        if (favoriteArtists != null) 'favArtists': [for (final a in favoriteArtists) a.toJson()],
       });
+  @override
+  Future<void> removeShowcase() async => _send('POST', '/showcases/me/remove');
   @override
   Future<void> uploadCollection(List<CardPayload> cards) async =>
       _send('PUT', '/me/collection', body: {'cards': [for (final c in cards) c.toJson()]}, timeout: const Duration(seconds: 60));

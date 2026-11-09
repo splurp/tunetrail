@@ -346,7 +346,6 @@ class Game extends ChangeNotifier {
     _scheduleCollectionSync(soon: true);
     _profileSig = '';
     _scheduleProfileSync();
-    unawaited(publishShowcase().catchError((_) {}));
   }
 
   void finishOnboarding() {
@@ -391,7 +390,8 @@ class Game extends ChangeNotifier {
   /// when it changes.
   void _scheduleProfileSync() {
     if (!_canPublish) return;
-    final sig = '${profile.profileTheme}|${profile.level}|${profile.editionShowcase.join(',')}|${profile.totalCaught ~/ 10}|${profile.tradesCompleted}';
+    final sig = '${profile.profileTheme}|${profile.level}|${profile.editionShowcase.join(',')}|${profile.totalCaught ~/ 10}|${profile.tradesCompleted}|'
+        '${profile.favoriteArtists.map((a) => a.id).join(',')}';
     if (sig == _profileSig) return;
     _profileSync?.cancel();
     _profileSync = Timer(const Duration(seconds: 4), () async {
@@ -401,6 +401,7 @@ class Game extends ChangeNotifier {
           level: profile.level,
           stats: _publicStats,
           editions: [for (final u in profile.editionShowcase) ?collection.byUid(u)?.toPayload()],
+          favoriteArtists: profile.favoriteArtists,
         );
         _profileSig = sig;
       } catch (_) {}
@@ -622,15 +623,25 @@ class Game extends ChangeNotifier {
     await syncInbox();
   }
 
+  /// Bits it costs to put up (or replace) a showcase.
+  static const showcaseCost = 100;
+
+  /// Puts the player's showcase (up to 10 cards) on the market for
+  /// [showcaseCost] bits. One showcase per player: this replaces the last.
   Future<void> publishShowcase() async {
-    final cards = [for (final u in profile.showcaseCards) ?collection.byUid(u)?.toPayload()];
-    final pls = [
-      for (final p in profile.playlists.where((p) => profile.showcasePlaylists.contains(p.id)))
-        ShowcasePlaylist(name: p.name, cards: [
-          for (final u in p.cardUids.take(50)) ?collection.byUid(u)?.toPayload()
-        ])
-    ];
-    await market.setShowcase(profile.showcaseTitle, cards, pls, favoriteArtists: profile.favoriteArtists);
+    final cards = [for (final u in profile.showcaseCards.take(kMaxShowcaseCards)) ?collection.byUid(u)?.toPayload()];
+    if (cards.isEmpty) throw MarketException('Add at least one card');
+    if (profile.bits < showcaseCost) throw MarketException('A showcase costs $showcaseCost bits');
+    await market.setShowcase(profile.showcaseTitle, cards, const []);
+    profile.bits -= showcaseCost;
+    profile.showcasePublished = true;
+    profile.changed();
+  }
+
+  Future<void> removeShowcase() async {
+    await market.removeShowcase();
+    profile.showcasePublished = false;
+    profile.changed();
   }
 
   // ---------------------------------------------------------------- spawns
@@ -1078,8 +1089,6 @@ class Game extends ChangeNotifier {
     catalog.favoriteArtists = {for (final a in profile.favoriteArtists) a.id};
     profile.changed();
     _refreshSpawns(force: true);
-    // Keep the public profile in sync.
-    unawaited(publishShowcase().catchError((_) {}));
   }
 
   void setLastFmKey(String key) {

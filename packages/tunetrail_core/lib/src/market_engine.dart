@@ -424,8 +424,13 @@ class MarketEngine {
   }
 
   /// Updates [id]'s public profile details.
-  void setPublicProfile(String id, {String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editionShowcase}) {
+  void setPublicProfile(String id,
+      {String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editionShowcase, List<FavoriteArtist>? favoriteArtists}) {
     final p = _player(id);
+    if (favoriteArtists != null) {
+      if (favoriteArtists.length > 5000) throw MarketException('Too many favourite artists');
+      p.favoriteArtists = favoriteArtists;
+    }
     if (theme != null) {
       if (theme.isNotEmpty && !RegExp(r'^pt_[a-z0-9_]{1,30}$').hasMatch(theme)) throw MarketException('Unknown profile theme');
       p.theme = theme;
@@ -499,7 +504,7 @@ class MarketEngine {
       joinedAt: p.joinedAt,
       stats: p.stats,
       editionShowcase: p.editionShowcase,
-      favoriteArtists: showcases[id]?.favoriteArtists ?? const [],
+      favoriteArtists: p.favoriteArtists.isNotEmpty ? p.favoriteArtists : (showcases[id]?.favoriteArtists ?? const []),
       showcase: showcases[id],
       cardCount: collections[id]?.length ?? 0,
       blockedByMe: viewerId != null && (players[viewerId]?.blocked.contains(id) ?? false),
@@ -665,7 +670,8 @@ class MarketEngine {
   Showcase setShowcase(String playerId, String title, List<CardPayload> cards,
       List<ShowcasePlaylist> playlists, {List<FavoriteArtist> favoriteArtists = const []}) {
     if (favoriteArtists.length > kMaxFavoriteArtists) throw MarketException('Up to $kMaxFavoriteArtists favourite artists');
-    if (cards.length > 24) throw MarketException('Showcase holds up to 24 cards');
+    if (cards.length > kMaxShowcaseCards) throw MarketException('A showcase holds up to $kMaxShowcaseCards cards');
+    if (cards.isEmpty) throw MarketException('Add at least one card to your showcase');
     title = cleanUserText(title, maxLength: 60);
     final s = Showcase(
       playerId: playerId,
@@ -682,14 +688,16 @@ class MarketEngine {
     return s;
   }
 
+  /// Showcases, newest first.
   List<Showcase> browseShowcases({int offset = 0, int limit = 30}) {
-    final all = showcases.values.toList()
-      ..sort((a, b) {
-        final c = b.likes.compareTo(a.likes);
-        return c != 0 ? c : b.updatedAt.compareTo(a.updatedAt);
-      });
+    final all = showcases.values.where((s) => s.cards.isNotEmpty).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     if (offset >= all.length) return const [];
     return all.sublist(offset, math.min(all.length, offset + limit));
+  }
+
+  /// Takes [playerId]'s showcase down.
+  void removeShowcase(String playerId) {
+    if (showcases.remove(playerId) != null) _changed();
   }
 
   int likeShowcase(String playerId, String ownerId) {

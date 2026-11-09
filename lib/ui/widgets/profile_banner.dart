@@ -249,3 +249,21 @@ class ProfileThemePicker extends StatelessWidget {
     );
   }
 }
+
+/// A whole page dressed in a profile theme: the theme's background behind
+/// everything, dimmed so text stays readable.
+class ProfileThemePage extends StatelessWidget {
+  const ProfileThemePage({super.key, required this.themeId, required this.child});
+  final String themeId;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = profileThemeById(themeId);
+    return Stack(children: [
+      Positioned.fill(child: ProfileThemeBackground(theme: t, radius: 0)),
+      Positioned.fill(child: ColoredBox(color: Colors.black.withValues(alpha: t.light ? 0.62 : 0.45))),
+      child,
+    ]);
+  }
+}
