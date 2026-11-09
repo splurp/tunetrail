@@ -94,6 +94,7 @@ class Game extends ChangeNotifier {
     catalog.addListener(_onCatalog);
     profile.addListener(notifyListeners);
     mapData.addListener(_onMapData);
+    mapData.buildingsEnabled = profile.showBuildings;
     mapData.ensureAround(location.position.latitude, location.position.longitude);
     collection.addListener(notifyListeners);
 
@@ -488,9 +489,19 @@ class Game extends ChangeNotifier {
 
   void fleeSpawn(Spawn s) => _markSpent(s);
 
+  double _walkPending = 0;
+
+  /// Walking is reported ~30×/s by the joystick and every few metres by GPS;
+  /// committing each step saved the profile and rebuilt the whole map screen
+  /// many times a second. Distance is batched into 25 m chunks instead.
   void _onTravel(double m) {
     profile.metersWalked += m;
-    questEvent(QuestKind.walkMeters, amount: m.round());
+    _walkPending += m;
+    if (_walkPending >= 25) {
+      final whole = _walkPending.floor();
+      _walkPending -= whole;
+      questEvent(QuestKind.walkMeters, amount: whole);
+    }
   }
 
   // ----------------------------------------------------------------- packs
@@ -731,6 +742,13 @@ class Game extends ChangeNotifier {
     catalog.lastFmKey = profile.effectiveLastFmKey;
     catalog.favoriteArtists = {for (final a in profile.favoriteArtists) a.id};
     unawaited(catalog.backfillPlays());
+  }
+
+  void setShowBuildings(bool on) {
+    profile.showBuildings = on;
+    profile.changed();
+    mapData.buildingsEnabled = on;
+    mapData.ensureAround(location.position.latitude, location.position.longitude);
   }
 
   // ------------------------------------------------------------- minigames

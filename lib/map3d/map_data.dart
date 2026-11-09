@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'buildings3d.dart';
 import 'tile_data.dart';
 
 /// Streams the vector-tile world around the player.
@@ -22,6 +23,65 @@ class MapData extends ChangeNotifier {
 
   double originLat = double.nan, originLon = double.nan;
   final Map<String, WorldTile> tiles = {};
+
+  // ---- Optional city buildings (OpenFreeMap, OpenMapTiles schema).
+  bool _buildingsEnabled = false;
+  bool get buildingsEnabled => _buildingsEnabled;
+  final Map<String, CityBuildingTile> buildingTiles = {};
+  final Set<String> _bLoading = {}, _bFailed = {};
+  String? _ofmTemplate;
+
+  set buildingsEnabled(bool on) {
+    if (on == _buildingsEnabled) return;
+    _buildingsEnabled = on;
+    if (!on) buildingTiles.clear();
+    version++;
+    notifyListeners();
+  }
+
+  Future<String?> _ofm() async {
+    if (_ofmTemplate != null) return _ofmTemplate;
+    try {
+      final res = await _client.get(Uri.parse('https://tiles.openfreemap.org/planet')).timeout(const Duration(seconds: 15));
+      final m = RegExp(r'"tiles"\s*:\s*\[\s*"([^"]+)"').firstMatch(res.body);
+      return _ofmTemplate = m?.group(1);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _loadBuildings(int z, int x, int y) async {
+    final key = '$z/$x/$y';
+    _bLoading.add(key);
+    try {
+      final f = File('${cacheDir.path}/ofm-$z-$x-$y.pbf');
+      Uint8List? bytes;
+      if (await f.exists()) {
+        bytes = await f.readAsBytes();
+      } else {
+        final t = await _ofm();
+        if (t == null) throw StateError('no OpenFreeMap tilejson');
+        final res = await _client
+            .get(Uri.parse(t.replaceAll('{z}', '$z').replaceAll('{x}', '$x').replaceAll('{y}', '$y')), headers: {'User-Agent': 'Tunetrail/0.2'})
+            .timeout(const Duration(seconds: 25));
+        if (res.statusCode != 200) throw StateError('HTTP ${res.statusCode}');
+        bytes = res.bodyBytes;
+        await f.writeAsBytes(bytes, flush: true);
+      }
+      final lat0 = originLat;
+      final tile = await compute(processBuildingTile, TileJob(z, x, y, bytes, originLat, originLon));
+      if (lat0 != originLat || !_buildingsEnabled) return;
+      buildingTiles[key] = tile;
+      version++;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('buildings $key: $e');
+      _bFailed.add(key);
+      Timer(const Duration(seconds: 30), () => _bFailed.remove(key));
+    } finally {
+      _bLoading.remove(key);
+    }
+  }
   final Set<String> _loading = {};
   final Set<String> _failed = {};
   final http.Client _client = http.Client();
@@ -46,6 +106,7 @@ class MapData extends ChangeNotifier {
       originLat = lat;
       originLon = lon;
       tiles.clear();
+      buildingTiles.clear();
       _loading.clear();
       _failed.clear();
       version++;
@@ -62,11 +123,15 @@ class MapData extends ChangeNotifier {
         if (!tiles.containsKey(key) && !_loading.contains(key) && !_failed.contains(key)) {
           _load(kTileZoom, x, y);
         }
+        if (_buildingsEnabled && !buildingTiles.containsKey(key) && !_bLoading.contains(key) && !_bFailed.contains(key)) {
+          _loadBuildings(kTileZoom, x, y);
+        }
       }
     }
     // Drop tiles that are far away (memory).
     if (tiles.length > 16) {
       tiles.removeWhere((k, _) => !wanted.contains(k));
+      buildingTiles.removeWhere((k, _) => !wanted.contains(k));
     }
   }
 

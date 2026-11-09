@@ -49,7 +49,10 @@ class SkyPainter extends CustomPainter {
   double? _x(Camera3D cam, double az) {
     final rel = ((az - cam.bearing + 540) % 360) - 180;
     if (rel.abs() > 80) return null;
-    return cam.cx + cam.focal * math.tan(rel * math.pi / 180);
+    // Same horizontal mapping the ground has at the horizon (the tilted
+    // camera stretches it by 1/cos(pitch)), so sky decor turns exactly with
+    // the world when the camera rotates.
+    return cam.cx + cam.focal * math.tan(rel * math.pi / 180) / math.cos(cam.pitch * math.pi / 180);
   }
 
   double _y(Camera3D cam, double horizon, double elevDeg) => horizon - cam.focal * math.tan(elevDeg * math.pi / 180);

@@ -140,10 +140,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// (the map rotates counter-clockwise), wherever on screen it happens.
   /// Vertical swipes also turn it: down on the right side of the player or
   /// up on the left side matches a rightward swipe.
+  /// Pokémon GO-style turning: the camera follows the angle the finger
+  /// sweeps around the character. Below the character a rightward swipe
+  /// turns counter-clockwise, above it clockwise; to its right an upward
+  /// swipe turns counter-clockwise, to its left clockwise — and everything
+  /// in between blends continuously (it's one angular formula).
   void _rotateBy(Offset focal, Offset delta) {
     _cam.update();
-    final side = (focal.dx - _cam.cx).abs() < 40 ? 0.0 : (focal.dx > _cam.cx ? 1.0 : -1.0);
-    _cam.bearing = (_cam.bearing + (delta.dx + delta.dy * side) * 0.35) % 360;
+    final pivot = Offset(_cam.cx, _cam.cy - 40); // the character's middle
+    final r = focal - pivot;
+    // Close to the character the angle is ill-defined; damp it.
+    final r2 = math.max(r.distanceSquared, 90.0 * 90.0);
+    final cross = r.dx * delta.dy - r.dy * delta.dx;
+    _cam.bearing = (_cam.bearing - cross / r2 * 180 / math.pi * 1.15) % 360;
     _cameraTouched();
   }
 
@@ -598,8 +607,11 @@ class _SpawnLayer extends StatelessWidget {
   final void Function(Spawn) onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) => _build(box.biggest));
+
+  // Must use the same viewport size as the ground painter (the map area,
+  // not the whole window) or markers drift against the ground as you move.
+  Widget _build(Size size) {
     cam
       ..size = size
       ..update();

@@ -85,6 +85,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
        [
         const _Header('Graphics'),
         SwitchListTile(
+          title: const Text('Show buildings'),
+          subtitle: const Text('Low-poly city buildings at their real heights (OpenStreetMap via OpenFreeMap), alongside the roads'),
+          value: p.showBuildings,
+          onChanged: g.setShowBuildings,
+        ),
+        SwitchListTile(
           title: const Text('Reduce map effects'),
           subtitle: const Text('Disables theme particles (saves battery)'),
           value: p.reduceEffects,

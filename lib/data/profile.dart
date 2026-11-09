@@ -113,6 +113,9 @@ class PlayerProfile extends ChangeNotifier {
   /// UI sound effects (catches, sales, trades…).
   bool soundEffects = true;
 
+  /// Draw ordinary city buildings (real heights) on the map.
+  bool showBuildings = false;
+
   /// Minigame filter (languages + genres) and stats.
   Map<String, dynamic>? minigameFilter;
   int minigameBits = 0;
@@ -170,6 +173,7 @@ class PlayerProfile extends ChangeNotifier {
         'xp': xp,
         'beatOffset': beatOffsetMs,
         'sfx': soundEffects,
+        'buildings': showBuildings,
         'mgFilter': minigameFilter,
         'mgBits': minigameBits,
         'sampleOv2': {for (final e in sampleOverrides.entries) '${e.key}': [e.value.$1, e.value.$2]},
@@ -222,6 +226,7 @@ class PlayerProfile extends ChangeNotifier {
     xp = (j['xp'] as num?)?.toInt() ?? 0;
     beatOffsetMs = (j['beatOffset'] as num?)?.toInt() ?? 0;
     soundEffects = j['sfx'] as bool? ?? true;
+    showBuildings = j['buildings'] as bool? ?? false;
     minigameFilter = j['mgFilter'] as Map<String, dynamic>?;
     minigameBits = (j['mgBits'] as num?)?.toInt() ?? 0;
     sampleOverrides = {

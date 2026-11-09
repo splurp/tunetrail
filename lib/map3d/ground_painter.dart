@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'buildings3d.dart';
 import 'camera.dart';
 import 'map_data.dart';
 import 'palette.dart';
@@ -69,7 +70,11 @@ class GroundPainter extends CustomPainter {
     }
 
     _catchRing(canvas, cam);
-    _buildings(canvas, cam);
+    if (map.buildingsEnabled) {
+      CityBuildingRenderer.paint(canvas, cam, map.buildingTiles.values, palette);
+    } else {
+      _buildings(canvas, cam);
+    }
 
     // Distance fog towards the horizon.
     final fogNear = cam.groundY(math.max(360, cam.distance * 1.6));
