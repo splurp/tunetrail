@@ -8,6 +8,7 @@ environment:
 
 dependencies:
   crypto: ^3.0.8
+  googleapis_auth: ^2.0.0
   http: ^1.6.0
   postgres: ^3.6.0
   shelf: ^1.4.0

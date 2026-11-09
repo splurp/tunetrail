@@ -89,7 +89,7 @@ jobs:
         # GitHub, which occasionally answers 502/504.
         run: |
           for i in 1 2 3; do
-            flutter build apk --release --no-tree-shake-icons --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} && exit 0
+            flutter build apk --release --no-tree-shake-icons --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} --dart-define=FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }} --dart-define=FIREBASE_APP_ID=${{ vars.FIREBASE_APP_ID }} --dart-define=FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }} --dart-define=FIREBASE_SENDER_ID=${{ vars.FIREBASE_SENDER_ID }} && exit 0
             echo "::warning::build attempt $i failed, retrying"; sleep 20
           done
           exit 1
@@ -102,7 +102,7 @@ jobs:
         # GitHub, which occasionally answers 502/504.
         run: |
           for i in 1 2 3; do
-            flutter build apk --release --split-per-abi --no-tree-shake-icons --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} && exit 0
+            flutter build apk --release --split-per-abi --no-tree-shake-icons --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} --dart-define=FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }} --dart-define=FIREBASE_APP_ID=${{ vars.FIREBASE_APP_ID }} --dart-define=FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }} --dart-define=FIREBASE_SENDER_ID=${{ vars.FIREBASE_SENDER_ID }} && exit 0
             echo "::warning::build attempt $i failed, retrying"; sleep 20
           done
           exit 1
@@ -134,7 +134,7 @@ jobs:
           key: windows-build-${{ hashFiles('pubspec.lock', 'windows/**/CMakeLists.txt') }}-${{ github.run_id }}
           restore-keys: |
             windows-build-${{ hashFiles('pubspec.lock', 'windows/**/CMakeLists.txt') }}-
-      - run: flutter build windows --release --no-tree-shake-icons --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
+      - run: flutter build windows --release --no-tree-shake-icons --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} --dart-define=FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }} --dart-define=FIREBASE_APP_ID=${{ vars.FIREBASE_APP_ID }} --dart-define=FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }} --dart-define=FIREBASE_SENDER_ID=${{ vars.FIREBASE_SENDER_ID }}
       - name: Package portable zip
         shell: pwsh
         run: |
@@ -152,7 +152,7 @@ jobs:
       # Admin build: debug tools compiled in (they only unlock for accounts in
       # the server's ADMINS list). Kept as a workflow artifact for people with
       # repository access — never attached to a public release.
-      - run: flutter build windows --release --no-tree-shake-icons --dart-define=TUNETRAIL_ADMIN=true --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
+      - run: flutter build windows --release --no-tree-shake-icons --dart-define=TUNETRAIL_ADMIN=true --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} --dart-define=FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }} --dart-define=FIREBASE_APP_ID=${{ vars.FIREBASE_APP_ID }} --dart-define=FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }} --dart-define=FIREBASE_SENDER_ID=${{ vars.FIREBASE_SENDER_ID }}
       - name: Package admin build
         shell: pwsh
         run: |
@@ -178,7 +178,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build linux --release --no-tree-shake-icons --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
+      - run: flutter build linux --release --no-tree-shake-icons --dart-define=TUNETRAIL_SERVER=${{ vars.TUNETRAIL_SERVER }} --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ vars.GOOGLE_SERVER_CLIENT_ID }} --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_ID=${{ vars.GOOGLE_DESKTOP_CLIENT_ID }} --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }} --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} --dart-define=FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }} --dart-define=FIREBASE_APP_ID=${{ vars.FIREBASE_APP_ID }} --dart-define=FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }} --dart-define=FIREBASE_SENDER_ID=${{ vars.FIREBASE_SENDER_ID }}
       - name: Package tarball
         run: |
           mkdir -p dist

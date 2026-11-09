@@ -772,6 +772,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  tunetrail_push:
+    dependency: "direct main"
+    description:
+      path: "packages/tunetrail_push"
+      relative: true
+    source: path
+    version: "0.1.0"
   typed_data:
     dependency: transitive
     description:

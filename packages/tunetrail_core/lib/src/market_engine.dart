@@ -51,6 +51,40 @@ class MarketEngine {
   /// Called whenever state changes (used by the server to persist).
   void Function()? onChanged;
 
+  /// Something happened that [playerId] should hear about even when the
+  /// game is closed (the server sends it as a push notification).
+  void Function(String playerId, String title, String body)? onNotify;
+
+  /// Push-notification tokens per player (a few devices each).
+  final Map<String, List<String>> pushTokens = {};
+
+  void _notify(String playerId, String title, String body) {
+    if (players[playerId]?.isBot ?? false) return;
+    onNotify?.call(playerId, title, body.length > 140 ? '${body.substring(0, 137)}…' : body);
+  }
+
+  /// Registers a device for [playerId]'s notifications (a token belongs to
+  /// one player: signing in on a shared device moves it).
+  void registerPushToken(String playerId, String token) {
+    if (token.isEmpty || token.length > 4096) throw MarketException('Invalid push token');
+    for (final l in pushTokens.values) {
+      l.remove(token);
+    }
+    final list = pushTokens.putIfAbsent(playerId, () => [])..add(token);
+    if (list.length > 5) list.removeAt(0);
+    pushTokens.removeWhere((_, v) => v.isEmpty);
+    _changed();
+  }
+
+  /// Forgets a token the push service rejected (app uninstalled etc.).
+  void dropPushToken(String token) {
+    for (final l in pushTokens.values) {
+      l.remove(token);
+    }
+    pushTokens.removeWhere((_, v) => v.isEmpty);
+    _changed();
+  }
+
   int now() => DateTime.now().millisecondsSinceEpoch;
 
   String _id(String prefix) {
@@ -165,6 +199,7 @@ class MarketEngine {
     _declineOffersFor(listingId, 'The listing was sold to another player');
     final what = l.items.length == 1 ? l.card.title : 'folder of ${l.items.length} songs';
     _deliver(l.sellerId, '${nameOf(buyerId)} bought your $what for $price coins', coins: price);
+    _notify(l.sellerId, 'Sold!', '${nameOf(buyerId)} bought your $what for $price coins');
     _changed();
     return l.cards.toList();
   }
@@ -179,6 +214,7 @@ class MarketEngine {
     if (expectedPrice != null && expectedPrice != item.price) throw MarketException('Price changed');
     _removeItem(l, item, 'A song in the folder was sold');
     _deliver(l.sellerId, '${nameOf(buyerId)} bought ${item.card.title} for ${item.price} coins', coins: item.price);
+    _notify(l.sellerId, 'Sold!', '${nameOf(buyerId)} bought ${item.card.title} for ${item.price} coins');
     _changed();
     return item.card;
   }
@@ -295,6 +331,7 @@ class MarketEngine {
       createdAt: now(),
     );
     offers[o.id] = o;
+    _notify(o.toId, 'New trade offer', '${o.fromName} made an offer for your ${o.requestedLabel}');
     _changed();
     return o;
   }
@@ -322,6 +359,7 @@ class MarketEngine {
     _deliver(o.toId, 'Trade with ${o.fromName} complete',
         coins: o.offeredCoins, cards: o.offeredCards);
     _deliver(o.fromId, '${nameOf(o.toId)} accepted your trade for ${o.requestedLabel}', cards: l.cards.toList());
+    _notify(o.fromId, 'Offer accepted', '${nameOf(o.toId)} accepted your trade for ${o.requestedLabel}');
     offers.remove(offerId);
     _declineOffersFor(o.listingId, 'The listing was traded to another player');
     _changed();
@@ -572,6 +610,7 @@ class MarketEngine {
       direct: true,
     );
     offers[o.id] = o;
+    _notify(toId, 'New trade offer', '${o.fromName} made an offer for your ${o.requestedLabel}');
     _changed();
     return o;
   }
@@ -581,6 +620,7 @@ class MarketEngine {
     offers.remove(o.id);
     _deliver(o.toId, 'Trade with ${o.fromName} complete', coins: o.offeredCoins, cards: o.offeredCards);
     _deliver(o.fromId, '${nameOf(o.toId)} accepted your trade for ${o.requestedLabel}', cards: o.requestedCards);
+    _notify(o.fromId, 'Offer accepted', '${nameOf(o.toId)} accepted your trade for ${o.requestedLabel}');
     final gone = {for (final c in o.requestedCards) c.uid};
     collections[o.toId]?.removeWhere((c) => gone.contains(c.uid));
     // Other offers for the same songs can't be completed any more.
@@ -631,6 +671,7 @@ class MarketEngine {
     final list = messages.putIfAbsent(_conv(fromId, toId), () => [])..add(m);
     if (list.length > kMaxMessagesPerConversation) list.removeRange(0, list.length - kMaxMessagesPerConversation);
     lastRead.putIfAbsent(fromId, () => {})[toId] = t;
+    _notify(toId, nameOf(fromId), text);
     _changed();
     return m;
   }
@@ -730,6 +771,7 @@ class MarketEngine {
           for (final e in messages.entries) e.key: [for (final m in e.value) m.toJson()]
         },
         'lastRead': lastRead,
+        'push': pushTokens,
       };
 
   void loadJson(Map<String, dynamic> j) {
@@ -778,6 +820,10 @@ class MarketEngine {
     messages.clear();
     (j['messages'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {
       messages[k] = [for (final m in (v as List)) ChatMessage.fromJson(m as Map<String, dynamic>)];
+    });
+    pushTokens.clear();
+    (j['push'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {
+      pushTokens[k] = [for (final t in v as List) t as String];
     });
     lastRead.clear();
     (j['lastRead'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {

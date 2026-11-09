@@ -53,6 +53,9 @@ abstract class MarketBackend {
   Future<List<ChatMessage>> thread(String otherId);
   Future<ChatMessage> sendMessage(String toId, String text);
   Future<int> unreadMessages();
+
+  /// Sends this device's push-notification token to the server.
+  Future<void> registerPush(String token) async {}
   void dispose() {}
 }
 
@@ -511,6 +514,9 @@ class RemoteMarket extends MarketBackend {
   Future<int> unreadMessages() async => ((await _send('GET', '/me') as Map)['unread'] as num? ?? 0).toInt();
 
   Future<Map<String, dynamic>> me() async => await _send('GET', '/me') as Map<String, dynamic>;
+
+  @override
+  Future<void> registerPush(String token) async => _send('POST', '/me/push', body: {'token': token});
 
   @override
   void dispose() => _c.close();

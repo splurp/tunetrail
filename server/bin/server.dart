@@ -19,6 +19,7 @@ import 'package:shelf/shelf_io.dart' as io;
 import 'package:shelf_router/shelf_router.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 import 'package:tunetrail_server/auth.dart';
+import 'package:tunetrail_server/push.dart';
 import 'package:tunetrail_server/store.dart';
 
 Future<void> main(List<String> args) async {
@@ -80,6 +81,26 @@ Future<void> main(List<String> args) async {
     }
   }
 
+  // Push notifications (optional): a Firebase service account.
+  PushSender? push;
+  try {
+    push = await PushSender.fromBase64(env['FIREBASE_SERVICE_ACCOUNT_B64']);
+  } catch (e) {
+    stderr.writeln('push notifications disabled: $e');
+  }
+  if (push != null) {
+    final sender = push;
+    engine.onNotify = (id, title, body) {
+      for (final t in List.of(engine.pushTokens[id] ?? const <String>[])) {
+        sender.send(t, title, body).then((ok) {
+          if (!ok) engine.dropPushToken(t);
+        }).catchError((Object e) {
+          stderr.writeln('push failed: $e');
+        });
+      }
+    };
+  }
+
   final app = buildRouter(engine, auth, admins: admins);
   final handler = const Pipeline()
       .addMiddleware(_cors())
@@ -93,7 +114,7 @@ Future<void> main(List<String> args) async {
           })
       .addHandler(app.call);
   final server = await io.serve(handler, InternetAddress.anyIPv4, port);
-  stdout.writeln('Tunetrail server on :${server.port} · storage: ${store.label} · google ids: ${googleIds.length} · guests: ${auth.allowGuests}');
+  stdout.writeln('Tunetrail server on :${server.port} · storage: ${store.label} · google ids: ${googleIds.length} · guests: ${auth.allowGuests} · push: ${push != null}');
 }
 
 Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
@@ -213,6 +234,12 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
             favoriteArtists: b['favArtists'] == null
                 ? null
                 : [for (final a in (b['favArtists'] as List)) FavoriteArtist.fromJson(a as Map<String, dynamic>)]);
+        return ok({'ok': true});
+      }));
+  r.post('/me/push', (Request req) => guard(() async {
+        final id = named(req);
+        final b = await body(req);
+        m.registerPushToken(id, b['token'] as String? ?? '');
         return ok({'ok': true});
       }));
   r.put('/me/collection', (Request req) => guard(() async {

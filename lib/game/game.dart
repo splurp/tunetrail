@@ -21,6 +21,7 @@ import '../map3d/props3d.dart';
 import 'genre_zones.dart';
 import 'google_auth.dart';
 import 'movie_service.dart';
+import 'push_service.dart';
 import 'profile_themes.dart';
 import 'sample_player.dart';
 import 'audio_service.dart';
@@ -191,6 +192,17 @@ class Game extends ChangeNotifier {
       unreadMessages.value = (j['unread'] as num?)?.toInt() ?? unreadMessages.value;
       profile.changed();
     } catch (_) {}
+    await registerPush();
+  }
+
+  /// Signs this device up for push notifications (messages, sales, offers).
+  Future<void> registerPush() async {
+    if (!PushService.available || profile.authToken.isEmpty || !profile.usernameSet) return;
+    final t = await PushService.token();
+    if (t == null) return;
+    try {
+      await market.registerPush(t);
+    } catch (_) {}
   }
 
   /// Signs in with Google through the game server; the account then owns
@@ -349,6 +361,7 @@ class Game extends ChangeNotifier {
   }
 
   void finishOnboarding() {
+    unawaited(registerPush());
     profile.onboarded = true;
     profile.changed();
     notifyListeners();

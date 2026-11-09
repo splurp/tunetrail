@@ -1,0 +1,19 @@
+name: tunetrail_push
+description: Android push notifications for Tunetrail (Firebase Cloud Messaging), configured at build time.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.tunetrail.push
+        pluginClass: TunetrailPushPlugin
