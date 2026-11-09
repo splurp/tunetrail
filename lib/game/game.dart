@@ -820,6 +820,28 @@ class Game extends ChangeNotifier {
   /// trusted server time (changing the device clock doesn't help) and a
   /// pinned time-zone offset (a new offset is only accepted 20 h after the
   /// previous one, so hopping time zones can't add extra days).
+  /// The round of [game] the player left unfinished, if any.
+  Map<String, dynamic>? pendingMinigame(String game) => profile.minigameRounds[game];
+
+  void savePendingMinigame(String game, Map<String, dynamic>? round) {
+    final had = profile.minigameRounds.containsKey(game);
+    if (round == null) {
+      if (!had) return;
+      profile.minigameRounds.remove(game);
+    } else {
+      profile.minigameRounds[game] = round;
+    }
+    profile.touch();
+  }
+
+  /// Debug: give back today's plays of every minigame.
+  void resetMinigamePlays() {
+    profile.minigamePlays.clear();
+    profile.minigameRounds.clear();
+    profile.changed();
+    notifyListeners();
+  }
+
   Future<MinigameQuota?> minigameQuota(String game) async {
     final now = await clock.now();
     if (now == null) return null;

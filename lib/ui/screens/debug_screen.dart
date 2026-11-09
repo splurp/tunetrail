@@ -93,6 +93,26 @@ class _DebugScreenState extends State<DebugScreen> {
             p.changed();
           },
         ),
+        const _H('Performance'),
+        SwitchListTile(
+          title: const Text('FPS counter'),
+          subtitle: const Text('Frames rendered per second, with build / raster times'),
+          value: p.showFps,
+          onChanged: (v) {
+            p.showFps = v;
+            p.changed();
+          },
+        ),
+        const _H('Minigames'),
+        ListTile(
+          leading: const Icon(Icons.restart_alt),
+          title: const Text('Reset daily minigame plays'),
+          subtitle: const Text('Every game gets its plays for today back'),
+          onTap: () {
+            g.resetMinigamePlays();
+            g.toast('Minigame plays reset');
+          },
+        ),
         const _H('Movement'),
         SwitchListTile(
           title: const Text('Joystick movement'),

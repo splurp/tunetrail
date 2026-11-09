@@ -1,0 +1,362 @@
+[
+{
+"albumId": 2320921,
+"title": "My Beautiful Dark Twisted Fantasy",
+"artistId": 230,
+"artist": "Kanye West",
+"cover": "58f2b66205a31c42cd1d340b99735d7c",
+"genre": "hiphop",
+"lang": "english",
+"year": 2010
+},
+{
+"albumId": 6694046,
+"title": "Yeezus",
+"artistId": 230,
+"artist": "Kanye West",
+"cover": "5a56530f7906bd9786fa47bd0be421b3",
+"genre": "hiphop",
+"lang": "english",
+"year": 2013
+},
+{
+"albumId": 9896722,
+"title": "To Pimp A Butterfly",
+"artistId": 525046,
+"artist": "Kendrick Lamar",
+"cover": "3cb4c99dc0f8b954b8b7470e72df8152",
+"genre": "hiphop",
+"lang": "english",
+"year": 2015
+},
+{
+"albumId": 69804312,
+"title": "ASTROWORLD",
+"artistId": 4495513,
+"artist": "Travis Scott",
+"cover": "0b08015216f975dc7fb5be3d5dcc4d88",
+"genre": "hiphop",
+"lang": "english",
+"year": 2018
+},
+{
+"albumId": 6941016,
+"title": "Nothing Was The Same",
+"artistId": 246791,
+"artist": "Drake",
+"cover": "ce9e1271d327472a99aff7aa0bc58d5c",
+"genre": "hiphop",
+"lang": "english",
+"year": 2013
+},
+{
+"albumId": 13082992,
+"title": "Views",
+"artistId": 246791,
+"artist": "Drake",
+"cover": "56bdb7a86a27fadb96332c0c8f1b8e81",
+"genre": "hiphop",
+"lang": "english",
+"year": 2016
+},
+{
+"albumId": 110040592,
+"title": "Hollywood's Bleeding",
+"artistId": 7543848,
+"artist": "Post Malone",
+"cover": "4642b8e3e0a89f92a6e2bfed13d8f31c",
+"genre": "hiphop",
+"lang": "english",
+"year": 2019
+},
+{
+"albumId": 383703577,
+"title": "SOS",
+"artistId": 5531258,
+"artist": "SZA",
+"cover": "328d68300e654b21831b261e413780e0",
+"genre": "rnb",
+"lang": "english",
+"year": 2022
+},
+{
+"albumId": 42724001,
+"title": "Ctrl",
+"artistId": 5531258,
+"artist": "SZA",
+"cover": "c2431a6ddfeaaea69562b7448e82d714",
+"genre": "rnb",
+"lang": "english",
+"year": 2017
+},
+{
+"albumId": 137272602,
+"title": "After Hours",
+"artistId": 4050205,
+"artist": "The Weeknd",
+"cover": "f520bf0be2e3cfc476824e75d20a164a",
+"genre": "rnb",
+"lang": "english",
+"year": 2020
+},
+{
+"albumId": 11107272,
+"title": "Beauty Behind The Madness",
+"artistId": 4050205,
+"artist": "The Weeknd",
+"cover": "eea9f7fc913300e40307a0ff70dc73cf",
+"genre": "rnb",
+"lang": "english",
+"year": 2015
+},
+{
+"albumId": 91598612,
+"title": "WHEN WE ALL FALL ASLEEP, WHERE DO WE GO?",
+"artistId": 9635624,
+"artist": "Billie Eilish",
+"cover": "6630083f454d48eadb6a9b53f035d734",
+"genre": "pop",
+"lang": "english",
+"year": 2019
+},
+{
+"albumId": 122664252,
+"title": "Fine Line",
+"artistId": 5313805,
+"artist": "Harry Styles",
+"cover": "346c524c15ecccbc4a8a78e8972a352c",
+"genre": "pop",
+"lang": "english",
+"year": 2019
+},
+{
+"albumId": 42886421,
+"title": "Melodrama",
+"artistId": 4448485,
+"artist": "Lorde",
+"cover": "23b5f29a964ee7e895e9508ef18ac5bc",
+"genre": "pop",
+"lang": "english",
+"year": 2017
+},
+{
+"albumId": 316164367,
+"title": "Un Verano Sin Ti",
+"artistId": 10583405,
+"artist": "Bad Bunny",
+"cover": "b29d1070377b784384c2456093f96a66",
+"genre": "pop",
+"lang": "spanish",
+"year": 2022
+},
+{
+"albumId": 12114240,
+"title": "The Dark Side Of The Moon",
+"artistId": 860,
+"artist": "Pink Floyd",
+"cover": "e635a8510c1a74bc089b3566ebbb9cb8",
+"genre": "rock",
+"lang": "english",
+"year": 1973
+},
+{
+"albumId": 12114242,
+"title": "Wish You Were Here",
+"artistId": 860,
+"artist": "Pink Floyd",
+"cover": "cb029c785b8d0cd624ddee9d4127ceff",
+"genre": "rock",
+"lang": "english",
+"year": 1975
+},
+{
+"albumId": 12114246,
+"title": "Animals",
+"artistId": 860,
+"artist": "Pink Floyd",
+"cover": "ede2e11516199af680b415cd42d42c28",
+"genre": "rock",
+"lang": "english",
+"year": 1977
+},
+{
+"albumId": 1111100002,
+"title": "Abbey Road",
+"artistId": 1,
+"artist": "The Beatles",
+"cover": "176deb0ea14f5ec0679b8652e8194964",
+"genre": "rock",
+"lang": "english",
+"year": 1969
+},
+{
+"albumId": 11591214,
+"title": "Led Zeppelin IV",
+"artistId": 848,
+"artist": "Led Zeppelin",
+"cover": "2047754dc07232def42ec26a9a854544",
+"genre": "rock",
+"lang": "english",
+"year": 1971
+},
+{
+"albumId": 401340,
+"title": "Whatever People Say I Am, That's What I'm Not",
+"artistId": 1182,
+"artist": "Arctic Monkeys",
+"cover": "f7a0a1ca91431861989efe5a22aad557",
+"genre": "rock",
+"lang": "english",
+"year": 2006
+},
+{
+"albumId": 1442557,
+"title": "Is This It",
+"artistId": 569,
+"artist": "The Strokes",
+"cover": "99bfc862c81431e2b794f45b8d627ab0",
+"genre": "rock",
+"lang": "english",
+"year": 2001
+},
+{
+"albumId": 86885,
+"title": "Unknown Pleasures",
+"artistId": 1249,
+"artist": "Joy Division",
+"cover": "d16f5dd2ada54c4d849b05077b0fcfad",
+"genre": "rock",
+"lang": "english",
+"year": 1979
+},
+{
+"albumId": 77941202,
+"title": "ye",
+"artistId": 230,
+"artist": "Kanye West",
+"cover": "71d34b7f041d43ea821a9afaeab73666",
+"genre": "hiphop",
+"lang": "english",
+"year": 2018
+},
+{
+"albumId": 322019377,
+"title": "Mr. Morale & The Big Steppers",
+"artistId": 525046,
+"artist": "Kendrick Lamar",
+"cover": "412361ce41f0bd2595978dbf0e035ad3",
+"genre": "hiphop",
+"lang": "english",
+"year": 2022
+},
+{
+"albumId": 11126554,
+"title": "Rodeo",
+"artistId": 4495513,
+"artist": "Travis Scott",
+"cover": "c6fe182fb0f3485428906c7b21873046",
+"genre": "hiphop",
+"lang": "english",
+"year": 2015
+},
+{
+"albumId": 44730061,
+"title": "Flower Boy",
+"artistId": 1194083,
+"artist": "Tyler, The Creator",
+"cover": "a7a16b8f63b1ec0e9fbd327619966737",
+"genre": "hiphop",
+"lang": "english",
+"year": 2017
+},
+{
+"albumId": 69352202,
+"title": "Swimming",
+"artistId": 632926,
+"artist": "Mac Miller",
+"cover": "5c5774a43a421d37f58ae170df87b9e8",
+"genre": "hiphop",
+"lang": "english",
+"year": 2018
+},
+{
+"albumId": 165354262,
+"title": "Legends Never Die",
+"artistId": 14456487,
+"artist": "Juice WRLD",
+"cover": "0d9fa6b56e3e0da66b4c823cd534f504",
+"genre": "hiphop",
+"lang": "english",
+"year": 2020
+},
+{
+"albumId": 340072867,
+"title": "RENAISSANCE",
+"artistId": 145,
+"artist": "Beyoncé",
+"cover": "c3e2a951678a28a3f541a69c866583d4",
+"genre": "rnb",
+"lang": "english",
+"year": 2022
+},
+{
+"albumId": 12279700,
+"title": "ANTI",
+"artistId": 564,
+"artist": "Rihanna",
+"cover": "37c8008f5bf6b7368fa849a5d5e9b013",
+"genre": "pop",
+"lang": "english",
+"year": 2016
+},
+{
+"albumId": 231552772,
+"title": "SOUR",
+"artistId": 11152580,
+"artist": "Olivia Rodrigo",
+"cover": "e68da86fd7976135c2d2d1715afaef7c",
+"genre": "pop",
+"lang": "english",
+"year": 2021
+},
+{
+"albumId": 238876612,
+"title": "Planet Her",
+"artistId": 5578942,
+"artist": "Doja Cat",
+"cover": "1e012b5bba83edac911b09ca1ab29e1e",
+"genre": "pop",
+"lang": "english",
+"year": 2021
+},
+{
+"albumId": 188972392,
+"title": "El Último Tour Del Mundo",
+"artistId": 10583405,
+"artist": "Bad Bunny",
+"cover": "6ea80078f0df08737a7471f3c4cf2afa",
+"genre": "pop",
+"lang": "spanish",
+"year": 2020
+},
+{
+"albumId": 71318,
+"title": "Oracular Spectacular",
+"artistId": 69627,
+"artist": "MGMT",
+"cover": "751372bcbd63a38e6ec6ef8bd448d687",
+"genre": "rock",
+"lang": "english",
+"year": 2008
+},
+{
+"albumId": 650763991,
+"title": "Because the Internet",
+"artistId": 577666,
+"artist": "Childish Gambino",
+"cover": "a07c38caadefae99abe4047dbcb0c778",
+"genre": "hiphop",
+"lang": "english",
+"year": 2019
+}
+]

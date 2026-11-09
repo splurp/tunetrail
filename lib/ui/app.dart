@@ -1,3 +1,4 @@
+import 'widgets/fps_overlay.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -174,7 +175,16 @@ class _TunetrailAppState extends State<TunetrailApp> with WidgetsBindingObserver
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       // GameScope wraps the Navigator so pushed routes can reach the game.
-      builder: (context, child) => g == null ? child! : GameScope(game: g, child: child!),
+      builder: (context, child) => g == null
+          ? child!
+          : GameScope(
+              game: g,
+              child: ListenableBuilder(
+                listenable: g.profile,
+                child: child,
+                builder: (context, child) => Stack(children: [child!, if (g.profile.debugEnabled && g.profile.showFps) const FpsOverlay()]),
+              ),
+            ),
       home: g == null ? _Splash(error: _error) : const HomeShell(),
     );
   }

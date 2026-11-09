@@ -93,6 +93,9 @@ class PlayerProfile extends ChangeNotifier {
   bool freePurchases = false;
   bool joystickEnabled = false;
   bool unlimitedRange = false;
+
+  /// Debug: frame-rate overlay for benchmarking.
+  bool showFps = false;
   double speedMultiplier = 1.0;
   MarketMode marketMode = MarketMode.local;
   String serverUrl = 'http://localhost:8080';
@@ -123,6 +126,10 @@ class PlayerProfile extends ChangeNotifier {
   /// Daily minigame plays: game id → (day key, plays that day). The day
   /// key comes from trusted server time and a pinned time-zone offset.
   Map<String, (String, int)> minigamePlays = {};
+
+  /// A minigame round in progress, per game: leaving and coming back
+  /// resumes it (the day's play was already counted when it started).
+  Map<String, Map<String, dynamic>> minigameRounds = {};
   int? minigameTzOffset; // minutes
   int minigameTzSetAt = 0; // trusted UTC ms when the offset was pinned
 
@@ -157,6 +164,12 @@ class PlayerProfile extends ChangeNotifier {
     }
   }
 
+  /// Saves soon without notifying listeners (for frequent small updates).
+  void touch() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 800), save);
+  }
+
   void changed() {
     notifyListeners();
     _saveTimer?.cancel();
@@ -183,6 +196,7 @@ class PlayerProfile extends ChangeNotifier {
         'mgFilter': minigameFilter,
         'mgBits': minigameBits,
         'mgPlays': {for (final e in minigamePlays.entries) e.key: [e.value.$1, e.value.$2]},
+        'mgRounds': minigameRounds,
         'mgTz': minigameTzOffset,
         'mgTzAt': minigameTzSetAt,
         'sampleOv2': {for (final e in sampleOverrides.entries) '${e.key}': [e.value.$1, e.value.$2]},
@@ -217,6 +231,7 @@ class PlayerProfile extends ChangeNotifier {
         'freePurchases': freePurchases,
         'joystick': joystickEnabled,
         'unlimitedRange': unlimitedRange,
+        'showFps': showFps,
         'speed': speedMultiplier,
         'marketMode': marketMode.index,
         'server': serverUrl,
@@ -241,6 +256,10 @@ class PlayerProfile extends ChangeNotifier {
     minigamePlays = {
       for (final e in (j['mgPlays'] as Map<String, dynamic>? ?? const {}).entries)
         e.key: ((e.value as List)[0] as String, ((e.value as List)[1] as num).toInt()),
+    };
+    minigameRounds = {
+      for (final e in (j['mgRounds'] as Map<String, dynamic>? ?? const {}).entries)
+        if (e.value is Map<String, dynamic>) e.key: e.value as Map<String, dynamic>,
     };
     minigameTzOffset = (j['mgTz'] as num?)?.toInt();
     minigameTzSetAt = (j['mgTzAt'] as num?)?.toInt() ?? 0;
@@ -295,6 +314,7 @@ class PlayerProfile extends ChangeNotifier {
     freePurchases = j['freePurchases'] as bool? ?? false;
     joystickEnabled = j['joystick'] as bool? ?? false;
     unlimitedRange = j['unlimitedRange'] as bool? ?? false;
+    showFps = j['showFps'] as bool? ?? false;
     speedMultiplier = (j['speed'] as num?)?.toDouble() ?? 1.0;
     marketMode = MarketMode.values[((j['marketMode'] as num?)?.toInt() ?? 0).clamp(0, 1)];
     serverUrl = j['server'] as String? ?? serverUrl;

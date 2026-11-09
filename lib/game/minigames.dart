@@ -106,20 +106,46 @@ class MinigameFilter {
   }
 }
 
+/// A famous album whose cover doesn't show its title (hand-picked; see
+/// tool/minigames/albums.py).
+class CuratedAlbum {
+  const CuratedAlbum({required this.id, required this.title, required this.artistId, required this.artist, required this.coverMd5, required this.genre, required this.language, this.year = 0});
+  final int id, artistId, year;
+  final String title, artist, coverMd5;
+  final MiniGenre genre;
+  final MiniLanguage language;
+
+  factory CuratedAlbum.fromJson(Map<String, dynamic> j) => CuratedAlbum(
+        id: (j['albumId'] as num).toInt(),
+        title: j['title'] as String,
+        artistId: (j['artistId'] as num).toInt(),
+        artist: j['artist'] as String,
+        coverMd5: j['cover'] as String,
+        genre: MiniGenre.values.byName(j['genre'] as String),
+        language: MiniLanguage.values.byName(j['lang'] as String),
+        year: (j['year'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class MinigameData {
-  MinigameData._(this.artists);
+  MinigameData._(this.artists, [this.albums = const []]);
   final List<MiniArtist> artists;
+  final List<CuratedAlbum> albums;
 
   static MinigameData? _cached;
 
-  /// From the JSON of assets/minigames/artists.json.
-  static MinigameData parse(String raw) => MinigameData._([for (final j in jsonDecode(raw) as List) MiniArtist.fromJson(j as Map<String, dynamic>)]);
+  /// From the JSON of assets/minigames/artists.json (and albums.json).
+  static MinigameData parse(String raw, [String? albums]) => MinigameData._(
+        [for (final j in jsonDecode(raw) as List) MiniArtist.fromJson(j as Map<String, dynamic>)],
+        albums == null ? const [] : [for (final j in jsonDecode(albums) as List) CuratedAlbum.fromJson(j as Map<String, dynamic>)],
+      );
   static Future<MinigameData> load() async {
     final c = _cached;
     if (c != null) return c;
-    final raw = await rootBundle.loadString('assets/minigames/artists.json');
-    final list = [for (final j in jsonDecode(raw) as List) MiniArtist.fromJson(j as Map<String, dynamic>)];
-    return _cached = MinigameData._(list);
+    return _cached = parse(
+      await rootBundle.loadString('assets/minigames/artists.json'),
+      await rootBundle.loadString('assets/minigames/albums.json'),
+    );
   }
 
   /// Deezer fan count recorded for an artist in the data set.
@@ -210,24 +236,25 @@ class AlbumPuzzle {
   final AlbumInfo album;
 }
 
-/// A popular studio album (by Deezer fans) by an artist matching the filter.
+/// A famous album cover (from the curated list, so the cover never spells
+/// out the answer) by an artist matching the filter. [avoid] holds album
+/// ids played recently.
 Future<AlbumPuzzle?> pickAlbumPuzzle(DeezerApi api, MinigameData data, MinigameFilter f, math.Random r, {Set<int> avoid = const {}}) async {
-  // Favour bigger artists (more recognisable covers): best of two picks.
-  for (var tries = 0; tries < 8; tries++) {
-    final x = data.pick(f, r, avoid: avoid), y = data.pick(f, r, avoid: avoid);
-    if (x == null || y == null) return null;
-    final a = data.fansOf(x) >= data.fansOf(y) ? x : y;
-    try {
-      final albums = (await api.artistAlbums(a.id, a.name))
-          .where((x) => x.recordType == 'album' && x.fans >= 20000 && !RegExp(r'\b(live|greatest hits|best of|remix|karaoke)\b', caseSensitive: false).hasMatch(x.title))
-          .toList()
-        ..sort((x, y) => y.fans.compareTo(x.fans));
-      if (albums.isEmpty) continue;
-      // One of their three most popular albums.
-      return AlbumPuzzle(a, albums[r.nextInt(math.min(3, albums.length))]);
-    } catch (_) {}
-  }
-  return null;
+  if (data.albums.isEmpty) return null;
+  var pool = [for (final a in data.albums) if (f.languages.contains(a.language) && f.genres.contains(a.genre)) a];
+  if (pool.isEmpty) pool = data.albums; // the filter rules every album out
+  final fresh = [for (final a in pool) if (!avoid.contains(a.id)) a];
+  final c = (fresh.isEmpty ? pool : fresh)[r.nextInt((fresh.isEmpty ? pool : fresh).length)];
+  return albumPuzzleFor(data, c);
+}
+
+AlbumPuzzle albumPuzzleFor(MinigameData data, CuratedAlbum c) {
+  final artist = data.artists.where((a) => a.id == c.artistId).firstOrNull ??
+      MiniArtist(id: c.artistId, name: c.artist, picMd5: '', genre: c.genre, language: c.language);
+  return AlbumPuzzle(
+    artist,
+    AlbumInfo(id: c.id, title: c.title, coverMd5: c.coverMd5, artistId: c.artistId, artistName: c.artist, releaseDate: c.year > 0 ? '${c.year}' : ''),
+  );
 }
 
 // =================================================================== trivia
@@ -237,6 +264,10 @@ class TriviaQuestion {
   final List<String> options; // always 5, no "all/none of the above"
   final int answer;
   final String? image;
+
+  Map<String, dynamic> toJson() => {'p': prompt, 'o': options, 'a': answer, 'i': image};
+  factory TriviaQuestion.fromJson(Map<String, dynamic> j) =>
+      TriviaQuestion(j['p'] as String, (j['o'] as List).cast<String>(), (j['a'] as num).toInt(), image: j['i'] as String?);
 }
 
 /// Builds [count] multiple-choice questions about the player's favourite

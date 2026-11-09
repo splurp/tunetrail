@@ -4,7 +4,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
+import 'package:tunetrail_core/tunetrail_core.dart' show FavoriteArtist;
 import '../../game/game.dart';
+import '../../game/audio_service.dart';
 import '../../game/minigames.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
@@ -84,10 +86,10 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
             icon: Icons.quiz_outlined,
             title: 'Favourite Artist Trivia',
             body: g.profile.favoriteArtists.isEmpty
-                ? 'Add favourite artists on your profile to play: questions about their hits, albums, debut and hometown.'
+                ? '5 questions about famous artists\' hits, albums, debut and hometown. Add favourite artists on your profile to be asked about them instead.'
                 : '5 multiple-choice questions about your favourite artists.',
             rewards: '1 bit per correct answer',
-            open: data == null || g.profile.favoriteArtists.isEmpty ? null : () => TriviaScreen(data: data),
+            open: data == null ? null : () => TriviaScreen(data: data),
             onReturn: () => setState(() {}),
           ),
           const SizedBox(height: 8),
@@ -155,15 +157,16 @@ class _GameCard extends StatelessWidget {
           builder: (context, snap) {
             final q = snap.data;
             final left = q?.left ?? 0;
+            final resume = g.pendingMinigame(id) != null;
             return Column(mainAxisSize: MainAxisSize.min, children: [
               FilledButton(
-                onPressed: open == null || q == null || left <= 0
+                onPressed: open == null || (!resume && (q == null || left <= 0))
                     ? null
                     : () async {
                         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => open!()));
                         onReturn();
                       },
-                child: const Text('Play'),
+                child: Text(resume ? 'Resume' : 'Play'),
               ),
               const SizedBox(height: 4),
               Text(
@@ -325,6 +328,50 @@ class SongGuesserScreen extends StatefulWidget {
 }
 
 class _SongGuesserScreenState extends State<SongGuesserScreen> {
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _persist();
+  }
+
+  /// Keeps the unfinished round, so leaving and coming back resumes it.
+  void _persist() {
+    final s = _song;
+    if (_loading || s == null) return;
+    GameScope.read(context).savePendingMinigame(
+        'song', _solved || _gaveUp ? null : {'song': s.toJson(), 'artist': _artist?.id, 'stage': _stage, 'guesses': [..._guesses]});
+  }
+
+  bool _resume() {
+    final j = GameScope.read(context).pendingMinigame('song');
+    if (j == null) return false;
+    try {
+      final song = Song.fromJson(j['song'] as Map<String, dynamic>);
+      final aid = (j['artist'] as num?)?.toInt();
+      setState(() {
+        _song = song;
+        _artist = widget.data.artists.where((a) => a.id == aid).firstOrNull;
+        _stage = (j['stage'] as num).toInt().clamp(0, kSnippetSeconds.length - 1);
+        _guesses
+          ..clear()
+          ..addAll((j['guesses'] as List).cast<String>());
+        _loading = false;
+      });
+      _play();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _stopClip() async {
+    _clipToken++;
+    await GameScope.read(context).audio.stop();
+    if (mounted) setState(() => _playing = false);
+  }
+
+  int _clipToken = 0;
+
   final _r = math.Random();
   final Set<int> _recent = {};
   MiniArtist? _artist;
@@ -338,17 +385,31 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _next());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_resume()) _next();
+    });
+  }
+
+  late final AudioService _audio = GameScope.read(context).audio;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _audio;
   }
 
   @override
   void dispose() {
-    GameScope.read(context).audio.stop();
+    _clipToken++;
+    _audio.stop();
     super.dispose();
   }
 
   Future<void> _next() async {
     final g = GameScope.read(context);
+    _clipToken++;
+    await g.audio.stop();
+    if (!mounted) return;
     if (!await _startRound(context, 'song')) {
       if (mounted) Navigator.of(context).pop();
       return;
@@ -390,10 +451,16 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
     if (s == null) return;
     final g = GameScope.read(context);
     final secs = _solved || _gaveUp ? 30.0 : kSnippetSeconds[_stage];
+    final token = ++_clipToken;
     setState(() => _playing = true);
     await g.audio.playClip(s.id, seconds: secs);
+    // Left the screen (or pressed stop) while the clip was loading.
+    if (!mounted || token != _clipToken) {
+      if (!mounted) _audio.stop();
+      return;
+    }
     await Future<void>.delayed(Duration(milliseconds: (secs * 1000).round()));
-    if (mounted) setState(() => _playing = false);
+    if (mounted && token == _clipToken) setState(() => _playing = false);
   }
 
   void _guess(String text) {
@@ -482,6 +549,13 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
                           Text(s.artistName, style: const TextStyle(color: kTextSecondary)),
                           const SizedBox(height: 8),
                           Text(_solved ? '+$_won bits' : 'No bits this time', style: TextStyle(color: _solved ? kAccent : kTextTertiary, fontWeight: FontWeight.w700, fontSize: 18)),
+                          const SizedBox(height: 8),
+                          IconButton.filledTonal(
+                            iconSize: 32,
+                            tooltip: _playing ? 'Stop' : 'Play the song',
+                            onPressed: _playing ? _stopClip : _play,
+                            icon: Icon(_playing ? Icons.stop_rounded : Icons.play_arrow_rounded),
+                          ),
                         ])
                       : IconButton.filled(
                           iconSize: 56,
@@ -543,6 +617,37 @@ class ArtistGuesserScreen extends StatefulWidget {
 }
 
 class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    final a = _a;
+    if (_loading || a == null) return;
+    GameScope.read(context).savePendingMinigame(
+        'artist', _solved || _gaveUp ? null : {'artist': a.id, 'song': _song?.toJson(), 'skips': _skips, 'guesses': [..._guesses]});
+  }
+
+  bool _resume() {
+    final j = GameScope.read(context).pendingMinigame('artist');
+    if (j == null) return false;
+    final id = (j['artist'] as num?)?.toInt();
+    final a = widget.data.artists.where((x) => x.id == id).firstOrNull;
+    if (a == null) return false;
+    try {
+      setState(() {
+        _a = a;
+        _song = j['song'] == null ? null : Song.fromJson(j['song'] as Map<String, dynamic>);
+        _skips = (j['skips'] as num?)?.toInt() ?? 0;
+        _guesses
+          ..clear()
+          ..addAll((j['guesses'] as List).cast<String>());
+        _loading = false;
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   final _r = math.Random();
   final Set<int> _recent = {};
   MiniArtist? _a;
@@ -557,7 +662,9 @@ class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _next());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_resume()) _next();
+    });
   }
 
   Future<void> _next() async {
@@ -710,6 +817,30 @@ class AlbumGuesserScreen extends StatefulWidget {
 }
 
 class _AlbumGuesserScreenState extends State<AlbumGuesserScreen> {
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    final p = _p;
+    if (_loading || p == null) return;
+    GameScope.read(context).savePendingMinigame('album', _solved || _gaveUp ? null : {'album': p.album.id, 'guesses': [..._guesses]});
+  }
+
+  bool _resume() {
+    final j = GameScope.read(context).pendingMinigame('album');
+    if (j == null) return false;
+    final id = (j['album'] as num?)?.toInt();
+    final c = widget.data.albums.where((x) => x.id == id).firstOrNull;
+    if (c == null) return false;
+    setState(() {
+      _p = albumPuzzleFor(widget.data, c);
+      _guesses
+        ..clear()
+        ..addAll((j['guesses'] as List? ?? const []).cast<String>());
+      _loading = false;
+    });
+    return true;
+  }
+
   final _r = math.Random();
   final Set<int> _recent = {};
   AlbumPuzzle? _p;
@@ -720,7 +851,9 @@ class _AlbumGuesserScreenState extends State<AlbumGuesserScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _next());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_resume()) _next();
+    });
   }
 
   Future<void> _next() async {
@@ -738,7 +871,7 @@ class _AlbumGuesserScreenState extends State<AlbumGuesserScreen> {
     final p = await pickAlbumPuzzle(g.api, widget.data, MinigameFilter.fromJson(g.profile.minigameFilter), _r, avoid: _recent);
     if (!mounted) return;
     if (p != null) {
-      _recent.add(p.artist.id);
+      _recent.add(p.album.id);
       if (_recent.length > 30) _recent.remove(_recent.first);
     }
     setState(() {
@@ -835,6 +968,32 @@ class TriviaScreen extends StatefulWidget {
 }
 
 class _TriviaScreenState extends State<TriviaScreen> {
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    if (_loading || _qs.isEmpty) return;
+    GameScope.read(context).savePendingMinigame(
+        'trivia', _i >= _qs.length ? null : {'qs': [for (final q in _qs) q.toJson()], 'i': _i, 'correct': _correct, 'picked': _picked});
+  }
+
+  bool _resume() {
+    final j = GameScope.read(context).pendingMinigame('trivia');
+    if (j == null) return false;
+    try {
+      final qs = [for (final q in j['qs'] as List) TriviaQuestion.fromJson(q as Map<String, dynamic>)];
+      setState(() {
+        _qs = qs;
+        _i = (j['i'] as num).toInt();
+        _correct = (j['correct'] as num).toInt();
+        _picked = (j['picked'] as num?)?.toInt();
+        _loading = false;
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   final _r = math.Random();
   List<TriviaQuestion> _qs = [];
   int _i = 0, _correct = 0;
@@ -844,7 +1003,9 @@ class _TriviaScreenState extends State<TriviaScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_resume()) _start();
+    });
   }
 
   Future<void> _start() async {
@@ -859,7 +1020,14 @@ class _TriviaScreenState extends State<TriviaScreen> {
       _correct = 0;
       _picked = null;
     });
-    final qs = await buildTrivia(g.api, widget.data, g.profile.favoriteArtists, _r);
+    // No favourites yet: ask about well-known artists instead.
+    var artists = g.profile.favoriteArtists;
+    if (artists.isEmpty) {
+      final pool = [...widget.data.artists]..sort((a, b) => b.fans.compareTo(a.fans));
+      final top = pool.take(60).toList()..shuffle(_r);
+      artists = [for (final a in top.take(8)) FavoriteArtist(id: a.id, name: a.name, picMd5: a.picMd5)];
+    }
+    final qs = await buildTrivia(g.api, widget.data, artists, _r);
     if (!mounted) return;
     setState(() {
       _qs = qs;
