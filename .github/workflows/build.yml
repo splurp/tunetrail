@@ -3,12 +3,12 @@ name: Build Tunetrail
 on:
   push:
     branches: ['**']
-    tags: ['v*']
+    tags: ['v*', 'beta-*']
   pull_request:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Publish as a named release with this tag (e.g. v1.0.0-beta); empty = dev build'
+        description: 'Publish as a named release with this tag (e.g. beta-1.0.0 → "Tunetrail Beta v1.0.0"); empty = dev build'
         required: false
         default: ''
 
@@ -219,7 +219,9 @@ jobs:
           if [[ -n "$tag" ]]; then ref="$tag"; fi
           if [[ -n "$tag" || "${{ github.ref }}" == refs/tags/* ]]; then
             echo "tag=$ref" >> "$GITHUB_OUTPUT"
-            if [[ "$ref" == *-beta ]]; then
+            if [[ "$ref" == beta-* ]]; then
+              echo "name=Tunetrail Beta v${ref#beta-}" >> "$GITHUB_OUTPUT"; echo "pre=true" >> "$GITHUB_OUTPUT"
+            elif [[ "$ref" == *-beta ]]; then
               echo "name=Tunetrail Beta ${ref%-beta}" >> "$GITHUB_OUTPUT"; echo "pre=true" >> "$GITHUB_OUTPUT"
             else
               echo "name=Tunetrail $ref" >> "$GITHUB_OUTPUT"; echo "pre=false" >> "$GITHUB_OUTPUT"
