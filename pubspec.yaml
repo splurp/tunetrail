@@ -121,3 +121,11 @@ flutter_launcher_icons:
   macos:
     generate: true
     image_path: assets/icon/icon.png
+
+# flutter_soloud: no Ogg/Opus/Vorbis/FLAC — the game only plays MP3 previews
+# and WAV effects. This also means no prebuilt-library download from GitHub
+# during builds (which failed Android CI with repeated HTTP 504s).
+hooks:
+  user_defines:
+    flutter_soloud:
+      no_xiph_libs: true

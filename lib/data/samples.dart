@@ -150,9 +150,9 @@ class SampleLibrary {
 //   "…what it means"    source 12.40 ↔ song 11.39 and again 13.827
 // i.e. Kanye plays the line through to "what it means" and repeats
 // "what it means" 2.437 s later — exactly what the breakdown re-enacts.
-// Timeline (seconds from the start of the breakdown). Every jump back is
-// instant (no rewind sound, no pause, no fade); the only fade is the one
-// crossfade from Labi Siffre into I Wonder.
+// Timeline (seconds from the start of the breakdown). After the first,
+// animated rewind every jump back is instant (no pause, no fade); the only
+// other fade is the crossfade from Labi Siffre into I Wonder.
 const double _wimGap = 13.827 - 11.39; // "what it means" → repeat, in I Wonder
 const double _wimToAiw = 16.573 - 13.827; // repeat → next "And I wonder", in I Wonder
 const double _aiw = 7.6; // "And I wonder" onset in the source
@@ -161,8 +161,12 @@ const double _wimCut = 14.65; // cut just before "to find"
 const double _wimEnd = 14.55;
 const double _xf = 0.015; // de-click at every cut (not an audible fade)
 const double _origEnd = 21.0; // past "…dreams come true"
-// 1. The original, from 3.0 s; at its end jump straight back to "And".
-const double _flip1 = _origEnd - 3.0;
+// 1. The original, from 3.0 s. At its end it fades out while the playhead
+// visibly rewinds to "And I wonder" (the only animated rewind); every jump
+// after that is instant.
+const double _rew1 = _origEnd - 3.0;
+const double _rewind1 = 0.9;
+const double _flip1 = _rew1 + _rewind1;
 const double _flip1From = 7.35; // just before "And I wonder"
 // The line reaches the cut, and the repeat picks up the quiet breath before
 // "what it" so the phrase loops back-to-back, landing on the hook's timing.
@@ -215,7 +219,7 @@ const _curated = <SampleInfo>[
     clips: [
       // 1. The original: "…And I wonder, if you know, what it means, to find
       //    your dreams come true…"
-      SampleClip(SampleTrack.source, at: 0, from: 3.0, to: _origEnd, fadeOut: _xf),
+      SampleClip(SampleTrack.source, at: 0, from: 3.0, to: _origEnd, fadeOut: 0.6),
       // 2. Jump back: "And I wonder, if you know, what it means" — and
       //    "what it means" again, back-to-back, spaced as in the hook.
       SampleClip(SampleTrack.source, at: _flip1, from: _flip1From, to: _wimCut, fadeOut: _xf),
@@ -226,9 +230,12 @@ const _curated = <SampleInfo>[
       SampleClip(SampleTrack.source, at: _flip2Loop, from: _repeatFrom, to: _wimEnd, volume: 0.3, fadeOut: _wimEnd - _repeatFrom),
       SampleClip(SampleTrack.song, at: _songAt, from: _songFrom, fadeIn: _flip2Loop - _songAt, fadeOut: _xf),
     ],
-    rewinds: [],
+    rewinds: [
+      SampleRewind(at: _rew1, duration: _rewind1, from: _origEnd, to: _flip1From),
+    ],
     stages: [
-      SampleStage('Labi Siffre · My Song (1972)', 0, _flip1),
+      SampleStage('Labi Siffre · My Song (1972)', 0, _rew1),
+      SampleStage('Rewind to "And I wonder"', _rew1, _flip1),
       SampleStage('"…what it means, what it means"', _flip1, _flip2),
       SampleStage('Kanye West · I Wonder', _flip2, _songEnd),
     ],

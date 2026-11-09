@@ -10,9 +10,13 @@ import 'stick_figure.dart';
 /// The player's real 3D figure (the one on the map), standing and slowly
 /// turning, so clothing previews look exactly like they will in game.
 class Figure3DPreview extends StatefulWidget {
-  const Figure3DPreview({super.key, required this.look, this.size = 120, this.turn = true, this.animate = true});
+  const Figure3DPreview({super.key, required this.look, this.size = 120, this.turn = true, this.animate = true, this.facing = 200});
   final FigureLook look;
   final double size;
+
+  /// Facing of a still preview (degrees; 180 = towards the viewer, 0 = back
+  /// to the viewer). Backpacks are shown from behind.
+  final double facing;
 
   /// Animate (sway, breathe). Off = drawn once and cached, for grids of
   /// many previews (the shop) where animating them all costs frames.
@@ -53,17 +57,17 @@ class _Figure3DPreviewState extends State<Figure3DPreview> with SingleTickerProv
   /// every frame, which renderers without a raster cache (Impeller) do.
   static final Map<String, ui.Image> _stills = {};
 
-  static String _key(FigureLook l, int w, int h) => '${l.color.toARGB32()}|${l.hat}|${l.shirt}|${l.pet}|${l.backpack}|${w}x$h';
+  static String _key(FigureLook l, int w, int h, double f) => '${l.color.toARGB32()}|${l.hat}|${l.shirt}|${l.pet}|${l.backpack}|${w}x$h|$f';
 
   ui.Image _still(BuildContext context) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final w = (widget.size * 0.8 * dpr).round(), h = (widget.size * dpr).round();
-    final key = _key(widget.look, w, h);
+    final key = _key(widget.look, w, h, widget.facing);
     final hit = _stills[key];
     if (hit != null) return hit;
     final rec = ui.PictureRecorder();
     final canvas = Canvas(rec)..scale(dpr);
-    _PreviewPainter(widget.look, 1.2, IdleDirector(1), false).paint(canvas, Size(widget.size * 0.8, widget.size));
+    _PreviewPainter(widget.look, 1.2, IdleDirector(1), false, facing: widget.facing).paint(canvas, Size(widget.size * 0.8, widget.size));
     final img = rec.endRecording().toImageSync(w, h);
     // (Old entries are dropped, not disposed: another preview may still
     // be showing the same image.)
@@ -71,9 +75,26 @@ class _Figure3DPreviewState extends State<Figure3DPreview> with SingleTickerProv
     return _stills[key] = img;
   }
 
+  bool _hover = false;
+
+  void _setHover(bool h) {
+    if (widget.animate || h == _hover) return;
+    setState(() => _hover = h);
+    if (h) {
+      _c.repeat();
+    } else {
+      _c.stop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (!widget.animate) {
+    // Still previews come alive (turning) while the pointer is over them.
+    return MouseRegion(onEnter: (_) => _setHover(true), onExit: (_) => _setHover(false), child: _body(context));
+  }
+
+  Widget _body(BuildContext context) {
+    if (!widget.animate && !_hover) {
       return SizedBox(
         width: widget.size * 0.8,
         height: widget.size,
@@ -87,7 +108,7 @@ class _Figure3DPreviewState extends State<Figure3DPreview> with SingleTickerProv
         child: AnimatedBuilder(
           animation: _c,
           builder: (context, _) => CustomPaint(
-            painter: _PreviewPainter(widget.look, widget.animate ? _c.value * 60 : 1.2, _idle, widget.turn && widget.animate),
+            painter: _PreviewPainter(widget.look, _c.value * 60, _idle, widget.turn, facing: widget.facing),
           ),
         ),
       ),
@@ -96,7 +117,8 @@ class _Figure3DPreviewState extends State<Figure3DPreview> with SingleTickerProv
 }
 
 class _PreviewPainter extends CustomPainter {
-  _PreviewPainter(this.look, this.time, this.idle, this.turn);
+  _PreviewPainter(this.look, this.time, this.idle, this.turn, {this.facing = 200});
+  final double facing;
   final FigureLook look;
   final double time;
   final IdleDirector idle;
@@ -118,7 +140,7 @@ class _PreviewPainter extends CustomPainter {
     canvas.translate(size.width / 2, size.height * 0.47);
     canvas.scale(k);
     canvas.translate(-g.dx, -(g.dy + t.dy) / 2);
-    final facing = 180.0 + (turn ? math.sin(time * 0.9) * 50 : 20);
+    final facing = turn ? this.facing + math.sin(time * 0.9) * 50 : this.facing;
     Figure3DPainter(
       camera: cam,
       look: look,
@@ -132,7 +154,7 @@ class _PreviewPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_PreviewPainter old) => old.time != time || old.turn != turn || !_sameLook(old.look, look);
+  bool shouldRepaint(_PreviewPainter old) => old.time != time || old.turn != turn || old.facing != facing || !_sameLook(old.look, look);
 
   static bool _sameLook(FigureLook a, FigureLook b) =>
       a.color == b.color && a.hat == b.hat && a.shirt == b.shirt && a.pet == b.pet && a.backpack == b.backpack;

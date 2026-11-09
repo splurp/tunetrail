@@ -17,6 +17,8 @@ void main() {
       const FigureLook(color: Color(0xFFE9E6FF), shirt: 'shirt_striped', backpack: 'bag_jetpack', pet: 'pet_cat', hat: 'hat_tophat'),
       const FigureLook(color: Color(0xFFE9E6FF), shirt: 'shirt_tux', backpack: 'bag_wings', hat: 'hat_crown'),
       const FigureLook(color: Color(0xFFE9E6FF), shirt: 'shirt_hoodie', backpack: 'bag_boombox', pet: 'pet_robot', hat: 'hat_cowboy'),
+      const FigureLook(color: Color(0xFFE9E6FF), shirt: 'shirt_tee_red', backpack: 'bag_crate'),
+      const FigureLook(color: Color(0xFFE9E6FF), shirt: 'shirt_striped', backpack: 'bag_guitar'),
     ];
     final rec = ui.PictureRecorder();
     final canvas = Canvas(rec);

@@ -1,6 +1,7 @@
 import 'widgets/fps_overlay.dart';
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -173,6 +174,14 @@ class _TunetrailAppState extends State<TunetrailApp> with WidgetsBindingObserver
     return MaterialApp(
       title: 'Tunetrail',
       debugShowCheckedModeBanner: false,
+      // Lists can also be dragged with a mouse (desktop): horizontal shop
+      // rows have no other way to scroll without a trackpad.
+      scrollBehavior: const MaterialScrollBehavior().copyWith(dragDevices: {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+      }),
       theme: buildTheme(),
       // GameScope wraps the Navigator so pushed routes can reach the game.
       builder: (context, child) => g == null

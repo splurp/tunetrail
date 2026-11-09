@@ -350,6 +350,10 @@ class Figure3DPainter extends CustomPainter {
     if (look.hat != null) buildHat(outfit, look.hat!, pose.j['head']!, 1.4 * s, time);
     const lx = -0.35, ly = 0.45, lz = 0.82; // light from above, slightly to one side
     final parts = <(double, double, double), List<(Offset, Offset, Offset, Color, double)>>{};
+    // Details mounted on a part (speakers, pockets), drawn right after it.
+    final mounted = <(double, double, double), List<(Offset, Offset, Offset, Color, double)>>{};
+    final origin = w((0, 0, 0));
+    final mountVisible = <(double, double, double), bool>{};
     final partHat = <(double, double, double), bool>{};
     for (var ti = 0; ti < outfit.tris.length; ti++) {
       final t = outfit.tris[ti];
@@ -369,11 +373,28 @@ class Figure3DPainter extends CustomPainter {
         nz = -nz;
       }
       if (nx * (camPos.$1 - mx) + ny * (camPos.$2 - my) + nz * (camPos.$3 - mz) <= 0) continue;
+      final host = t.host;
+      if (host != null) {
+        // Only while the surface it's mounted on faces the camera.
+        final vis = mountVisible[t.mount!] ??= () {
+          final m = w(t.mount!);
+          final dx = m.$1 - origin.$1, dy = m.$2 - origin.$2, dz = m.$3 - origin.$3;
+          final hw = w(host);
+          return dx * (camPos.$1 - hw.$1) + dy * (camPos.$2 - hw.$2) + dz * (camPos.$3 - hw.$3) > 0;
+        }();
+        if (!vis) continue;
+      }
       final pa = proj(a), pb = proj(b), pc = proj(c);
       if (pa == null || pb == null || pc == null) continue;
       final k = 0.62 + 0.38 * math.max(0.0, nx * lx + ny * ly + nz * lz);
       final col = Color.fromARGB(255, (t.color.r * 255 * k).round().clamp(0, 255), (t.color.g * 255 * k).round().clamp(0, 255), (t.color.b * 255 * k).round().clamp(0, 255));
-      (parts[t.center] ??= []).add((pa, pb, pc, col, (depthOf(a) + depthOf(b) + depthOf(c)) / 3));
+      final face = (pa, pb, pc, col, (depthOf(a) + depthOf(b) + depthOf(c)) / 3);
+      if (host != null) {
+        parts.putIfAbsent(host, () => []);
+        (mounted[host] ??= []).add(face);
+      } else {
+        (parts[t.center] ??= []).add(face);
+      }
       if (ti >= hatStart) partHat[t.center] = true;
     }
     final fill = Paint()..isAntiAlias = true;
@@ -383,6 +404,8 @@ class Figure3DPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
     for (final e in parts.entries) {
       final faces = e.value..sort((x, y) => y.$5.compareTo(x.$5));
+      final extra = mounted[e.key];
+      if (extra != null) faces.addAll(extra..sort((x, y) => y.$5.compareTo(x.$5)));
       // Hat pieces sit on the head: nudge them in front of the head disc
       // unless they're clearly behind it.
       final bias = partHat[e.key] == true ? -0.5 * s : 0.0;

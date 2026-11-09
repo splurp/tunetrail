@@ -6,12 +6,19 @@ import 'package:flutter/material.dart';
 /// around the posed skeleton in the figure's local frame
 /// (forward, right, up metres).
 class OutfitTri {
-  OutfitTri(this.a, this.b, this.c, this.color, this.center);
+  OutfitTri(this.a, this.b, this.c, this.color, this.center, {this.host, this.mount});
   final (double, double, double) a, b, c;
   final Color color;
 
   /// Centre of the convex part this face belongs to (for outward normals).
   final (double, double, double) center;
+
+  /// For details mounted on another part's surface (speakers, pockets):
+  /// that part's centre, and the outward direction of the surface they sit
+  /// on. They're drawn straight after their host, and only while that
+  /// surface faces the camera — so they never pop in and out as parts are
+  /// re-sorted.
+  final (double, double, double)? host, mount;
 }
 
 typedef V3 = (double, double, double);
@@ -29,6 +36,42 @@ V3 _cross(V3 a, V3 b) => (a.$2 * b.$3 - a.$3 * b.$2, a.$3 * b.$1 - a.$1 * b.$3, 
 
 class OutfitBuilder {
   final List<OutfitTri> tris = [];
+
+  /// Adds whatever [build] makes as details mounted on the part centred at
+  /// [host], on its surface facing [mount].
+  void attach(V3 host, V3 mount, void Function() build) {
+    final start = tris.length;
+    build();
+    for (var i = start; i < tris.length; i++) {
+      final t = tris[i];
+      tris[i] = OutfitTri(t.a, t.b, t.c, t.color, t.center, host: host, mount: mount);
+    }
+  }
+
+  /// A round disc (or its upper half) of [radius] and [thickness] centred at
+  /// [c], facing along [axis] (unit), with "up" given by [upDir] (unit,
+  /// perpendicular to the axis).
+  void disc(V3 c, V3 axis, V3 upDir, double radius, double thickness, Color color, {bool half = false, int seg = 14}) {
+    final side = _cross(axis, upDir);
+    final f0 = _add(c, _mul(axis, thickness / 2)), f1 = _sub(c, _mul(axis, thickness / 2));
+    V3 rim(V3 face, double a) => _add(face, _add(_mul(side, math.cos(a) * radius), _mul(upDir, math.sin(a) * radius)));
+    final a0 = half ? 0.0 : 0.0, a1 = half ? math.pi : 2 * math.pi;
+    for (var k = 0; k < seg; k++) {
+      final x0 = a0 + (a1 - a0) * k / seg, x1 = a0 + (a1 - a0) * (k + 1) / seg;
+      tris
+        ..add(OutfitTri(f0, rim(f0, x0), rim(f0, x1), color, c))
+        ..add(OutfitTri(f1, rim(f1, x1), rim(f1, x0), color, c))
+        ..add(OutfitTri(rim(f0, x0), rim(f1, x0), rim(f1, x1), color, c))
+        ..add(OutfitTri(rim(f0, x0), rim(f1, x1), rim(f0, x1), color, c));
+    }
+    if (half) {
+      // Close the flat bottom edge.
+      final l0 = rim(f0, math.pi), l1 = rim(f1, math.pi), r0 = rim(f0, 0), r1 = rim(f1, 0);
+      tris
+        ..add(OutfitTri(l0, r0, r1, color, c))
+        ..add(OutfitTri(l0, r1, l1, color, c));
+    }
+  }
 
   /// Elliptical tube between ring centres [p0] → [p1] with semi-axes along
   /// local forward (fa) and right (ra); [colorAt] picks each face's colour
@@ -201,21 +244,43 @@ void buildBackpack(OutfitBuilder o, String id, Map<String, V3> j, double s, doub
   V3 back(double f, double r, double z) => _add(mid, (backZ + f, r, z));
   switch (id) {
     case 'bag_classic':
-      o.box(back(-0.45 * s, 0, 0), 0.45 * s, 0.85 * s, 1.15 * s, const Color(0xFF1565C0), top: const Color(0xFF0D47A1));
-      o.box(back(-0.98 * s, 0, -0.45 * s), 0.12 * s, 0.6 * s, 0.45 * s, const Color(0xFF1E88E5));
+      final pack = back(-0.45 * s, 0, 0);
+      o.box(pack, 0.45 * s, 0.85 * s, 1.15 * s, const Color(0xFF1565C0), top: const Color(0xFF0D47A1));
+      // Front pocket, mounted on the pack's back face.
+      o.attach(pack, (-1, 0, 0), () => o.box(back(-0.98 * s, 0, -0.45 * s), 0.12 * s, 0.6 * s, 0.45 * s, const Color(0xFF1E88E5)));
     case 'bag_boombox':
-      o.box(back(-0.5 * s, 0, 0.1 * s), 0.5 * s, 1.35 * s, 0.85 * s, const Color(0xFF424242), top: const Color(0xFF616161));
-      for (final r in [-0.75, 0.75]) {
-        o.tube(back(-1.0 * s, r * s, 0.05 * s), back(-1.08 * s, r * s, 0.05 * s), 0.42 * s, 0.42 * s, 10, const Color(0xFF9E9E9E));
-        o.tube(back(-1.08 * s, r * s, 0.05 * s), back(-1.12 * s, r * s, 0.05 * s), 0.22 * s, 0.22 * s, 8, const Color(0xFF212121));
-      }
+      final body = back(-0.5 * s, 0, 0.1 * s);
+      o.box(body, 0.5 * s, 1.35 * s, 0.85 * s, const Color(0xFF424242), top: const Color(0xFF616161));
+      // Speakers, mounted on the box's outward face.
+      o.attach(body, (-1, 0, 0), () {
+        for (final r in [-0.75, 0.75]) {
+          o.tube(back(-1.0 * s, r * s, 0.05 * s), back(-1.08 * s, r * s, 0.05 * s), 0.42 * s, 0.42 * s, 10, const Color(0xFF9E9E9E));
+          o.tube(back(-1.08 * s, r * s, 0.05 * s), back(-1.12 * s, r * s, 0.05 * s), 0.22 * s, 0.22 * s, 8, const Color(0xFF212121));
+        }
+      });
     case 'bag_guitar':
-      // A guitar case slung diagonally.
-      o.tube(back(-0.35 * s, -0.9 * s, -1.6 * s), back(-0.35 * s, 0.7 * s, 1.9 * s), 0.75 * s, 0.4 * s, 8, const Color(0xFF6D4C41));
+      // A guitar case carried upright on the back: wide lower bout, narrow
+      // waist, upper bout, then the long neck and headstock rising past
+      // the shoulder.
+      const caseCol = Color(0xFF3E2723);
+      const profile = [
+        // (height, half-width, half-depth)
+        (-1.75, 0.45, 0.28), (-1.55, 0.8, 0.32), (-1.15, 0.92, 0.34), (-0.7, 0.8, 0.33), (-0.35, 0.58, 0.3),
+        (0.0, 0.7, 0.31), (0.35, 0.68, 0.3), (0.62, 0.42, 0.26), (0.8, 0.22, 0.2), (2.0, 0.2, 0.18),
+        (2.15, 0.3, 0.2), (2.65, 0.3, 0.2), (2.8, 0.18, 0.16),
+      ];
+      final cx = back(-0.5 * s, 0.25 * s, 0);
+      o.torso([for (final (z, w, d) in profile) (_add(cx, (0, 0, z * s)), d * s, w * s)], 10, (ring, side) => ring >= 8 ? const Color(0xFF4E342E) : caseCol);
     case 'bag_crate':
-      o.box(back(-0.6 * s, 0, 0), 0.6 * s, 0.95 * s, 0.95 * s, const Color(0xFFA1887F), top: const Color(0xFF8D6E63));
-      for (var i = 0; i < 4; i++) {
-        o.box(back(-0.6 * s, (-0.6 + i * 0.4) * s, 0.75 * s), 0.5 * s, 0.03 * s, 0.4 * s, const Color(0xFF111111), front: const Color(0xFFE53935));
+      o.box(back(-0.6 * s, 0, 0), 0.6 * s, 0.95 * s, 0.95 * s, const Color(0xFFA1887F), top: const Color(0xFF5D4037));
+      // Records standing in the crate: the round tops of vinyl discs (with
+      // their red labels) sticking out above the rim.
+      {
+        for (var i = 0; i < 4; i++) {
+          final c = back(-0.6 * s, (-0.6 + i * 0.4) * s, 0.95 * s);
+          o.disc(c, (0, 1, 0), (0, 0, 1), 0.52 * s, 0.05 * s, const Color(0xFF111111), half: true);
+          o.disc(c, (0, 1, 0), (0, 0, 1), 0.18 * s, 0.07 * s, const Color(0xFFE53935), half: true, seg: 8);
+        }
       }
     case 'bag_jetpack':
       for (final r in [-0.5, 0.5]) {
