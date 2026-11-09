@@ -106,6 +106,15 @@ class OutfitBuilder {
     quad(0, 2, 6, 4, color); // bottom
   }
 
+  /// Small low-poly sphere (pom-poms, gems).
+  void blob(V3 c, double radius, Color color) {
+    const lat = 4, lon = 6;
+    torso([
+      for (var i = 0; i <= lat; i++)
+        (_add(c, (0, 0, -radius * math.cos(i * math.pi / lat))), radius * math.sin(i * math.pi / lat) + 1e-4, radius * math.sin(i * math.pi / lat) + 1e-4)
+    ], lon, (a, b) => color, capTop: false, capBottom: false);
+  }
+
   /// Flat (double-sided) quad, e.g. wings.
   void panel(V3 a, V3 b, V3 c, V3 d, Color color) {
     final centre = _mul(_add(_add(a, b), _add(c, d)), 0.25);
@@ -170,7 +179,9 @@ void buildShirt(OutfitBuilder o, String id, Map<String, V3> j, double s, Color b
   };
   for (final side in ['L', 'R']) {
     final el = j['elbow$side']!, hand = j['hand$side']!;
-    final start = _add(sh, (0, (side == 'L' ? -1 : 1) * 0.85 * s, -0.15 * s));
+    // Sleeves start at the torso's side surface (not inside it) so they
+    // don't cut through the shirt as the arms swing.
+    final start = _add(sh, (0, (side == 'L' ? -1 : 1) * 1.06 * s, -0.2 * s));
     final end = long ? _lerp(el, hand, 0.75) : _lerp(start, el, 0.62);
     o.tube(start, long ? el : end, 0.5 * s, long ? 0.42 * s : 0.44 * s, 6, sleeveColor);
     if (long) o.tube(el, end, 0.42 * s, 0.36 * s, 6, sleeveColor);
@@ -226,14 +237,87 @@ void buildBackpack(OutfitBuilder o, String id, Map<String, V3> j, double s, doub
     default:
       o.box(back(-0.45 * s, 0, 0), 0.45 * s, 0.8 * s, 1.0 * s, const Color(0xFF616161));
   }
-  // Shoulder straps.
+  // Shoulder straps: from the top of the pack over the shoulder, down the
+  // chest, then under the arm and back round to the bottom of the pack.
+  const strap = Color(0xFF263238);
   for (final side in [-1.0, 1.0]) {
-    final b = _add(sh, (backZ - 0.05 * s, side * 0.6 * s, 0.1 * s));
-    final top = _add(sh, (0, side * 0.62 * s, 0.55 * s));
-    final f = _add(sh, (0.66 * s, side * 0.6 * s, -0.2 * s));
-    final low = _add(_lerp(sh, j['hip']!, 0.45), (0.66 * s, side * 0.65 * s, 0));
-    o.tube(b, top, 0.12 * s, 0.12 * s, 4, const Color(0xFF263238));
-    o.tube(top, f, 0.12 * s, 0.12 * s, 4, const Color(0xFF263238));
-    o.tube(f, low, 0.12 * s, 0.12 * s, 4, const Color(0xFF263238));
+    final pts = <V3>[
+      _add(sh, (backZ - 0.05 * s, side * 0.6 * s, 0.15 * s)),
+      _add(sh, (-0.1 * s, side * 0.64 * s, 0.6 * s)),
+      _add(sh, (0.66 * s, side * 0.62 * s, 0.05 * s)),
+      _add(sh, (0.7 * s, side * 0.72 * s, -1.1 * s)),
+      _add(sh, (0.15 * s, side * 1.14 * s, -1.45 * s)), // under the arm
+      _add(sh, (backZ - 0.05 * s, side * 0.78 * s, -1.75 * s)),
+    ];
+    for (var i = 0; i + 1 < pts.length; i++) {
+      o.tube(pts[i], pts[i + 1], 0.12 * s, 0.12 * s, 4, strap);
+    }
+  }
+}
+
+/// 3D hats sitting on the head sphere ([head] centre, radius [r]) and
+/// facing the figure's forward (+f) direction, so they turn with the player.
+void buildHat(OutfitBuilder o, String id, V3 head, double r, double time) {
+  V3 at(double f, double rt, double z) => _add(head, (f * r, rt * r, z * r));
+  void dome(double z0, double radius, double height, Color c, {int rings = 4, Color? band}) {
+    o.torso([
+      for (var i = 0; i <= rings; i++)
+        (at(0, 0, z0 + height * math.sin(i / rings * math.pi / 2)), radius * r * math.cos(i / rings * math.pi / 2) + 0.02 * r, radius * r * math.cos(i / rings * math.pi / 2) + 0.02 * r)
+    ], 10, (ring, side) => ring == 0 && band != null ? band : c, capTop: true, capBottom: false);
+  }
+
+  void disk(double z, double rf, double rr, double thick, Color c, {double f = 0}) {
+    o.torso([(at(f, 0, z - thick / 2), rf * r, rr * r), (at(f, 0, z + thick / 2), rf * r, rr * r)], 14, (a, b) => c);
+  }
+
+  switch (id) {
+    case 'hat_cap':
+      dome(0.15, 1.04, 0.95, const Color(0xFFE53935));
+      o.panel(at(0.55, -0.75, 0.32), at(0.55, 0.75, 0.32), at(1.75, 0.6, 0.18), at(1.75, -0.6, 0.18), const Color(0xFFC62828));
+      o.tube(at(0, 0, 1.08), at(0, 0, 1.18), 0.13 * r, 0.1 * r, 6, Colors.white);
+    case 'hat_beanie':
+      dome(0.05, 1.08, 1.15, const Color(0xFF43A047), band: const Color(0xFF2E7D32));
+      o.tube(at(0, 0, 1.15), at(0, 0, 1.45), 0.28 * r, 0.22 * r, 6, const Color(0xFF66BB6A));
+    case 'hat_headphones':
+      // Band over the top, ear cups at the sides.
+      const n = 6;
+      for (var i = 0; i < n; i++) {
+        final a0 = math.pi * i / n, a1 = math.pi * (i + 1) / n;
+        o.tube(at(0, -math.cos(a0) * 1.12, math.sin(a0) * 1.12), at(0, -math.cos(a1) * 1.12, math.sin(a1) * 1.12), 0.13 * r, 0.13 * r, 5, const Color(0xFF212121));
+      }
+      for (final sd in [-1.0, 1.0]) {
+        o.tube(at(0, sd * 0.98, 0), at(0, sd * 1.32, 0), 0.42 * r, 0.42 * r, 10, const Color(0xFF00E5FF));
+      }
+    case 'hat_tophat':
+      disk(0.72, 1.5, 1.5, 0.08, const Color(0xFF263238));
+      o.torso([(at(0, 0, 0.72), 0.82 * r, 0.82 * r), (at(0, 0, 0.98), 0.82 * r, 0.82 * r)], 12, (a, b) => const Color(0xFFD32F2F), capTop: false, capBottom: false);
+      o.torso([(at(0, 0, 0.98), 0.82 * r, 0.82 * r), (at(0, 0, 2.3), 0.86 * r, 0.86 * r)], 12, (a, b) => const Color(0xFF263238));
+    case 'hat_cowboy':
+      disk(0.62, 2.0, 1.75, 0.08, const Color(0xFF8D6E63));
+      o.torso([(at(0, 0, 0.62), 0.92 * r, 0.82 * r), (at(0, 0, 0.8), 0.92 * r, 0.82 * r)], 12, (a, b) => const Color(0xFF4E342E), capTop: false, capBottom: false);
+      o.torso([(at(0, 0, 0.8), 0.92 * r, 0.82 * r), (at(0, 0, 1.6), 0.7 * r, 0.62 * r)], 12, (a, b) => const Color(0xFF8D6E63));
+    case 'hat_party':
+      o.tube(at(0.05, 0.1, 0.72), at(0.15, 0.25, 2.35), 0.72 * r, 0.03 * r, 10, const Color(0xFFFFEB3B));
+      o.blob(at(0.15, 0.25, 2.42), 0.24 * r, const Color(0xFFE91E63));
+    case 'hat_wizard':
+      disk(0.68, 1.55, 1.55, 0.07, const Color(0xFF5E35B1));
+      o.tube(at(0, 0, 0.7), at(-0.2, 0, 1.8), 0.85 * r, 0.45 * r, 10, const Color(0xFF5E35B1));
+      o.tube(at(-0.2, 0, 1.8), at(-0.75, 0.1, 2.9), 0.45 * r, 0.04 * r, 8, const Color(0xFF5E35B1));
+      o.blob(at(0.7, -0.3, 1.2), 0.16 * r, const Color(0xFFFFEB3B));
+    case 'hat_crown':
+      o.torso([(at(0, 0, 0.7), 0.9 * r, 0.9 * r), (at(0, 0, 1.05), 0.95 * r, 0.95 * r)], 12, (a, b) => const Color(0xFFFFC107), capTop: false, capBottom: false);
+      for (var k = 0; k < 6; k++) {
+        final a = k * math.pi / 3;
+        o.tube(at(math.cos(a) * 0.92, math.sin(a) * 0.92, 1.0), at(math.cos(a) * 0.98, math.sin(a) * 0.98, 1.55), 0.2 * r, 0.02 * r, 5, const Color(0xFFFFC107));
+        o.blob(at(math.cos(a) * 0.97, math.sin(a) * 0.97, 0.85), 0.1 * r, k.isEven ? const Color(0xFFE53935) : const Color(0xFF1E88E5));
+      }
+    case 'hat_halo':
+      final bob = math.sin(time * 2) * 0.06;
+      const n = 12;
+      for (var i = 0; i < n; i++) {
+        final a0 = i * 2 * math.pi / n, a1 = (i + 1) * 2 * math.pi / n;
+        o.tube(at(math.cos(a0) * 0.85, math.sin(a0) * 0.85, 1.55 + bob), at(math.cos(a1) * 0.85, math.sin(a1) * 0.85, 1.55 + bob), 0.11 * r, 0.11 * r, 5,
+            const Color(0xFFFFF59D));
+      }
   }
 }

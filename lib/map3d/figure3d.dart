@@ -329,12 +329,21 @@ class Figure3DPainter extends CustomPainter {
       bone(a, b);
     }
 
-    // 3D clothing and backpack.
+    // 3D clothing, backpack and hat. Faces are grouped into their convex
+    // parts (torso, each sleeve, pack, strap segment, hat piece) and whole
+    // parts are depth-sorted against the limbs and head; within a part only
+    // front faces are drawn. Sorting single triangles made faces of
+    // different parts poke through each other.
     final outfit = OutfitBuilder();
     if (look.shirt != null) buildShirt(outfit, look.shirt!, pose.j, s, StickFigurePainter.shirtColor(look.shirt!));
     if (look.backpack != null) buildBackpack(outfit, look.backpack!, pose.j, s, time, walk > 0.3);
+    final hatStart = outfit.tris.length;
+    if (look.hat != null) buildHat(outfit, look.hat!, pose.j['head']!, 1.4 * s, time);
     const lx = -0.35, ly = 0.45, lz = 0.82; // light from above, slightly to one side
-    for (final t in outfit.tris) {
+    final parts = <(double, double, double), List<(Offset, Offset, Offset, Color, double)>>{};
+    final partHat = <(double, double, double), bool>{};
+    for (var ti = 0; ti < outfit.tris.length; ti++) {
+      final t = outfit.tris[ti];
       final a = w(t.a), b = w(t.b), c = w(t.c), ctr = w(t.center);
       final ux = b.$1 - a.$1, uy = b.$2 - a.$2, uz = b.$3 - a.$3;
       final vx = c.$1 - a.$1, vy = c.$2 - a.$2, vz = c.$3 - a.$3;
@@ -355,33 +364,33 @@ class Figure3DPainter extends CustomPainter {
       if (pa == null || pb == null || pc == null) continue;
       final k = 0.62 + 0.38 * math.max(0.0, nx * lx + ny * ly + nz * lz);
       final col = Color.fromARGB(255, (t.color.r * 255 * k).round().clamp(0, 255), (t.color.g * 255 * k).round().clamp(0, 255), (t.color.b * 255 * k).round().clamp(0, 255));
-      final d = (depthOf(a) + depthOf(b) + depthOf(c)) / 3;
+      (parts[t.center] ??= []).add((pa, pb, pc, col, (depthOf(a) + depthOf(b) + depthOf(c)) / 3));
+      if (ti >= hatStart) partHat[t.center] = true;
+    }
+    final fill = Paint()..isAntiAlias = true;
+    final seam = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8
+      ..strokeJoin = StrokeJoin.round;
+    for (final e in parts.entries) {
+      final faces = e.value..sort((x, y) => y.$5.compareTo(x.$5));
+      // Hat pieces sit on the head: nudge them in front of the head disc
+      // unless they're clearly behind it.
+      final bias = partHat[e.key] == true ? -0.5 * s : 0.0;
       items.add((
-        d,
-        () => canvas
-          ..drawPath(
-            Path()
+        depthOf(w(e.key)) + bias,
+        () {
+          for (final (pa, pb, pc, col, _) in faces) {
+            final path = Path()
               ..moveTo(pa.dx, pa.dy)
               ..lineTo(pb.dx, pb.dy)
               ..lineTo(pc.dx, pc.dy)
-              ..close(),
-            Paint()
-              ..color = col
-              ..isAntiAlias = true
-              // A hairline stroke in the face colour hides seams between faces.
-              ..style = PaintingStyle.fill
-              ..strokeWidth = 0)
-          ..drawPath(
-              Path()
-                ..moveTo(pa.dx, pa.dy)
-                ..lineTo(pb.dx, pb.dy)
-                ..lineTo(pc.dx, pc.dy)
-                ..close(),
-              Paint()
-                ..color = col
-                ..style = PaintingStyle.stroke
-                ..strokeWidth = 0.8
-                ..strokeJoin = StrokeJoin.round)
+              ..close();
+            canvas
+              ..drawPath(path, fill..color = col)
+              ..drawPath(path, seam..color = col);
+          }
+        }
       ));
     }
 
@@ -394,14 +403,6 @@ class Figure3DPainter extends CustomPainter {
         canvas.drawCircle(headP, headR, Paint()..color = const Color(0xFF0E0E12));
         canvas.drawCircle(headP, headR, limbPaint);
         _drawEyes(canvas, cam, headW, headR, pxPerM, color);
-        if (look.hat != null) {
-          canvas.save();
-          canvas.translate(headP.dx, headP.dy);
-          canvas.scale(k, k);
-          canvas.translate(0, -22);
-          StickFigurePainter.drawHat(canvas, look.hat, const Offset(0, 22), phase);
-          canvas.restore();
-        }
         // Headphones slide on during the headphones idle.
         if (act == IdleActivity.headphones && look.hat != 'hat_headphones') {
           final hp = _ease((idle.blend - 0.45) / 0.45);
