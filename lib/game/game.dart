@@ -288,7 +288,7 @@ class Game extends ChangeNotifier {
           profile.tradesCompleted++;
           unawaited(audio.playSfx(Sfx.tradeAccepted));
         }
-        if (i.message.contains('bought your')) {
+        if (i.message.contains('won your') || i.message.contains('bought your')) {
           newSales.value++;
           profile.cardsSold++;
           unawaited(audio.playSfx(Sfx.sold));
@@ -619,6 +619,65 @@ class Game extends ChangeNotifier {
       profile.coins += coins;
       profile.changed();
       rethrow;
+    }
+  }
+
+  // ------------------------------------------------------------- auctions
+  /// Puts songs up for auction; they're held until it ends.
+  Future<Auction> createAuction(List<int> uids, {required int startPrice, required int increment, int? buyNow, required Duration duration, String note = ''}) async {
+    final cards = [for (final u in uids) ?collection.byUid(u)];
+    if (cards.length != uids.length) throw MarketException('You no longer own one of those songs');
+    for (final c in cards) {
+      _removeFromPlaylists(c.uid);
+      collection.remove(c.uid);
+    }
+    try {
+      return await market.createAuction([for (final c in cards) c.toPayload()],
+          startPrice: startPrice, increment: increment, buyNow: buyNow, duration: duration, note: note);
+    } catch (e) {
+      for (final c in cards) {
+        acquirePayload(c.toPayload(), c.source);
+      }
+      rethrow;
+    }
+  }
+
+  /// Bids [amount] coins; they're held until you're outbid (then returned
+  /// through the inbox) or win.
+  Future<Auction> placeBid(Auction a, int amount) async {
+    if (profile.coins < amount) throw MarketException('Not enough coins');
+    profile.coins -= amount;
+    profile.changed();
+    try {
+      return await market.bid(a.id, amount);
+    } catch (e) {
+      profile.coins += amount;
+      profile.changed();
+      rethrow;
+    }
+  }
+
+  Future<void> buyAuctionNow(Auction a) async {
+    final price = a.buyNow;
+    if (price == null) throw MarketException('No Buy It Now price');
+    if (profile.coins < price) throw MarketException('Not enough coins');
+    profile.coins -= price;
+    profile.changed();
+    try {
+      for (final c in await market.buyAuctionNow(a.id, price)) {
+        acquirePayload(c, CardSource.market, keepUid: false);
+      }
+      unawaited(audio.playSfx(Sfx.tradeAccepted));
+    } catch (e) {
+      profile.coins += price;
+      profile.changed();
+      rethrow;
+    }
+  }
+
+  Future<void> cancelAuction(Auction a) async {
+    for (final c in await market.cancelAuction(a.id)) {
+      acquirePayload(c, CardSource.market);
     }
   }
 

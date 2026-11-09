@@ -374,6 +374,7 @@ class ListingQuery {
     this.serials = const {},
     this.genres = const {},
     this.tradesOnly = false,
+    this.auctionsOnly = false,
     this.sort = ListingSort.newest,
     this.offset = 0,
     this.limit = 50,
@@ -391,6 +392,9 @@ class ListingQuery {
   final Set<int> serials;
   final Set<int> genres;
   final bool tradesOnly;
+
+  /// Show auctions only (no fixed-price listings).
+  final bool auctionsOnly;
   final ListingSort sort;
   final int offset;
   final int limit;
@@ -405,6 +409,7 @@ class ListingQuery {
         if (serials.isNotEmpty) 'serials': serials.join(','),
         if (genres.isNotEmpty) 'genres': genres.join(','),
         if (tradesOnly) 'trades': '1',
+        if (auctionsOnly) 'auctions': '1',
         'sort': sort.name,
         'offset': '$offset',
         'limit': '$limit',
@@ -424,6 +429,7 @@ class ListingQuery {
         serials: (p['serials'] ?? '').split(',').where((s) => s.isNotEmpty).map(int.parse).toSet(),
         genres: (p['genres'] ?? '').split(',').where((s) => s.isNotEmpty).map(int.parse).toSet(),
         tradesOnly: p['trades'] == '1',
+        auctionsOnly: p['auctions'] == '1',
         sort: ListingSort.values.firstWhere((s) => s.name == p['sort'],
             orElse: () => ListingSort.newest),
         offset: int.tryParse(p['offset'] ?? '') ?? 0,
