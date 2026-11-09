@@ -356,7 +356,7 @@ class _ListingTileState extends State<ListingTile> {
               ),
               const SizedBox(width: 8),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(formatNumber(l.folderPrice), style: const TextStyle(fontWeight: FontWeight.w700, color: kTextPrimary)),
+                CoinPrice(l.folderPrice),
                 if (l.discount > 0)
                   Text(formatNumber(l.itemsTotal), style: const TextStyle(fontSize: 11, color: kTextTertiary, decoration: TextDecoration.lineThrough)),
                 Icon(_open ? Icons.expand_less : Icons.expand_more, size: 18, color: kTextTertiary),
@@ -386,17 +386,17 @@ class _ListingTileState extends State<ListingTile> {
                 padding: const EdgeInsets.only(left: 8),
                 child: widget.mine
                     ? (single
-                        ? Text(formatNumber(it.price), style: const TextStyle(fontWeight: FontWeight.w600))
+                        ? CoinPrice(it.price, style: const TextStyle(fontWeight: FontWeight.w600))
                         : TextButton(
                             onPressed: _busy ? null : () => _run(() => g.withdrawFromListing(l, it.card.uid), 'Removed from listing'),
-                            child: Text('${formatNumber(it.price)} · Remove'),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [CoinPrice(it.price, style: const TextStyle(fontWeight: FontWeight.w600)), const Text(' · Remove')]),
                           ))
                     : (single
-                        ? Text(formatNumber(it.price), style: const TextStyle(fontWeight: FontWeight.w600))
+                        ? CoinPrice(it.price, style: const TextStyle(fontWeight: FontWeight.w600))
                         : OutlinedButton(
                             style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10), minimumSize: const Size(0, 34)),
                             onPressed: _busy || g.profile.coins < it.price ? null : () => _run(() => g.buyListingItem(l, it), 'Bought ${it.card.title}'),
-                            child: Text(formatNumber(it.price)),
+                            child: CoinPrice(it.price, style: const TextStyle(fontWeight: FontWeight.w600)),
                           )),
               ),
             ),
@@ -424,11 +424,12 @@ class _ListingTileState extends State<ListingTile> {
                     ],
                     Expanded(
                       flex: 2,
-                      child: FilledButton(
+                      child: FilledButton.icon(
+                        icon: const Icon(kCoinIcon, size: 16),
                         onPressed: _busy || g.profile.coins < l.folderPrice
                             ? null
                             : () => _run(() => g.buyListing(l), single ? 'You bought ${l.card.title}!' : 'You bought ${l.items.length} songs!'),
-                        child: Text(g.profile.coins < l.folderPrice
+                        label: Text(g.profile.coins < l.folderPrice
                             ? 'Need ${formatNumber(l.folderPrice)}'
                             : single
                                 ? 'Buy · ${formatNumber(l.folderPrice)}'

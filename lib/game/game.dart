@@ -103,6 +103,12 @@ class Game extends ChangeNotifier {
     for (final s in SampleLibrary.all) {
       catalog.addSongs([s.song]);
     }
+    // A song has exactly one rarity (from its popularity): re-rate cards
+    // from older versions before folding duplicates.
+    collection.normalizeRarities((id) {
+      final s = catalog.songs[id];
+      return s == null ? null : catalog.rarityOf(s);
+    });
     // One copy per variant: fold any older duplicates into the scrapyard.
     final dups = collection.removeDuplicateVariants();
     if (dups.isNotEmpty) {
@@ -200,6 +206,9 @@ class Game extends ChangeNotifier {
   OwnedCard? acquire(int songId, Rarity rarity, bool shiny, Edition edition, CardSource source,
       {int? uid, bool notify = true, bool announce = true, int serial = 0}) {
     if (edition != Edition.standard) shiny = false;
+    // One rarity per song, whatever the source says.
+    final known = catalog.songs[songId];
+    if (known != null) rarity = catalog.rarityOf(known);
     if (collection.ownsVariant(songId, rarity, shiny, edition)) {
       final song = catalog.songs[songId];
       final coins = scrapValue(rarity, shiny, song?.rank ?? 0, edition: edition);
@@ -770,7 +779,7 @@ class Game extends ChangeNotifier {
   final List<Spawn> debugSpawns = [];
 
   /// Debug: spawns [song] a few metres in front of the player.
-  Spawn debugSpawnSong(Song song, {bool shiny = false, Rarity? rarity, Edition edition = Edition.standard}) {
+  Spawn debugSpawnSong(Song song, {bool shiny = false, Edition edition = Edition.standard}) {
     catalog.addSongs([song]);
     final known = catalog.songs[song.id] ?? song;
     final rng = math.Random();
@@ -783,7 +792,7 @@ class Game extends ChangeNotifier {
       id: 'debug:${known.id}:${DateTime.now().microsecondsSinceEpoch}',
       point: LatLng(lat, lng),
       song: known,
-      rarity: rarity ?? catalog.rarityOf(known),
+      rarity: catalog.rarityOf(known),
       shiny: shiny,
       expiresAt: DateTime.now().add(const Duration(minutes: 30)),
       edition: edition,

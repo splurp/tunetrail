@@ -9,8 +9,13 @@ enum SampleTrack { source, song }
 /// One clip on a breakdown timeline: play [track] from [from] to [to]
 /// (preview seconds), starting [at] seconds into the breakdown.
 class SampleClip {
-  const SampleClip(this.track, {required this.at, required this.from, this.to, this.fadeIn = 0, this.fadeOut = 0.06});
+  const SampleClip(this.track, {required this.at, required this.from, this.to, this.fadeIn = 0, this.fadeOut = 0.06, this.volume = 0.9});
   final SampleTrack track;
+
+  /// Peak volume (0–1). A clip fades in to it over [fadeIn] and out to
+  /// silence over the last [fadeOut] seconds — so a [fadeOut] as long as
+  /// the clip makes it fade across its whole length (a crossfade).
+  final double volume;
   final double at, from;
 
   /// End position in the preview (null = play to the end of the clip).
@@ -145,11 +150,21 @@ class SampleLibrary {
 //   "…what it means"    source 12.40 ↔ song 11.39 and again 13.827
 // i.e. Kanye plays the line through to "what it means" and repeats
 // "what it means" 2.437 s later — exactly what the breakdown re-enacts.
-const double _wimGap = 13.827 - 11.39; // repeat spacing in I Wonder
-const double _flipAt = 16.4; // timeline: start of the flip
-const double _wim1 = _flipAt + (12.4 - 7.5); // first "what it means"
-const double _wim2 = _wim1 + _wimGap; // the repeat (sync point)
-const double _songIn = _wim2 - 1.0; // song fades in 1 s before the repeat
+// Timeline (seconds from the start of the breakdown).
+const double _wimGap = 13.827 - 11.39; // "what it means" → repeat, in I Wonder
+const double _aiwToWim = 12.4 - 7.5; // "And I wonder" → "what it means"
+const double _origEnd = 21.0; // past "…dreams come true"
+const double _rew1 = _origEnd - 3.0; // the original clip (from 3.0 s) ends here
+const double _flip1 = _rew1 + 1.0; // "And I wonder … what it means, what it means"
+const double _flip1Wim2 = _flip1 + _aiwToWim + _wimGap;
+const double _flip1End = _flip1Wim2 + 1.45;
+const double _rew2 = _flip1End + 0.1;
+const double _flip2 = _rew2 + 0.9; // the same again, with I Wonder underneath
+const double _flip2Wim2 = _flip2 + _aiwToWim + _wimGap;
+// I Wonder's "And I wonder" (6.542 s into its preview) lines up with Labi's
+// at 7.6 s; the song starts at the same point of the line as the source.
+const double _songFrom = 6.542 - (7.6 - 7.5);
+const double _songEnd = _flip2 + (29.9 - _songFrom);
 
 const _curated = <SampleInfo>[
   SampleInfo(
@@ -185,23 +200,28 @@ const _curated = <SampleInfo>[
     clips: [
       // 1. The original: "…And I wonder, if you know, what it means, to find
       //    your dreams come true…"
-      SampleClip(SampleTrack.source, at: 0, from: 3.0, to: 18.3, fadeOut: 0.35),
-      // 3. The flip: "And I wonder, if you know, what it means"…
-      SampleClip(SampleTrack.source, at: _flipAt, from: 7.5, to: 13.85),
-      // …"what it means" again, crossfading into I Wonder on the same words.
-      SampleClip(SampleTrack.source, at: _wim2, from: 12.4, to: 13.85, fadeOut: 1.3),
-      // 4. I Wonder, entering in sync with Labi's voice.
-      SampleClip(SampleTrack.song, at: _songIn, from: 13.827 - 1.0, fadeIn: 1.0, fadeOut: 0.5),
+      SampleClip(SampleTrack.source, at: 0, from: 3.0, to: _origEnd, fadeOut: 0.6),
+      // 2. Rewind, then the flip: "And I wonder, if you know, what it means"
+      //    and "what it means" again, spaced exactly as in the hook.
+      SampleClip(SampleTrack.source, at: _flip1, from: 7.5, to: 13.85),
+      SampleClip(SampleTrack.source, at: _flip1Wim2, from: 12.4, to: 13.85),
+      // 3. Rewind and play the flip again while I Wonder — the same words —
+      //    runs underneath, matched one-to-one: the original fades out across
+      //    the whole line as I Wonder fades in.
+      SampleClip(SampleTrack.source, at: _flip2, from: 7.5, to: 13.85, fadeOut: 13.85 - 7.5),
+      SampleClip(SampleTrack.source, at: _flip2Wim2, from: 12.4, to: 13.85, volume: 0.3, fadeOut: 1.45),
+      SampleClip(SampleTrack.song, at: _flip2, from: _songFrom, fadeIn: _flip2Wim2 - _flip2, fadeOut: 0.6),
     ],
     rewinds: [
-      // 2. Scrub back from "come true" to "And I wonder".
-      SampleRewind(at: 15.3, duration: 0.9, from: 18.3, to: 7.5),
+      SampleRewind(at: _rew1, duration: 0.9, from: _origEnd, to: 7.5),
+      SampleRewind(at: _rew2, duration: 0.8, from: 13.85, to: 7.5),
     ],
     stages: [
-      SampleStage('Labi Siffre · My Song (1972)', 0, 15.3),
-      SampleStage('Rewind to "And I wonder"', 15.3, _flipAt),
-      SampleStage('"…what it means, what it means"', _flipAt, _songIn),
-      SampleStage('Kanye West · I Wonder', _songIn, _songIn + (29.9 - (13.827 - 1.0))),
+      SampleStage('Labi Siffre · My Song (1972)', 0, _rew1),
+      SampleStage('Rewind to "And I wonder"', _rew1, _flip1),
+      SampleStage('"…what it means, what it means"', _flip1, _rew2),
+      SampleStage('Rewind — now with I Wonder', _rew2, _flip2),
+      SampleStage('Kanye West · I Wonder', _flip2, _songEnd),
     ],
     sourceEnvelope: 'Kic3RTVGMDc5NS4lIB8nKyowKywrJjt6VC4oO09JTWRYd2/X/73Ds6WSgmNRQURTcnJeYWBRQz8zNTcxSltcYWN3cVk+Rj4wKScnNzpKPUEsKC4jLyskJDY0OC4pIiIjHh8cGx87Q05ISls+RjwzMTIuLSolJR4ZGBcYGBUXHkM8REI+MUMxKDEnJygqJiMiIRshGB8aEg8VP0Q8RDk7ND48LjEiMDUsNDIkLiIkHRkVFSRtcXZ0Y2JbVkRUPklQPUQ3QCQhIB0XFxcgTUQ4MSosICglJSMeLEgySEM+ODM7Ky8lKTVIS1ZPQThBPDIzNyswKS4gIiAeHhQTEBMOSj9OPUw2Qiw8LzkrNzMrRDIsKCwfHhgYExw+RDUzLCElIR4WDQ4ZMEJGRTZEPi86MiUsLSRSdGVdUUFEREI5OkVNZWdbWldQS1dPNzk0Z32PdUo+VIRhZUxKLmpbR0dCQzswKSsmIB8sPkM0My1ALiYtIR0pPC0tNzEmIh8cHxsdOTtETT88OjgsODQuOj1dhmI5KiIlGycnIjxIYVhNYlpFT0MwPlKSpristpZjWltUVkdSSml5d3lPUkRZRk9GVkI1NCYlIhweGxgaGSs0P0Q4SzlCOzQzNTNKQzdJOTQtJSclIhwgLC9SOk5EOkM1NjqPg7XM8L6EsKuli4lGQWdnfYV0g0I3OTQ5YGyJspeVpa2koJmbmpmgrKmUhXePhoB/jHF5hE5JT1lMLChDMzMoLzA5QUA3MzU1MjEqLDQ3KiszNiomJh0fHTFARVNFSUs4PT80QC0wWGlkSUI/NEM6PDo5XlteT0NCRTg2NTAwP1pYPUI0LTQqQC8sKEm1vr3AkaaEmIyOh3JwinBscoVtdpSJi2AtLi0+PkdSS1V1XFRYTVJeTU1aVlRCQ0E9NSEhFhMSEx8uMjY9Njs/PDk5OTo1MTAtMzMqKBsUExIMDAsgFBVcpXhBW1JVVyQUFTAfFScuJy4uLS0vMCcoJihRVElLQ0lHVj8wKyEXNWBBQkFKVD8/NionKSYlKyggGxobFxgWFBMfO0BSVUw1RDM6IiwmLCQlJyAlHSEeJRobGCMqMzMyKyUvKSonKSI1Pz84ODc8OzwyNDEwPUI5Ni8vLCgZGhgTLE5IU0lCPDIwIxsUDg1FOj8xOzktKC0kIyQhJR8gIxoZFRgUEhAREhA8Q05OTUpCNCosKScfJyMmJCAkHx0YGxQXGjtCQDs3NDY1My8uLURKS09FPD45OkFFNDMzMjU2KiwlIR0YFBASL1I3NCw6LjAgFhYPDCU9MzgyOCouJjEoHSYkHx4cGhkUEw8SEBISLjVWVlA5OC0rJiUkHSAiJSEaHR0dGRYeFRIqPUw9NC8zNTczLywqLkFEQzg9OkBCQDY5NEA5LzIsJiEkIxcZEw82TUk8Ozw4NTgnIR4TRGVPaGBQTUo+RTk6SDc9PzQ9KiYyHiElGCIjJldfXkRKOD0uMiYoJDiflWSHaEguUCsnLBwbHxMXGBUYRD8kHhmDgoyrbndgVE1gSEZLdKd6cmAvLDIjNBsgICyLp4NiYm1maW1oaFFTUlVXTkxNRENGQ0Y+PYZgf20=',
     note: 'Labi Siffre\'s line "And I wonder if you know what it means" is looped, with "what it means" repeated, as the hook.',

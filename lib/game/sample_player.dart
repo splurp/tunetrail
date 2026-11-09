@@ -205,7 +205,7 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
       final shift = c.track == SampleTrack.source ? s.sourceShift : s.songShift;
       at(c.at, () async {
         v.start();
-        _fade(v, 0, 0.9, c.fadeIn);
+        _fade(v, 0, c.volume, c.fadeIn);
         if (c.track == SampleTrack.song) _songVoice = v;
         // Sync check: once running, compare where the voice is with where
         // the script says it should be and correct a late start.
@@ -216,7 +216,7 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
         final ideal = c.from + shift + (_clock.elapsedMicroseconds / 1e6 - c.at);
         if ((p - ideal).abs() > 0.025) await v.seek(ideal + (v is _MediaVoice ? 0.02 : 0));
       });
-      at(c.end - c.fadeOut, () => _fade(v, 0.9, 0, c.fadeOut));
+      at(c.end - c.fadeOut, () => _fade(v, c.volume, 0, c.fadeOut));
       at(c.end + 0.05, () => v.setVolume(0));
     }
     at(s.length + 0.2, stop);

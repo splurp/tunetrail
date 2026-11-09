@@ -217,6 +217,30 @@ class CollectionStore extends ChangeNotifier {
   /// Ordering of variants: rarity, then edition, then shiny.
   static int _rankOf(int f) => (f & kRarityMask) * 8 + _editionBits(f) * 2 + (f & kFlagShiny != 0 ? 1 : 0);
 
+  /// Re-rates every card from [rarityOf] (a song has exactly one rarity).
+  /// Returns how many cards changed.
+  int normalizeRarities(Rarity? Function(int songId) rarityOf) {
+    var changed = 0;
+    for (var i = 0; i < length; i++) {
+      final r = rarityOf(_songIds[i]);
+      if (r == null) continue;
+      final f = _flags[i];
+      if ((f & kRarityMask) == r.index) continue;
+      rarityCounts[f & kRarityMask]--;
+      rarityCounts[r.index]++;
+      _flags[i] = (f & ~kRarityMask) | r.index;
+      changed++;
+    }
+    if (changed > 0) {
+      _variants.clear();
+      for (var i = 0; i < length; i++) {
+        _variants[_variantAt(i)] = _uids[i];
+      }
+      _changed();
+    }
+    return changed;
+  }
+
   /// Removes extra copies of any variant (keeps the earliest). Returns the
   /// removed cards so they can be compensated.
   List<OwnedCard> removeDuplicateVariants() {

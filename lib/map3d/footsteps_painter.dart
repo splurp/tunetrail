@@ -7,7 +7,10 @@ import 'camera.dart';
 /// Draws a trail of footprints on the ground plane (projected in true
 /// perspective), revealed progressively from the player towards a song.
 class FootstepsPainter extends CustomPainter {
-  FootstepsPainter({required this.camera, required this.prints, required this.reveal, required this.opacity, required this.color});
+  FootstepsPainter({required this.camera, required this.prints, required this.reveal, required this.opacity, required this.color, this.vanish = 0});
+
+  /// 0..1: prints fade away one after another from the start of the trail.
+  final double vanish;
 
   final Camera3D camera;
   final List<(double, double, double, bool)> prints;
@@ -43,7 +46,11 @@ class FootstepsPainter extends CustomPainter {
         return p..close();
       }
 
-      paint.color = color.withValues(alpha: opacity * (0.35 + 0.55 * age));
+      // Vanishing: a fade front sweeps from the first print to the last.
+      const soft = 5.0;
+      final gone = ((vanish * (prints.length + soft) - i) / soft).clamp(0.0, 1.0);
+      if (gone >= 1) continue;
+      paint.color = color.withValues(alpha: opacity * (0.35 + 0.55 * age) * (1 - gone));
       final mirror = left ? -1.0 : 1.0;
       final sole = foot(x - fx * 0.5, y - fy * 0.5, 2.0, 1.05);
       final heel = foot(x - fx * 2.9 + rx * 0.15 * mirror, y - fy * 2.9 + ry * 0.15 * mirror, 1.0, 0.82);

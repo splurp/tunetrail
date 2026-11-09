@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../data/catalog.dart';
+import '../data/models.dart';
 
 /// Market API used by the UI. Implemented locally (offline, with simulated
 /// NPC traders) or remotely against the multiplayer server.
@@ -69,6 +70,13 @@ class LocalMarket extends MarketBackend {
     for (var i = 0; i < _botNames.length; i++) {
       engine.register('bot$i', _botNames[i], bot: true);
     }
+    // Clean up older saves: bot folders that repeat a song (impossible —
+    // duplicates don't exist) and the repetitive bot showcases.
+    for (final l in engine.listings.values.where((l) => l.sellerId.startsWith('bot')).toList()) {
+      final ids = [for (final it in l.items) it.card.songId];
+      if (ids.toSet().length != ids.length) engine.cancelListing(l.sellerId, l.id);
+    }
+    engine.showcases.removeWhere((id, _) => id.startsWith('bot'));
     engine.onChanged = () {
       _save?.cancel();
       _save = Timer(const Duration(seconds: 2), () async {
@@ -79,10 +87,24 @@ class LocalMarket extends MarketBackend {
     _tick = Timer.periodic(const Duration(seconds: 20), (_) => _simulate());
   }
 
-  CardPayload? _randomCard() {
-    final rng = Rng(_r.nextInt(1 << 31) ^ DateTime.now().microsecondsSinceEpoch);
-    final song = catalog.pickSong(rng, rarity: rng.rollRarity(luck: 1.6));
+  /// One long-lived generator (re-seeding per card from near-identical
+  /// seeds made bots pick the same song over and over).
+  late final Rng _rng = Rng(math.Random().nextInt(1 << 31) ^ DateTime.now().microsecondsSinceEpoch);
+
+  /// A random card for a bot, avoiding songs in [exclude] (a folder or
+  /// showcase never repeats a song — duplicates don't exist in the game).
+  CardPayload? _randomCard([Set<int>? exclude]) {
+    Song? song;
+    for (var tries = 0; tries < 12; tries++) {
+      final s = catalog.pickSong(_rng, rarity: _rng.rollRarity(luck: 1.6));
+      if (s != null && !(exclude?.contains(s.id) ?? false)) {
+        song = s;
+        break;
+      }
+    }
     if (song == null) return null;
+    exclude?.add(song.id);
+    final rng = _rng;
     return song.toPayload(
       uid: DateTime.now().microsecondsSinceEpoch * 1000 + _r.nextInt(1000),
       rarity: catalog.rarityOf(song),
@@ -105,8 +127,9 @@ class LocalMarket extends MarketBackend {
       final bot = bots[_r.nextInt(bots.length)];
       final n = _r.nextInt(10) < 6 ? 1 : 2 + _r.nextInt(_r.nextInt(5) == 0 ? 10 : 4);
       final items = <ListingItem>[];
+      final used = <int>{};
       for (var k = 0; k < n; k++) {
-        final c = _randomCard();
+        final c = _randomCard(used);
         if (c == null) break;
         items.add(ListingItem(card: c, price: (suggestedPrice(c) * (0.7 + _r.nextDouble() * 0.9)).round().clamp(1, 1 << 30)));
       }
@@ -166,7 +189,8 @@ class LocalMarket extends MarketBackend {
     if (engine.showcases.length < 8) {
       for (final b in bots.take(8)) {
         if (engine.showcases.containsKey(b.id)) continue;
-        final cards = [for (var i = 0; i < 6; i++) ?_randomCard()];
+        final used = <int>{};
+        final cards = [for (var i = 0; i < 6; i++) ?_randomCard(used)];
         engine.setShowcase(b.id, '${b.name}\'s Crate', cards,
             [ShowcasePlaylist(name: 'Heavy Rotation', cards: cards.take(4).toList())]);
         engine.showcases[b.id]!.likes = _r.nextInt(200);
@@ -205,24 +229,14 @@ class LocalMarket extends MarketBackend {
   Future<List<InboxItem>> claimInbox() async => engine.claimInbox(playerId);
   @override
   Future<int?> claimSerial(int songId, Edition edition) async {
-    _seedSerials(songId, edition);
     return engine.claimSerial(songId, edition);
   }
 
   @override
   Future<int> serialsLeft(int songId, Edition edition) async {
-    _seedSerials(songId, edition);
     return engine.serialsLeft(songId, edition);
   }
 
-  /// Offline: pretend the NPC world has already found a few copies, so
-  /// serials look like they come from a shared pool.
-  void _seedSerials(int songId, Edition edition) {
-    final key = '$songId:${edition.index}';
-    if (engine.serials.containsKey(key)) return;
-    final h = (songId * 2654435761 + edition.index * 97) & 0x7fffffff;
-    engine.serials[key] = h % (edition.maxSerials ~/ 2 + 1);
-  }
   @override
   Future<List<Showcase>> showcases() async => engine.browseShowcases();
   @override

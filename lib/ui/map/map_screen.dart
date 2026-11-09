@@ -68,6 +68,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   DateTime _trailUntil = DateTime.fromMillisecondsSinceEpoch(0);
   final ValueNotifier<double> _trailReveal = ValueNotifier(0);
 
+  /// 0 → 1 while the trail vanishes print by print, start to end.
+  late final AnimationController _trailVanish = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))
+    ..addListener(() => _groundDirty.value++)
+    ..addStatusListener((s) {
+      if (s == AnimationStatus.completed) {
+        _prints = const [];
+        _trailVanish.value = 0;
+      }
+    });
+
+  void _dismissTrail() {
+    _trailTarget = null;
+    if (_prints.isNotEmpty && !_trailVanish.isAnimating) _trailVanish.forward(from: 0);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -111,12 +126,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (_guide.isAnimating) changed = true;
     if (_keyboardDriving && g.location.joystickMode) _applyKeys(g);
     // Clear the footstep trail once the player reaches the song or it expires.
-    if (_prints.isNotEmpty) {
+    if (_prints.isNotEmpty && _trailTarget != null && !_guide.isAnimating) {
       final target = g.spawns.where((s) => s.id == _trailTarget).firstOrNull;
-      if (target == null || metersBetween(g.location.position, target.point) <= Game.catchRangeMeters || DateTime.now().isAfter(_trailUntil)) {
-        _prints = const [];
-        _trailTarget = null;
-      }
+      final arrived = target == null || metersBetween(g.location.position, target.point) <= Game.catchRangeMeters;
+      // Walking well away from the trail also dismisses it.
+      final off = !_nearTrail(_cam.px, _cam.py, 120);
+      if (arrived || off || DateTime.now().isAfter(_trailUntil)) _dismissTrail();
     }
     if (changed) _groundDirty.value++;
   }
@@ -193,6 +208,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void dispose() {
     _ticker.dispose();
     _guide.dispose();
+    _trailVanish.dispose();
     HardwareKeyboard.instance.removeHandler(_onKey);
     super.dispose();
   }
@@ -229,6 +245,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  bool _nearTrail(double x, double y, double within) {
+    for (final p in _prints) {
+      final dx = p.$1 - x, dy = p.$2 - y;
+      if (dx * dx + dy * dy < within * within) return true;
+    }
+    return false;
+  }
+
   /// Nearby → tap a song: face it if it's in range, otherwise zoom out,
   /// draw footsteps along the roads to it and zoom back in facing it.
   void _guideTo(Game g, Spawn s) {
@@ -251,7 +275,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final route = RoadRouter(g.mapData).route(_cam.px, _cam.py, x, y);
     _prints = footprintsAlong(route);
     _trailTarget = s.id;
-    _trailUntil = DateTime.now().add(const Duration(minutes: 3));
+    _trailVanish.value = 0;
+    _trailUntil = DateTime.now().add(const Duration(seconds: 25));
     _trailReveal.value = 0;
     _gOverhead = true;
     _guide.duration = const Duration(milliseconds: 4200);
@@ -434,7 +459,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 child: ValueListenableBuilder<int>(
                   valueListenable: _groundDirty,
                   builder: (context, _, _) => CustomPaint(
-                    painter: FootstepsPainter(camera: _cam, prints: _prints, reveal: _trailReveal.value, opacity: 1, color: theme.accent),
+                    painter: FootstepsPainter(camera: _cam, prints: _prints, reveal: _trailReveal.value, vanish: _trailVanish.value, opacity: 1, color: theme.accent),
                   ),
                 ),
               ),

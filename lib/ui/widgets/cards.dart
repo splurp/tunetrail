@@ -458,3 +458,17 @@ const kCoinColor = Color(0xFFD9B45A);
 const kBitsColor = kAccent;
 const kCoinIcon = Icons.toll_rounded;
 const kBitsIcon = Icons.diamond_outlined;
+
+/// A price with the coin icon.
+class CoinPrice extends StatelessWidget {
+  const CoinPrice(this.value, {super.key, this.style = const TextStyle(fontWeight: FontWeight.w700, color: kTextPrimary), this.iconSize = 15});
+  final int value;
+  final TextStyle style;
+  final double iconSize;
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(kCoinIcon, size: iconSize, color: kCoinColor),
+        const SizedBox(width: 3),
+        Text(formatNumber(value), style: style),
+      ]);
+}
