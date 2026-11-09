@@ -43,7 +43,7 @@ class MarketScreen extends StatelessWidget {
               Expanded(child: Text(g.market.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white54))),
               TextButton.icon(
                 icon: const Icon(Icons.movie_filter_outlined, size: 18),
-                label: const Text('Canvas Checker'),
+                label: const Text('Edition Checker'),
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CanvasCheckerScreen())),
               ),
             ]),
