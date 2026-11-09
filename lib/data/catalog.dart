@@ -591,6 +591,15 @@ class Catalog extends ChangeNotifier {
 
   Future<void> flush() async => _sink?.flush();
 
+  /// Flushes and closes the catalogue file (await before deleting its
+  /// folder, e.g. in tests).
+  Future<void> close() async {
+    final s = _sink;
+    _sink = null;
+    await s?.flush();
+    await s?.close();
+  }
+
   @override
   void dispose() {
     _sink?.close();

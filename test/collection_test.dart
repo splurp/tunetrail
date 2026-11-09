@@ -14,6 +14,7 @@ import 'package:tunetrail_core/tunetrail_core.dart';
 
 Future<Catalog> _catalog(Directory dir, int songs) async {
   final c = Catalog(DeezerApi(), dir);
+  addTearDown(c.close);
   await c.load();
   final genres = [for (final g in kGenres) g.id];
   c.addSongs([
@@ -151,6 +152,7 @@ void main() {
 
   test('play counts decide a superstar\'s rarities (Stronger beats Bound 2)', () async {
     final c = Catalog(DeezerApi(), dir);
+    addTearDown(c.close);
     await c.load();
     Song k(int id, String t, int rank, int plays) =>
         Song(id: id, title: t, artistId: 230, artistName: 'Kanye West', albumId: 1, albumTitle: 'A', coverMd5: '', genreId: 116, rank: rank, plays: plays);
@@ -169,6 +171,7 @@ void main() {
   test('favourite artists spawn ~10x more often as a whole', () async {
     // Realistically sized pools: 24k songs, 600 artists × 40 songs.
     final cat = Catalog(DeezerApi(), dir);
+    addTearDown(cat.close);
     await cat.load();
     final genres = [for (final g in kGenres) g.id];
     cat.addSongs([

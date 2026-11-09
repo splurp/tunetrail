@@ -22,9 +22,13 @@ Do the steps in order. Anything in `ALL_CAPS` is a value you copy into a later s
 
 1. Sign up at <https://supabase.com> → **New project**. Pick a region near your
    players, set a strong database password and save it.
-2. When the project is ready: **Project Settings → Database → Connection string**,
-   choose **URI** and the **Session pooler** (it works over IPv4, the direct
-   connection doesn't on the free plan).
+2. When the project is ready, press **Connect** in the top bar of the project
+   dashboard → **Connection String** tab, type **URI**, and copy the
+   **Session pooler** string (it works over IPv4; the direct connection doesn't
+   on the free plan).
+   In **Project Settings → Data API**, you can turn the Data API off: the game
+   server talks to Postgres directly and never uses it. Leave "automatically
+   expose new tables" off and automatic RLS on.
 3. Copy it and put your password in place of `[YOUR-PASSWORD]` → this is
    `DATABASE_URL`.
 
