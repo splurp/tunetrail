@@ -774,13 +774,7 @@ class Game extends ChangeNotifier {
     if (s.shiny || s.edition != Edition.standard) return null;
     final d = metersBetween(location.position, s.point);
     if (d <= catchRangeMeters) return null;
-    final (lo, hi) = switch (s.rarity) {
-      Rarity.common => (50, 100),
-      Rarity.uncommon => (100, 200),
-      Rarity.rare => (200, 400),
-      Rarity.epic => (400, 800),
-      Rarity.legendary => (800, 2000),
-    };
+    final (lo, hi) = mapPriceRange(s.rarity);
     // Just outside the catch circle costs the low end; the far edge of the
     // nearby area (~500 m) the high end.
     final t = ((d - catchRangeMeters) / (500 - catchRangeMeters)).clamp(0.0, 1.0);

@@ -92,11 +92,30 @@ int fairValue(Rarity r, bool shiny, {int popularity = 500000, Edition edition = 
       .round();
 }
 
-/// Coins for scrapping a card in the Scrapyard. Songs with more streams
-/// (higher Deezer rank, 0..1,000,000) are worth more scrap.
+/// Coins to buy a regular drop on the map from just outside catching range
+/// (low end) up to the far edge of the nearby area (high end).
+(int, int) mapPriceRange(Rarity r) => switch (r) {
+      Rarity.common => (50, 100),
+      Rarity.uncommon => (100, 200),
+      Rarity.rare => (200, 400),
+      Rarity.epic => (400, 800),
+      Rarity.legendary => (800, 2000),
+    };
+
+/// Scrap value relative to a regular card, per edition (editions are
+/// rarer than shinies, so they scrap for more).
+double editionScrapMultiplier(Edition e) => switch (e) {
+      Edition.standard => 1,
+      Edition.canvas => 15,
+      Edition.live => 20,
+      Edition.sample => 30,
+    };
+
+/// Coins for scrapping a card: half of what the same drop costs to buy on
+/// the map (from just out of range); Shinies ×10, editions more. [rank] is
+/// kept for callers but no longer matters.
 int scrapValue(Rarity r, bool shiny, int rank, {Edition edition = Edition.standard}) {
-  final streams = rank.clamp(0, 1000000) / 1000000;
-  final base = r.baseValue * 0.2 * (0.35 + 1.65 * streams * streams) * edition.valueMultiplier;
-  final v = math.max(1, base.round());
-  return shiny ? v * 3 : v;
+  final base = mapPriceRange(r).$1 ~/ 2;
+  if (edition != Edition.standard) return (base * editionScrapMultiplier(edition)).round();
+  return shiny ? base * 10 : base;
 }

@@ -125,9 +125,11 @@ void main() {
   });
 
   test('scrap value grows with streams and rarity', () {
-    expect(scrapValue(Rarity.common, false, 900000), greaterThan(scrapValue(Rarity.common, false, 100000)));
-    expect(scrapValue(Rarity.legendary, false, 500000), greaterThan(scrapValue(Rarity.common, false, 500000)));
-    expect(scrapValue(Rarity.rare, true, 500000), scrapValue(Rarity.rare, false, 500000) * 3);
+    // Half the map purchase price (just out of range); shinies ×10.
+    expect(scrapValue(Rarity.common, false, 0), 25);
+    expect(scrapValue(Rarity.legendary, false, 0), 400);
+    expect(scrapValue(Rarity.rare, true, 500000), scrapValue(Rarity.rare, false, 500000) * 10);
+    expect(scrapValue(Rarity.epic, false, 0, edition: Edition.canvas), 3000);
   });
 
   test('rng is deterministic', () {
