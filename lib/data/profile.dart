@@ -120,6 +120,12 @@ class PlayerProfile extends ChangeNotifier {
   Map<String, dynamic>? minigameFilter;
   int minigameBits = 0;
 
+  /// Daily minigame plays: game id → (day key, plays that day). The day
+  /// key comes from trusted server time and a pinned time-zone offset.
+  Map<String, (String, int)> minigamePlays = {};
+  int? minigameTzOffset; // minutes
+  int minigameTzSetAt = 0; // trusted UTC ms when the offset was pinned
+
   /// Keep the preview playing after a song is caught (off by default).
   bool keepPlayingAfterCatch = false;
 
@@ -176,6 +182,9 @@ class PlayerProfile extends ChangeNotifier {
         'buildings': showBuildings,
         'mgFilter': minigameFilter,
         'mgBits': minigameBits,
+        'mgPlays': {for (final e in minigamePlays.entries) e.key: [e.value.$1, e.value.$2]},
+        'mgTz': minigameTzOffset,
+        'mgTzAt': minigameTzSetAt,
         'sampleOv2': {for (final e in sampleOverrides.entries) '${e.key}': [e.value.$1, e.value.$2]},
         'color': figureColor,
         'owned': owned.toList(),
@@ -229,6 +238,12 @@ class PlayerProfile extends ChangeNotifier {
     showBuildings = j['buildings'] as bool? ?? false;
     minigameFilter = j['mgFilter'] as Map<String, dynamic>?;
     minigameBits = (j['mgBits'] as num?)?.toInt() ?? 0;
+    minigamePlays = {
+      for (final e in (j['mgPlays'] as Map<String, dynamic>? ?? const {}).entries)
+        e.key: ((e.value as List)[0] as String, ((e.value as List)[1] as num).toInt()),
+    };
+    minigameTzOffset = (j['mgTz'] as num?)?.toInt();
+    minigameTzSetAt = (j['mgTzAt'] as num?)?.toInt() ?? 0;
     sampleOverrides = {
       for (final e in (j['sampleOv2'] as Map<String, dynamic>? ?? const {}).entries)
         int.parse(e.key): (

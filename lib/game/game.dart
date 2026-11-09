@@ -25,6 +25,7 @@ import 'purchase_service.dart';
 import 'quests.dart';
 import 'spawns.dart';
 import 'store_catalog.dart';
+import 'trusted_clock.dart';
 
 /// Central game controller. Owns every subsystem and exposes game actions.
 class Game extends ChangeNotifier {
@@ -754,6 +755,41 @@ class Game extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------- minigames
+  static const kMinigamePlaysPerDay = 3;
+  final TrustedClock clock = TrustedClock();
+
+  /// Plays left today for a minigame, plus time until the reset — using
+  /// trusted server time (changing the device clock doesn't help) and a
+  /// pinned time-zone offset (a new offset is only accepted 20 h after the
+  /// previous one, so hopping time zones can't add extra days).
+  Future<MinigameQuota?> minigameQuota(String game) async {
+    final now = await clock.now();
+    if (now == null) return null;
+    final device = DateTime.now().timeZoneOffset.inMinutes;
+    final pinned = profile.minigameTzOffset;
+    if (pinned == null || (pinned != device && now.millisecondsSinceEpoch - profile.minigameTzSetAt > 20 * 3600 * 1000)) {
+      profile.minigameTzOffset = device;
+      profile.minigameTzSetAt = now.millisecondsSinceEpoch;
+      profile.changed();
+    }
+    final off = profile.minigameTzOffset!;
+    final day = TrustedClock.dayKey(now, off);
+    final rec = profile.minigamePlays[game];
+    final used = rec != null && rec.$1 == day ? rec.$2 : 0;
+    return MinigameQuota(kMinigamePlaysPerDay - used, TrustedClock.untilMidnight(now, off), day);
+  }
+
+  /// Spends one of today's plays; false if none are left (or no trusted time).
+  Future<bool> useMinigamePlay(String game) async {
+    final q = await minigameQuota(game);
+    if (q == null || q.left <= 0) return false;
+    final rec = profile.minigamePlays[game];
+    final used = rec != null && rec.$1 == q.day ? rec.$2 : 0;
+    profile.minigamePlays[game] = (q.day, used + 1);
+    profile.changed();
+    return true;
+  }
+
   void awardMinigameBits(int bits) {
     if (bits <= 0) return;
     profile.bits += bits;
@@ -884,4 +920,11 @@ class PackPull {
   final OwnedCard card;
   final int duplicateCoins;
   bool get duplicate => duplicateCoins > 0 || card.uid < 0;
+}
+
+class MinigameQuota {
+  const MinigameQuota(this.left, this.resetIn, this.day);
+  final int left;
+  final Duration resetIn;
+  final String day;
 }

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
+import '../../game/game.dart';
 import '../../game/minigames.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
@@ -49,20 +50,49 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
               style: const TextStyle(color: kTextSecondary)),
           const SizedBox(height: 14),
           _GameCard(
+            id: 'song',
             icon: Icons.hearing,
             title: 'Song Guesser',
-            body: 'Name the song from a tiny snippet. Each miss plays a longer one: 1 s → 2 → 3 → 5 → 10 s.',
+            body: 'Name the song from a tiny snippet. Each miss (or skip) plays a longer one: 1 s → 2 → 3 → 5 → 10 s.',
             rewards: '5 · 4 · 3 · 2 · 1 bits',
-            onPlay: data == null || pool == 0 ? null : () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SongGuesserScreen(data: data))),
+            open: data == null || pool == 0 ? null : () => SongGuesserScreen(data: data),
+            onReturn: () => setState(() {}),
           ),
           const SizedBox(height: 12),
           _GameCard(
+            id: 'artist',
             icon: Icons.person_search,
             title: 'Artist Guesser',
-            body: 'Guess the artist from their genre, hometown, debut year and first letter. Each miss reveals another clue.',
+            body: 'Guess the artist from their genre, hometown, debut year and first letter. Each miss (or skip) reveals another clue.',
             rewards: '5 · 4 · 3 · 2 bits',
-            onPlay: data == null || pool == 0 ? null : () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ArtistGuesserScreen(data: data))),
+            open: data == null || pool == 0 ? null : () => ArtistGuesserScreen(data: data),
+            onReturn: () => setState(() {}),
           ),
+          const SizedBox(height: 12),
+          _GameCard(
+            id: 'album',
+            icon: Icons.album,
+            title: 'Album Cover Guesser',
+            body: 'Name the album from its cover.',
+            rewards: '3 · 2 · 1 bits',
+            open: data == null || pool == 0 ? null : () => AlbumGuesserScreen(data: data),
+            onReturn: () => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          _GameCard(
+            id: 'trivia',
+            icon: Icons.quiz_outlined,
+            title: 'Favourite Artist Trivia',
+            body: g.profile.favoriteArtists.isEmpty
+                ? 'Add favourite artists on your profile to play: questions about their hits, albums, debut and hometown.'
+                : '5 multiple-choice questions about your favourite artists.',
+            rewards: '1 bit per correct answer',
+            open: data == null || g.profile.favoriteArtists.isEmpty ? null : () => TriviaScreen(data: data),
+            onReturn: () => setState(() {}),
+          ),
+          const SizedBox(height: 8),
+          Text('Each game can be played ${Game.kMinigamePlaysPerDay} times a day; plays reset at midnight.',
+              style: const TextStyle(color: kTextTertiary, fontSize: 12)),
           const SizedBox(height: 18),
           Row(children: [
             const SectionLabel('Filter'),
@@ -89,36 +119,80 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
 }
 
 class _GameCard extends StatelessWidget {
-  const _GameCard({required this.icon, required this.title, required this.body, required this.rewards, required this.onPlay});
+  const _GameCard({required this.id, required this.icon, required this.title, required this.body, required this.rewards, required this.open, required this.onReturn});
+  final String id;
   final IconData icon;
   final String title, body, rewards;
-  final VoidCallback? onPlay;
+  final Widget Function()? open;
+  final VoidCallback onReturn;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(18), border: Border.all(color: kOutline)),
-        child: Row(children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(color: kAccentDim, borderRadius: BorderRadius.circular(14)),
-            child: Icon(icon, color: kAccent),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(18), border: Border.all(color: kOutline)),
+      child: Row(children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(color: kAccentDim, borderRadius: BorderRadius.circular(14)),
+          child: Icon(icon, color: kAccent),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+            const SizedBox(height: 4),
+            Text(body, style: const TextStyle(color: kTextSecondary, fontSize: 13)),
+            const SizedBox(height: 6),
+            Text(rewards, style: const TextStyle(color: kAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+          ]),
+        ),
+        const SizedBox(width: 10),
+        FutureBuilder<MinigameQuota?>(
+          future: g.minigameQuota(id),
+          builder: (context, snap) {
+            final q = snap.data;
+            final left = q?.left ?? 0;
+            return Column(mainAxisSize: MainAxisSize.min, children: [
+              FilledButton(
+                onPressed: open == null || q == null || left <= 0
+                    ? null
+                    : () async {
+                        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => open!()));
+                        onReturn();
+                      },
+                child: const Text('Play'),
+              ),
               const SizedBox(height: 4),
-              Text(body, style: const TextStyle(color: kTextSecondary, fontSize: 13)),
-              const SizedBox(height: 6),
-              Text(rewards, style: const TextStyle(color: kAccent, fontSize: 12, fontWeight: FontWeight.w600)),
-            ]),
-          ),
-          const SizedBox(width: 10),
-          FilledButton(onPressed: onPlay, child: const Text('Play')),
-        ]),
-      );
+              Text(
+                snap.connectionState != ConnectionState.done
+                    ? '…'
+                    : q == null
+                    ? 'Needs internet'
+                    : left > 0
+                    ? '$left/${Game.kMinigamePlaysPerDay} left'
+                    : 'Resets in ${q.resetIn.inHours}h ${q.resetIn.inMinutes % 60}m',
+                style: const TextStyle(fontSize: 11, color: kTextTertiary),
+              ),
+            ]);
+          },
+        ),
+      ]),
+    );
+  }
+}
+
+/// Spends a daily play when a round starts; shows why if it can't.
+Future<bool> _startRound(BuildContext context, String game) async {
+  final g = GameScope.read(context);
+  final ok = await g.useMinigamePlay(game);
+  if (!ok && context.mounted) {
+    final q = await g.minigameQuota(game);
+    g.toast(q == null ? 'Minigames need an internet connection' : 'No plays left today — resets in ${q.resetIn.inHours}h ${q.resetIn.inMinutes % 60}m');
+  }
+  return ok;
 }
 
 class _FilterEditor extends StatelessWidget {
@@ -275,6 +349,10 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
 
   Future<void> _next() async {
     final g = GameScope.read(context);
+    if (!await _startRound(context, 'song')) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -392,7 +470,13 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
                 Center(
                   child: done
                       ? Column(children: [
-                          Art(s.cover(250), size: 160, radius: 14),
+                          Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                            Art(s.cover(250), size: 160, radius: 14),
+                            if (_artist != null) ...[
+                              const SizedBox(width: 12),
+                              Art(artistPicUrl(_artist!.picMd5, size: 250), size: 84, circle: true),
+                            ],
+                          ]),
                           const SizedBox(height: 10),
                           Text(s.title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                           Text(s.artistName, style: const TextStyle(color: kTextSecondary)),
@@ -421,6 +505,17 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
                 _GuessList(_guesses),
                 const SizedBox(height: 16),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  if (!done && _stage < kSnippetSeconds.length - 1)
+                    OutlinedButton.icon(
+                      // Skip ahead without guessing (costs the same as a miss).
+                      onPressed: () {
+                        setState(() => _stage++);
+                        _play();
+                      },
+                      icon: const Icon(Icons.fast_forward, size: 18),
+                      label: Text('Longer snippet (${kSnippetSeconds[math.min(_stage + 1, kSnippetSeconds.length - 1)].round()} s)'),
+                    ),
+                  if (!done) const SizedBox(width: 8),
                   if (!done)
                     TextButton(
                       onPressed: () {
@@ -456,6 +551,9 @@ class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
   bool _solved = false, _gaveUp = false, _loading = true;
   int _won = 0;
 
+  /// Clues revealed without guessing (count like misses).
+  int _skips = 0;
+
   @override
   void initState() {
     super.initState();
@@ -464,9 +562,14 @@ class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
 
   Future<void> _next() async {
     final g = GameScope.read(context);
+    if (!await _startRound(context, 'artist')) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     setState(() {
       _loading = true;
       _solved = _gaveUp = false;
+      _skips = 0;
       _guesses.clear();
       _song = null;
     });
@@ -494,7 +597,7 @@ class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
     final a = _a;
     if (a == null || _solved || _gaveUp) return;
     if (guessMatches(text, a.name)) {
-      final bits = artistGuessBits(_guesses.length);
+      final bits = artistGuessBits(_guesses.length + _skips);
       GameScope.read(context).awardMinigameBits(bits);
       setState(() {
         _solved = true;
@@ -528,7 +631,7 @@ class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
   @override
   Widget build(BuildContext context) {
     final a = _a;
-    final wrong = _guesses.length;
+    final wrong = _guesses.length + _skips;
     final done = _solved || _gaveUp;
     return Scaffold(
       appBar: AppBar(title: const Text('Artist Guesser')),
@@ -546,7 +649,15 @@ class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
                 Center(child: Text('${letterCount(a.name)} letters', style: const TextStyle(color: kTextTertiary, fontSize: 12))),
                 const SizedBox(height: 16),
                 if (wrong >= 3 || done)
-                  Center(child: Padding(padding: const EdgeInsets.only(bottom: 14), child: Art(artistPicUrl(a.picMd5, size: 250), size: 140, circle: true))),
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Art(artistPicUrl(a.picMd5, size: 250), size: 140, circle: true),
+                        if (done && _song != null) ...[const SizedBox(width: 14), Art(_song!.cover(250), size: 110, radius: 12)],
+                      ]),
+                    ),
+                  ),
                 _clue(Icons.category, 'Genre', a.genre.label),
                 _clue(Icons.place, 'From', a.origin.isEmpty ? 'Unknown' : a.origin),
                 _clue(Icons.calendar_month, 'Releasing music since', a.firstYear?.toString() ?? 'Unknown'),
@@ -572,9 +683,256 @@ class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
                 _GuessList(_guesses),
                 const SizedBox(height: 14),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  if (!done && wrong < 4)
+                    OutlinedButton.icon(
+                      onPressed: () => setState(() => _skips++),
+                      icon: const Icon(Icons.lightbulb_outline, size: 18),
+                      label: const Text('Reveal next clue'),
+                    ),
+                  if (!done) const SizedBox(width: 8),
                   if (!done) TextButton(onPressed: () => setState(() => _gaveUp = true), child: const Text('Give up')),
                   if (done) FilledButton.icon(onPressed: _next, icon: const Icon(Icons.skip_next), label: const Text('Next artist')),
                 ]),
+              ]),
+      ),
+    );
+  }
+}
+
+// ======================================================================
+/// Album Cover Guesser: name the album from its cover. 3 / 2 / 1 bits for
+/// the first three tries, then unlimited tries without a reward.
+class AlbumGuesserScreen extends StatefulWidget {
+  const AlbumGuesserScreen({super.key, required this.data});
+  final MinigameData data;
+  @override
+  State<AlbumGuesserScreen> createState() => _AlbumGuesserScreenState();
+}
+
+class _AlbumGuesserScreenState extends State<AlbumGuesserScreen> {
+  final _r = math.Random();
+  final Set<int> _recent = {};
+  AlbumPuzzle? _p;
+  final List<String> _guesses = [];
+  bool _solved = false, _gaveUp = false, _loading = true;
+  int _won = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _next());
+  }
+
+  Future<void> _next() async {
+    final g = GameScope.read(context);
+    if (!await _startRound(context, 'album')) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _solved = _gaveUp = false;
+      _guesses.clear();
+      _p = null;
+    });
+    final p = await pickAlbumPuzzle(g.api, widget.data, MinigameFilter.fromJson(g.profile.minigameFilter), _r, avoid: _recent);
+    if (!mounted) return;
+    if (p != null) {
+      _recent.add(p.artist.id);
+      if (_recent.length > 30) _recent.remove(_recent.first);
+    }
+    setState(() {
+      _p = p;
+      _loading = false;
+    });
+  }
+
+  void _guess(String text) {
+    final p = _p;
+    if (p == null || _solved || _gaveUp) return;
+    final title = text.split(' — ').first;
+    if (guessMatches(title, p.album.title)) {
+      final bits = albumGuessBits(_guesses.length);
+      GameScope.read(context).awardMinigameBits(bits);
+      setState(() {
+        _solved = true;
+        _won = bits;
+      });
+    } else {
+      setState(() => _guesses.add(text));
+    }
+  }
+
+  Future<List<String>> _suggest(String q) async {
+    try {
+      final j = await GameScope.read(context).api.getJson('/search/album', query: {'q': q, 'limit': '12'});
+      final seen = <String>{};
+      return [
+        for (final a in (j['data'] as List? ?? const []).cast<Map<String, dynamic>>())
+          if (seen.add('${a['title']} — ${(a['artist'] as Map?)?['name'] ?? ''}')) '${a['title']} — ${(a['artist'] as Map?)?['name'] ?? ''}'
+      ];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _p;
+    final wrong = _guesses.length;
+    final done = _solved || _gaveUp;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Album Cover Guesser')),
+      body: ContentWidth(
+        maxWidth: 720,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : p == null
+            ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Text('Couldn\'t find an album — check your connection.'), TextButton(onPressed: _next, child: const Text('Try again'))]))
+            : ListView(padding: const EdgeInsets.all(16), children: [
+                Center(child: Art(p.album.cover(500), size: math.min(320.0, MediaQuery.sizeOf(context).width - 64), radius: 16, decodeSize: 500)),
+                const SizedBox(height: 14),
+                if (done) ...[
+                  Center(child: Text(p.album.title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
+                  Center(child: Text('${p.artist.name}${p.album.releaseDate.length >= 4 ? ' · ${p.album.releaseDate.substring(0, 4)}' : ''}', style: const TextStyle(color: kTextSecondary))),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(_solved ? (_won > 0 ? '+$_won bits' : 'Got it — no bits after 3 tries') : 'No bits this time',
+                        style: TextStyle(color: _solved && _won > 0 ? kAccent : kTextTertiary, fontWeight: FontWeight.w700, fontSize: 18)),
+                  ),
+                ] else ...[
+                  Center(
+                    child: Text(
+                      wrong < 3 ? 'Guess now for ${albumGuessBits(wrong)} bit${albumGuessBits(wrong) == 1 ? '' : 's'} · try ${wrong + 1} of 3' : 'No bits left — keep guessing for fun',
+                      style: const TextStyle(color: kTextTertiary, fontSize: 12),
+                    ),
+                  ),
+                  if (wrong >= 3) Center(child: Text('Hint: it\'s by ${p.artist.name}', style: const TextStyle(color: kTextSecondary))),
+                  const SizedBox(height: 8),
+                  _GuessField(hint: 'Album title', suggest: _suggest, onSubmit: _guess),
+                ],
+                const SizedBox(height: 8),
+                _GuessList(_guesses),
+                const SizedBox(height: 14),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  if (!done) TextButton(onPressed: () => setState(() => _gaveUp = true), child: const Text('Give up')),
+                  if (done) FilledButton.icon(onPressed: _next, icon: const Icon(Icons.skip_next), label: const Text('Next album')),
+                ]),
+              ]),
+      ),
+    );
+  }
+}
+
+// ======================================================================
+/// Favourite Artist Trivia: five multiple-choice questions (five answers
+/// each) about the player's favourite artists. 1 bit per correct answer.
+class TriviaScreen extends StatefulWidget {
+  const TriviaScreen({super.key, required this.data});
+  final MinigameData data;
+  @override
+  State<TriviaScreen> createState() => _TriviaScreenState();
+}
+
+class _TriviaScreenState extends State<TriviaScreen> {
+  final _r = math.Random();
+  List<TriviaQuestion> _qs = [];
+  int _i = 0, _correct = 0;
+  int? _picked;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+  }
+
+  Future<void> _start() async {
+    final g = GameScope.read(context);
+    if (!await _startRound(context, 'trivia')) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _i = 0;
+      _correct = 0;
+      _picked = null;
+    });
+    final qs = await buildTrivia(g.api, widget.data, g.profile.favoriteArtists, _r);
+    if (!mounted) return;
+    setState(() {
+      _qs = qs;
+      _loading = false;
+    });
+  }
+
+  void _pick(int k) {
+    if (_picked != null) return;
+    final right = k == _qs[_i].answer;
+    if (right) GameScope.read(context).awardMinigameBits(1);
+    setState(() {
+      _picked = k;
+      if (right) _correct++;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final finished = !_loading && _i >= _qs.length;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Favourite Artist Trivia')),
+      body: ContentWidth(
+        maxWidth: 720,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _qs.isEmpty
+            ? const Center(child: Text('Couldn\'t build questions — check your connection.'))
+            : finished
+            ? Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('$_correct / ${_qs.length}', style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800)),
+                  Text('+$_correct bits', style: const TextStyle(color: kAccent, fontWeight: FontWeight.w700, fontSize: 18)),
+                  const SizedBox(height: 16),
+                  FilledButton(onPressed: _start, child: const Text('Play again')),
+                ]),
+              )
+            : ListView(padding: const EdgeInsets.all(16), children: [
+                Text('Question ${_i + 1} of ${_qs.length}', style: const TextStyle(color: kTextTertiary)),
+                const SizedBox(height: 8),
+                if (_qs[_i].image != null) Center(child: Padding(padding: const EdgeInsets.only(bottom: 12), child: Art(_qs[_i].image!, size: 140, radius: 12))),
+                Text(_qs[_i].prompt, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 14),
+                for (var k = 0; k < _qs[_i].options.length; k++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        backgroundColor: _picked == null
+                            ? null
+                            : k == _qs[_i].answer
+                            ? const Color(0x3342C77A)
+                            : k == _picked
+                            ? const Color(0x33E5737A)
+                            : null,
+                      ),
+                      onPressed: () => _pick(k),
+                      child: Text(_qs[_i].options[k], style: const TextStyle(fontSize: 15)),
+                    ),
+                  ),
+                if (_picked != null)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton(
+                      onPressed: () => setState(() {
+                        _i++;
+                        _picked = null;
+                      }),
+                      child: Text(_i + 1 < _qs.length ? 'Next question' : 'See results'),
+                    ),
+                  ),
               ]),
       ),
     );
