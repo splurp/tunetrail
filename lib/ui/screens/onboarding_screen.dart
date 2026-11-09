@@ -182,6 +182,11 @@ class _SignInState extends State<_SignIn> {
         ),
       ),
       if (_busy) const _WaitingForBrowser(),
+      if (GameScope.of(context).profile.debugEnabled)
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: TextButton(onPressed: GameScope.read(context).skipOnboardingForNow, child: const Text('Debug: skip sign-in for now')),
+        ),
       if (_error != null) ...[
         const SizedBox(height: 14),
         Text(_error!, style: const TextStyle(color: Color(0xFFE5737A))),
