@@ -34,6 +34,8 @@ enum MiniLanguage {
   german('German'),
   italian('Italian'),
   japanese('Japanese'),
+  hindi('Hindi'),
+  chinese('Chinese'),
   other('Other');
 
   const MiniLanguage(this.label);

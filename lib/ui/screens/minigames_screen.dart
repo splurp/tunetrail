@@ -56,7 +56,7 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
             icon: Icons.hearing,
             title: 'Song Guesser',
             body: 'Name the song from a tiny snippet. Each miss (or skip) plays a longer one: 1 s → 2 → 3 → 5 → 10 s.',
-            rewards: '5 · 4 · 3 · 2 · 1 bits',
+            rewards: 'Win up to 5 bits per game!',
             open: data == null || pool == 0 ? null : () => SongGuesserScreen(data: data),
             onReturn: () => setState(() {}),
           ),
@@ -66,7 +66,7 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
             icon: Icons.person_search,
             title: 'Artist Guesser',
             body: 'Guess the artist from their genre, hometown, debut year and first letter. Each miss (or skip) reveals another clue.',
-            rewards: '5 · 4 · 3 · 2 bits',
+            rewards: 'Win up to 5 bits per game!',
             open: data == null || pool == 0 ? null : () => ArtistGuesserScreen(data: data),
             onReturn: () => setState(() {}),
           ),
@@ -74,9 +74,9 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
           _GameCard(
             id: 'album',
             icon: Icons.album,
-            title: 'Album Cover Guesser',
-            body: 'Name the album from its cover.',
-            rewards: '3 · 2 · 1 bits',
+            title: 'Art Guesser',
+            body: 'Name the album from its cover art.',
+            rewards: 'Win up to 3 bits per game!',
             open: data == null || pool == 0 ? null : () => AlbumGuesserScreen(data: data),
             onReturn: () => setState(() {}),
           ),
@@ -84,11 +84,9 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
           _GameCard(
             id: 'trivia',
             icon: Icons.quiz_outlined,
-            title: 'Favourite Artist Trivia',
-            body: g.profile.favoriteArtists.isEmpty
-                ? '5 questions about famous artists\' hits, albums, debut and hometown. Add favourite artists on your profile to be asked about them instead.'
-                : '5 multiple-choice questions about your favourite artists.',
-            rewards: '1 bit per correct answer',
+            title: 'Trivia',
+            body: '3 multiple-choice questions about popular artists${g.profile.favoriteArtists.isEmpty ? '' : ' and your favourites'}: hits, albums, debut and hometown.',
+            rewards: 'Win up to 3 bits per game!',
             open: data == null ? null : () => TriviaScreen(data: data),
             onReturn: () => setState(() {}),
           ),
@@ -807,7 +805,7 @@ class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
 }
 
 // ======================================================================
-/// Album Cover Guesser: name the album from its cover. 3 / 2 / 1 bits for
+/// Art Guesser: name the album from its cover. 3 / 2 / 1 bits for
 /// the first three tries, then unlimited tries without a reward.
 class AlbumGuesserScreen extends StatefulWidget {
   const AlbumGuesserScreen({super.key, required this.data});
@@ -915,7 +913,7 @@ class _AlbumGuesserScreenState extends State<AlbumGuesserScreen> {
     final wrong = _guesses.length;
     final done = _solved || _gaveUp;
     return Scaffold(
-      appBar: AppBar(title: const Text('Album Cover Guesser')),
+      appBar: AppBar(title: const Text('Art Guesser')),
       body: ContentWidth(
         maxWidth: 720,
         child: _loading
@@ -958,7 +956,7 @@ class _AlbumGuesserScreenState extends State<AlbumGuesserScreen> {
 }
 
 // ======================================================================
-/// Favourite Artist Trivia: five multiple-choice questions (five answers
+/// Trivia: three multiple-choice questions (five answers
 /// each) about the player's favourite artists. 1 bit per correct answer.
 class TriviaScreen extends StatefulWidget {
   const TriviaScreen({super.key, required this.data});
@@ -1020,14 +1018,17 @@ class _TriviaScreenState extends State<TriviaScreen> {
       _correct = 0;
       _picked = null;
     });
-    // No favourites yet: ask about well-known artists instead.
-    var artists = g.profile.favoriteArtists;
-    if (artists.isEmpty) {
-      final pool = [...widget.data.artists]..sort((a, b) => b.fans.compareTo(a.fans));
-      final top = pool.take(60).toList()..shuffle(_r);
-      artists = [for (final a in top.take(8)) FavoriteArtist(id: a.id, name: a.name, picMd5: a.picMd5)];
-    }
-    final qs = await buildTrivia(g.api, widget.data, artists, _r);
+    // A mix of the player's favourites and popular artists (within their
+    // language and genre filter).
+    final filter = MinigameFilter.fromJson(g.profile.minigameFilter);
+    final pool = [for (final a in widget.data.artists) if (filter.allows(a)) a]..sort((a, b) => b.fans.compareTo(a.fans));
+    final popular = (pool.isEmpty ? [...widget.data.artists] : pool).take(60).toList()..shuffle(_r);
+    final favs = [...g.profile.favoriteArtists]..shuffle(_r);
+    final artists = <FavoriteArtist>[
+      ...favs.take(4),
+      for (final a in popular.take(8)) FavoriteArtist(id: a.id, name: a.name, picMd5: a.picMd5),
+    ]..shuffle(_r);
+    final qs = await buildTrivia(g.api, widget.data, artists, _r, count: 3);
     if (!mounted) return;
     setState(() {
       _qs = qs;
@@ -1049,7 +1050,7 @@ class _TriviaScreenState extends State<TriviaScreen> {
   Widget build(BuildContext context) {
     final finished = !_loading && _i >= _qs.length;
     return Scaffold(
-      appBar: AppBar(title: const Text('Favourite Artist Trivia')),
+      appBar: AppBar(title: const Text('Trivia')),
       body: ContentWidth(
         maxWidth: 720,
         child: _loading
