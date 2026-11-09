@@ -33,6 +33,24 @@ abstract class MarketBackend {
   /// Global serial numbers for Canvas/Sample editions.
   Future<int?> claimSerial(int songId, Edition edition);
   Future<int> serialsLeft(int songId, Edition edition);
+
+  // ------------------------------------------------------------- social
+  /// Sets this player's unique username; returns (name, new session token).
+  Future<(String, String?)> setUsername(String name);
+
+  /// Null when [name] can be used, else why not.
+  Future<String?> checkUsername(String name);
+  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions});
+  Future<void> uploadCollection(List<CardPayload> cards);
+  Future<List<PlayerSummary>> searchPlayers(String query);
+  Future<PublicProfile> player(String id);
+  Future<CollectionPage> playerCollection(String id, {String text = '', int offset = 0, int limit = 60});
+  Future<TradeOffer> createDirectOffer(String toId, List<int> requestedUids, List<CardPayload> cards, int coins, {String note = ''});
+  Future<void> setBlocked(String id, bool blocked);
+  Future<List<Conversation>> conversations();
+  Future<List<ChatMessage>> thread(String otherId);
+  Future<ChatMessage> sendMessage(String toId, String text);
+  Future<int> unreadMessages();
   void dispose() {}
 }
 
@@ -263,6 +281,55 @@ class LocalMarket extends MarketBackend {
   @override
   Future<int> likeShowcase(String ownerId) async => engine.likeShowcase(playerId, ownerId);
 
+  // Offline: the same engine, with the NPC traders as the other players.
+  @override
+  Future<(String, String?)> setUsername(String name) async => (engine.setUsername(playerId, name).name, null);
+  @override
+  Future<String?> checkUsername(String name) async {
+    final err = usernameError(name.trim());
+    if (err != null) return err;
+    return engine.usernameAvailable(name, forId: playerId) ? null : 'That username is taken';
+  }
+
+  @override
+  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions}) async =>
+      engine.setPublicProfile(playerId, theme: theme, level: level, stats: stats, editionShowcase: editions);
+  @override
+  Future<void> uploadCollection(List<CardPayload> cards) async {
+    try {
+      engine.setCollection(playerId, cards);
+    } on MarketException catch (_) {}
+  }
+
+  @override
+  Future<List<PlayerSummary>> searchPlayers(String query) async => engine.searchPlayers(query, excludeId: playerId);
+  @override
+  Future<PublicProfile> player(String id) async => engine.publicProfile(id, viewerId: playerId);
+  @override
+  Future<CollectionPage> playerCollection(String id, {String text = '', int offset = 0, int limit = 60}) async {
+    // NPC traders' "collections" are what they show off.
+    if (id.startsWith('bot') && !engine.collections.containsKey(id)) {
+      final show = engine.showcases[id]?.cards ?? const [];
+      final listed = [for (final l in engine.listingsOf(id)) ...l.cards];
+      engine.collections[id] = [...show, ...listed];
+    }
+    return engine.collectionPage(id, text: text, offset: offset, limit: limit);
+  }
+
+  @override
+  Future<TradeOffer> createDirectOffer(String toId, List<int> requestedUids, List<CardPayload> cards, int coins, {String note = ''}) async =>
+      engine.createDirectOffer(playerId, toId, requestedUids, cards, coins, note: note);
+  @override
+  Future<void> setBlocked(String id, bool blocked) async => engine.setBlocked(playerId, id, blocked);
+  @override
+  Future<List<Conversation>> conversations() async => engine.conversations(playerId);
+  @override
+  Future<List<ChatMessage>> thread(String otherId) async => engine.thread(playerId, otherId);
+  @override
+  Future<ChatMessage> sendMessage(String toId, String text) async => engine.sendMessage(playerId, toId, text);
+  @override
+  Future<int> unreadMessages() async => engine.unreadCount(playerId);
+
   @override
   void dispose() {
     _tick?.cancel();
@@ -298,10 +365,10 @@ class RemoteMarket extends MarketBackend {
     return Uri.parse('$b$path').replace(queryParameters: q);
   }
 
-  Future<dynamic> _send(String method, String path, {Object? body, Map<String, String>? q}) async {
+  Future<dynamic> _send(String method, String path, {Object? body, Map<String, String>? q, Duration timeout = const Duration(seconds: 12)}) async {
     final req = http.Request(method, _u(path, q))..headers.addAll(_h);
     if (body != null) req.body = jsonEncode(body);
-    final res = await http.Response.fromStream(await _c.send(req).timeout(const Duration(seconds: 12)));
+    final res = await http.Response.fromStream(await _c.send(req).timeout(timeout));
     final decoded = res.body.isEmpty ? null : jsonDecode(res.body);
     if (res.statusCode != 200) {
       throw MarketException(decoded is Map ? '${decoded['error']}' : 'Server error ${res.statusCode}');
@@ -374,6 +441,61 @@ class RemoteMarket extends MarketBackend {
   @override
   Future<int> likeShowcase(String ownerId) async =>
       ((await _send('POST', '/showcases/$ownerId/like') as Map)['likes'] as num).toInt();
+
+  @override
+  Future<(String, String?)> setUsername(String name) async {
+    final j = await _send('POST', '/me/username', body: {'name': name}) as Map<String, dynamic>;
+    return (j['name'] as String, j['token'] as String?);
+  }
+
+  @override
+  Future<String?> checkUsername(String name) async {
+    final j = await _send('GET', '/usernames/check', q: {'name': name}) as Map<String, dynamic>;
+    return j['ok'] == true ? null : (j['error'] as String? ?? 'That username can\'t be used');
+  }
+
+  @override
+  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions}) async =>
+      _send('PUT', '/me/profile', body: {
+        'theme': ?theme,
+        'level': ?level,
+        'stats': ?stats,
+        if (editions != null) 'editions': [for (final c in editions) c.toJson()],
+      });
+  @override
+  Future<void> uploadCollection(List<CardPayload> cards) async =>
+      _send('PUT', '/me/collection', body: {'cards': [for (final c in cards) c.toJson()]}, timeout: const Duration(seconds: 60));
+  @override
+  Future<List<PlayerSummary>> searchPlayers(String query) async =>
+      _list(await _send('GET', '/players', q: {'q': query}), PlayerSummary.fromJson);
+  @override
+  Future<PublicProfile> player(String id) async =>
+      PublicProfile.fromJson(await _send('GET', '/players/${Uri.encodeComponent(id)}') as Map<String, dynamic>);
+  @override
+  Future<CollectionPage> playerCollection(String id, {String text = '', int offset = 0, int limit = 60}) async =>
+      CollectionPage.fromJson(await _send('GET', '/players/${Uri.encodeComponent(id)}/collection',
+          q: {'q': text, 'offset': '$offset', 'limit': '$limit'}) as Map<String, dynamic>);
+  @override
+  Future<TradeOffer> createDirectOffer(String toId, List<int> requestedUids, List<CardPayload> cards, int coins, {String note = ''}) async =>
+      TradeOffer.fromJson(await _send('POST', '/players/${Uri.encodeComponent(toId)}/offers', body: {
+        'uids': requestedUids,
+        'cards': [for (final c in cards) c.toJson()],
+        'coins': coins,
+        'note': note,
+      }) as Map<String, dynamic>);
+  @override
+  Future<void> setBlocked(String id, bool blocked) async =>
+      _send('POST', '/players/${Uri.encodeComponent(id)}/block', body: {'blocked': blocked});
+  @override
+  Future<List<Conversation>> conversations() async => _list(await _send('GET', '/messages'), Conversation.fromJson);
+  @override
+  Future<List<ChatMessage>> thread(String otherId) async =>
+      _list(await _send('GET', '/messages/${Uri.encodeComponent(otherId)}'), ChatMessage.fromJson);
+  @override
+  Future<ChatMessage> sendMessage(String toId, String text) async =>
+      ChatMessage.fromJson(await _send('POST', '/messages/${Uri.encodeComponent(toId)}', body: {'text': text}) as Map<String, dynamic>);
+  @override
+  Future<int> unreadMessages() async => ((await _send('GET', '/me') as Map)['unread'] as num? ?? 0).toInt();
 
   @override
   void dispose() => _c.close();

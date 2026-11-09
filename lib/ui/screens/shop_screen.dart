@@ -8,6 +8,7 @@ import '../../game/store_catalog.dart';
 import '../app.dart';
 import '../map/map_themes.dart';
 import '../widgets/figure_preview.dart';
+import '../widgets/profile_banner.dart';
 import '../widgets/cards.dart';
 import '../widgets/net_image.dart';
 import '../widgets/stick_figure.dart';
@@ -21,7 +22,7 @@ class ShopScreen extends StatelessWidget {
     final g = GameScope.of(context);
     final free = g.profile.debugEnabled && g.profile.freePurchases;
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Shop'),
@@ -32,11 +33,14 @@ class ShopScreen extends StatelessWidget {
             const SizedBox(width: 12),
           ],
           bottom: const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             tabs: [
               Tab(text: 'Packs'),
               Tab(text: 'Bits'),
               Tab(text: 'Map themes'),
               Tab(text: 'Style'),
+              Tab(text: 'Profiles'),
             ],
           ),
         ),
@@ -51,7 +55,7 @@ class ShopScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(6),
                   child: const Text('DEBUG: real-money purchases are free (no charge)', textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
                 ),
-              const Expanded(child: TabBarView(children: [_Packs(), _Bits(), _Themes(), _Style()])),
+              const Expanded(child: TabBarView(children: [_Packs(), _Bits(), _Themes(), _Style(), ProfileThemePicker(embedded: true)])),
             ],
           ),
         ),

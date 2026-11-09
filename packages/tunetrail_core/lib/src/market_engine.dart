@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'card_payload.dart';
 import 'market_models.dart';
 import 'rarity.dart';
+import 'social_models.dart';
+import 'text_safety.dart';
 
 /// Authoritative, in-memory player market.
 ///
@@ -62,8 +64,9 @@ class MarketEngine {
   // ---------------------------------------------------------------- players
   MarketPlayer register(String id, String name, {bool bot = false}) {
     final p = players.putIfAbsent(
-        id, () => MarketPlayer(id: id, name: name, isBot: bot));
-    p.name = name;
+        id, () => MarketPlayer(id: id, name: name, isBot: bot, joinedAt: now()));
+    // A chosen username only changes through [setUsername].
+    if (!p.named) p.name = name;
     _changed();
     return p;
   }
@@ -118,7 +121,7 @@ class MarketEngine {
       sellerName: nameOf(sellerId),
       items: List.of(items),
       manualFolderPrice: folderPrice,
-      note: note.trim(),
+      note: cleanUserText(note, maxLength: kMaxListingNote, multiline: true),
       acceptsTrades: acceptsTrades,
       createdAt: now(),
     );
@@ -255,7 +258,7 @@ class MarketEngine {
       offeredCards: offeredCards,
       offeredCoins: offeredCoins,
       requestedCards: l.cards.toList(),
-      note: note.trim(),
+      note: cleanUserText(note, maxLength: kMaxListingNote, multiline: true),
       createdAt: now(),
     );
     offers[o.id] = o;
@@ -276,6 +279,10 @@ class MarketEngine {
       throw MarketException('Offer is no longer pending');
     }
     if (o.toId != playerId) throw MarketException('Not your offer to accept');
+    if (o.direct) {
+      _acceptDirect(o);
+      return;
+    }
     final l = listings.remove(o.listingId);
     if (l == null) throw MarketException('Listing no longer exists');
     o.status = TradeStatus.accepted;
@@ -318,11 +325,315 @@ class MarketEngine {
     }
   }
 
+  // ----------------------------------------------------------------- social
+  /// Each player's public collection (uploaded by their game). Kept apart
+  /// from [toJson]: the server stores collections one row per player.
+  final Map<String, List<CardPayload>> collections = {};
+
+  /// Called when a player's collection changes (the server saves it).
+  void Function(String playerId)? onCollectionChanged;
+
+  /// Direct messages per conversation ([_conv] key), oldest first.
+  final Map<String, List<ChatMessage>> messages = {};
+
+  /// When each player last read each conversation: player → other → ms.
+  final Map<String, Map<String, int>> lastRead = {};
+  final Map<String, List<int>> _recentSends = {};
+  final Map<String, int> _collectionUploads = {};
+
+  static const kMaxMessagesPerConversation = 300;
+  static const kMaxCollection = 50000;
+  static const kMaxPendingDirectOffers = 30;
+
+  static String _conv(String a, String b) => a.compareTo(b) < 0 ? '$a|$b' : '$b|$a';
+
+  MarketPlayer _player(String id) {
+    final p = players[id];
+    if (p == null) throw MarketException('Player not found');
+    return p;
+  }
+
+  bool _blockedBetween(String a, String b) =>
+      (players[a]?.blocked.contains(b) ?? false) || (players[b]?.blocked.contains(a) ?? false);
+
+  /// Whether [id] owns [name] (or nobody does).
+  bool usernameAvailable(String name, {String? forId}) {
+    final key = usernameKey(name.trim());
+    return !players.values.any((p) => p.id != forId && (p.named || p.isBot) && usernameKey(p.name) == key);
+  }
+
+  /// Sets [id]'s unique username after checking the rules in
+  /// [usernameError] and that no other player has the same (or a
+  /// look-alike) name.
+  MarketPlayer setUsername(String id, String raw) {
+    final p = _player(id);
+    final name = raw.trim();
+    final err = usernameError(name);
+    if (err != null) throw MarketException(err);
+    if (!usernameAvailable(name, forId: id)) throw MarketException('That username is taken');
+    final old = p.name;
+    p
+      ..name = name
+      ..named = true;
+    for (final l in listings.values) {
+      if (l.sellerId == id) l.sellerName = name;
+    }
+    for (final o in offers.values) {
+      if (o.fromId == id) o.fromName = name;
+    }
+    final s = showcases[id];
+    if (s != null) {
+      s.playerName = name;
+      if (s.title == "$old's Showcase") s.title = "$name's Showcase";
+    }
+    _changed();
+    return p;
+  }
+
+  /// Updates [id]'s public profile details.
+  void setPublicProfile(String id, {String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editionShowcase}) {
+    final p = _player(id);
+    if (theme != null) {
+      if (theme.isNotEmpty && !RegExp(r'^pt_[a-z0-9_]{1,30}$').hasMatch(theme)) throw MarketException('Unknown profile theme');
+      p.theme = theme;
+    }
+    if (level != null) p.level = level.clamp(1, 100000);
+    if (stats != null) {
+      p.stats = {
+        for (final e in stats.entries.take(20))
+          if (RegExp(r'^[a-zA-Z]{1,24}$').hasMatch(e.key) && e.value.isFinite) e.key: e.value,
+      };
+    }
+    if (editionShowcase != null) p.editionShowcase = editionShowcase.take(3).toList();
+    _changed();
+  }
+
+  /// Replaces [id]'s public collection. Pending direct offers for songs
+  /// that are no longer in it are returned to their senders.
+  void setCollection(String id, List<CardPayload> cards) {
+    _player(id);
+    if (cards.length > kMaxCollection) throw MarketException('Collection too large');
+    final last = _collectionUploads[id] ?? 0;
+    if (now() - last < 3000) throw MarketException('Collection updated too often');
+    _collectionUploads[id] = now();
+    final seen = <int>{};
+    final clean = [for (final c in cards) if (seen.add(c.uid)) c];
+    collections[id] = clean;
+    final have = {for (final c in clean) c.uid};
+    final stale = offers.values
+        .where((o) => o.direct && o.toId == id && o.status == TradeStatus.pending && o.requestedCards.any((c) => !have.contains(c.uid)))
+        .toList();
+    for (final o in stale) {
+      o.status = TradeStatus.declined;
+      _returnOffer(o, '${nameOf(id)} no longer has those songs');
+      offers.remove(o.id);
+    }
+    onCollectionChanged?.call(id);
+    if (stale.isNotEmpty) _changed();
+  }
+
+  /// Players whose username contains [query] (exact and prefix matches
+  /// first).
+  List<PlayerSummary> searchPlayers(String query, {int limit = 30, String? excludeId}) {
+    final q = usernameKey(query.trim());
+    if (q.isEmpty) return const [];
+    final hits = [
+      for (final p in players.values)
+        if (p.id != excludeId && (p.named || p.isBot) && usernameKey(p.name).contains(q)) p
+    ];
+    int score(MarketPlayer p) {
+      final k = usernameKey(p.name);
+      return k == q ? 0 : (k.startsWith(q) ? 1 : 2);
+    }
+
+    hits.sort((a, b) {
+      final c = score(a).compareTo(score(b));
+      return c != 0 ? c : a.name.length.compareTo(b.name.length);
+    });
+    return [for (final p in hits.take(limit)) _summary(p)];
+  }
+
+  PlayerSummary _summary(MarketPlayer p) =>
+      PlayerSummary(id: p.id, name: p.name, theme: p.theme, level: p.level, cards: collections[p.id]?.length ?? 0);
+
+  PublicProfile publicProfile(String id, {String? viewerId}) {
+    final p = _player(id);
+    return PublicProfile(
+      id: p.id,
+      name: p.name,
+      theme: p.theme,
+      level: p.level,
+      joinedAt: p.joinedAt,
+      stats: p.stats,
+      editionShowcase: p.editionShowcase,
+      favoriteArtists: showcases[id]?.favoriteArtists ?? const [],
+      showcase: showcases[id],
+      cardCount: collections[id]?.length ?? 0,
+      blockedByMe: viewerId != null && (players[viewerId]?.blocked.contains(id) ?? false),
+      isBot: p.isBot,
+    );
+  }
+
+  /// A page of [id]'s collection, filtered by [text] (title, artist,
+  /// album) and sorted by rarity (best first).
+  CollectionPage collectionPage(String id, {String text = '', int offset = 0, int limit = 60}) {
+    _player(id);
+    final t = text.trim().toLowerCase();
+    final all = [
+      for (final c in collections[id] ?? const <CardPayload>[])
+        if (t.isEmpty ||
+            c.title.toLowerCase().contains(t) ||
+            c.artistName.toLowerCase().contains(t) ||
+            c.albumTitle.toLowerCase().contains(t))
+          c
+    ];
+    int score(CardPayload c) => c.edition.index * 100 + c.rarity.index * 2 + (c.shiny ? 1 : 0);
+    all.sort((a, b) {
+      final s = score(b).compareTo(score(a));
+      return s != 0 ? s : a.title.compareTo(b.title);
+    });
+    final from = offset.clamp(0, all.length);
+    return CollectionPage(cards: all.sublist(from, math.min(all.length, from + limit.clamp(1, 200))), total: all.length);
+  }
+
+  /// Offers cards and/or coins for songs in another player's collection.
+  /// The offered items are held (the sender's game has already removed
+  /// them); the receiver hands the songs over by accepting.
+  TradeOffer createDirectOffer(String fromId, String toId, List<int> requestedUids, List<CardPayload> offeredCards, int offeredCoins,
+      {String note = ''}) {
+    if (fromId == toId) throw MarketException("You can't trade with yourself");
+    final to = _player(toId);
+    if (to.isBot) throw MarketException('This trader only trades through the market');
+    if (_blockedBetween(fromId, toId)) throw MarketException("You can't send offers to this player");
+    if (requestedUids.isEmpty) throw MarketException('Pick at least one of their songs');
+    if (requestedUids.length > kMaxListingItems || offeredCards.length > kMaxListingItems) {
+      throw MarketException('Up to $kMaxListingItems songs on each side');
+    }
+    if (offeredCards.isEmpty && offeredCoins <= 0) throw MarketException('Offer at least one card or some coins');
+    if (offeredCoins < 0 || offeredCoins > 1000000000) throw MarketException('Invalid coin amount');
+    final pending = offers.values.where((o) => o.direct && o.fromId == fromId && o.status == TradeStatus.pending).length;
+    if (pending >= kMaxPendingDirectOffers) throw MarketException('You have too many open offers — wait for replies first');
+    final owned = {for (final c in collections[toId] ?? const <CardPayload>[]) c.uid: c};
+    final requested = <CardPayload>[];
+    for (final u in requestedUids.toSet()) {
+      final c = owned[u];
+      if (c == null) throw MarketException('${to.name} no longer has one of those songs');
+      requested.add(c);
+    }
+    final o = TradeOffer(
+      id: _id('d'),
+      listingId: '',
+      fromId: fromId,
+      fromName: nameOf(fromId),
+      toId: toId,
+      offeredCards: offeredCards,
+      offeredCoins: offeredCoins,
+      requestedCards: requested,
+      note: cleanUserText(note, maxLength: kMaxListingNote, multiline: true),
+      createdAt: now(),
+      direct: true,
+    );
+    offers[o.id] = o;
+    _changed();
+    return o;
+  }
+
+  void _acceptDirect(TradeOffer o) {
+    o.status = TradeStatus.accepted;
+    offers.remove(o.id);
+    _deliver(o.toId, 'Trade with ${o.fromName} complete', coins: o.offeredCoins, cards: o.offeredCards);
+    _deliver(o.fromId, '${nameOf(o.toId)} accepted your trade for ${o.requestedLabel}', cards: o.requestedCards);
+    final gone = {for (final c in o.requestedCards) c.uid};
+    collections[o.toId]?.removeWhere((c) => gone.contains(c.uid));
+    // Other offers for the same songs can't be completed any more.
+    final clash = offers.values
+        .where((x) => x.direct && x.toId == o.toId && x.status == TradeStatus.pending && x.requestedCards.any((c) => gone.contains(c.uid)))
+        .toList();
+    for (final x in clash) {
+      x.status = TradeStatus.declined;
+      _returnOffer(x, 'Those songs were traded to another player');
+      offers.remove(x.id);
+    }
+    onCollectionChanged?.call(o.toId);
+    _changed();
+  }
+
+  /// Blocks (or unblocks) [otherId] for [id]: no messages or offers either way.
+  void setBlocked(String id, String otherId, bool blocked) {
+    final p = _player(id);
+    _player(otherId);
+    if (id == otherId) throw MarketException("You can't block yourself");
+    blocked ? p.blocked.add(otherId) : p.blocked.remove(otherId);
+    if (blocked) {
+      final open = offers.values
+          .where((o) => o.direct && o.status == TradeStatus.pending && ((o.fromId == id && o.toId == otherId) || (o.fromId == otherId && o.toId == id)))
+          .toList();
+      for (final o in open) {
+        o.status = TradeStatus.declined;
+        _returnOffer(o, 'The offer was closed');
+        offers.remove(o.id);
+      }
+    }
+    _changed();
+  }
+
+  ChatMessage sendMessage(String fromId, String toId, String raw) {
+    if (fromId == toId) throw MarketException("You can't message yourself");
+    final to = _player(toId);
+    _player(fromId);
+    if (to.isBot) throw MarketException('This trader doesn\'t read messages');
+    if (_blockedBetween(fromId, toId)) throw MarketException("You can't message this player");
+    final text = cleanUserText(raw, maxLength: kMaxMessageLength, multiline: true);
+    if (text.isEmpty) throw MarketException('Type a message');
+    final t = now();
+    final recent = _recentSends.putIfAbsent(fromId, () => [])..removeWhere((x) => t - x > 60000);
+    if (recent.length >= 20) throw MarketException('You\'re sending messages too fast — wait a moment');
+    recent.add(t);
+    final m = ChatMessage(id: _id('m'), from: fromId, to: toId, text: text, at: t);
+    final list = messages.putIfAbsent(_conv(fromId, toId), () => [])..add(m);
+    if (list.length > kMaxMessagesPerConversation) list.removeRange(0, list.length - kMaxMessagesPerConversation);
+    lastRead.putIfAbsent(fromId, () => {})[toId] = t;
+    _changed();
+    return m;
+  }
+
+  /// [id]'s conversations, most recent first.
+  List<Conversation> conversations(String id) {
+    final out = <Conversation>[];
+    for (final e in messages.entries) {
+      final parts = e.key.split('|');
+      if (parts.length != 2 || !parts.contains(id) || e.value.isEmpty) continue;
+      final other = parts[0] == id ? parts[1] : parts[0];
+      final read = lastRead[id]?[other] ?? 0;
+      final unread = e.value.where((m) => m.to == id && m.at > read).length;
+      final o = players[other];
+      out.add(Conversation(otherId: other, otherName: o?.name ?? 'Unknown', otherTheme: o?.theme ?? '', last: e.value.last, unread: unread));
+    }
+    out.sort((a, b) => b.last.at.compareTo(a.last.at));
+    return out;
+  }
+
+  int unreadCount(String id) => conversations(id).fold(0, (a, c) => a + c.unread);
+
+  /// Messages between [id] and [otherId] (oldest first); marks them read.
+  List<ChatMessage> thread(String id, String otherId) {
+    final list = messages[_conv(id, otherId)] ?? const <ChatMessage>[];
+    if (list.isNotEmpty) {
+      final r = lastRead.putIfAbsent(id, () => {});
+      if ((r[otherId] ?? 0) < list.last.at) {
+        r[otherId] = list.last.at;
+        _changed();
+      }
+    }
+    return List.of(list);
+  }
+
   // -------------------------------------------------------------- showcases
   Showcase setShowcase(String playerId, String title, List<CardPayload> cards,
       List<ShowcasePlaylist> playlists, {List<FavoriteArtist> favoriteArtists = const []}) {
     if (favoriteArtists.length > kMaxFavoriteArtists) throw MarketException('Up to $kMaxFavoriteArtists favourite artists');
     if (cards.length > 24) throw MarketException('Showcase holds up to 24 cards');
+    title = cleanUserText(title, maxLength: 60);
     final s = Showcase(
       playerId: playerId,
       playerName: nameOf(playerId),
@@ -374,6 +685,10 @@ class MarketEngine {
         },
         'counter': _counter,
         'serials': serials,
+        'messages': {
+          for (final e in messages.entries) e.key: [for (final m in e.value) m.toJson()]
+        },
+        'lastRead': lastRead,
       };
 
   void loadJson(Map<String, dynamic> j) {
@@ -419,6 +734,14 @@ class MarketEngine {
       showcaseLikes[k] = {for (final x in (v as List)) x as String};
     });
     _counter = (j['counter'] as num?)?.toInt() ?? 0;
+    messages.clear();
+    (j['messages'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {
+      messages[k] = [for (final m in (v as List)) ChatMessage.fromJson(m as Map<String, dynamic>)];
+    });
+    lastRead.clear();
+    (j['lastRead'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {
+      lastRead[k] = {for (final e in (v as Map<String, dynamic>).entries) e.key: (e.value as num).toInt()};
+    });
   }
 }
 

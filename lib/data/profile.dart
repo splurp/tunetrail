@@ -46,7 +46,7 @@ class PlayerProfile extends ChangeNotifier {
   int figureColor = 0xFFE9E6FF;
 
   // Cosmetics & themes.
-  Set<String> owned = {'theme_classic'};
+  Set<String> owned = {'theme_classic', 'pt_graphite', 'pt_violet', 'pt_ocean'};
   String activeTheme = 'theme_classic';
   String? hat;
   String? shirt;
@@ -118,6 +118,15 @@ class PlayerProfile extends ChangeNotifier {
   /// and the Google display name. Empty when playing as a guest.
   String authToken = '';
   String accountName = '';
+
+  /// The player has chosen their unique username (stored in [name]).
+  bool usernameSet = false;
+
+  /// First-run setup (sign-in, username, preferences, artists) finished.
+  bool onboarded = false;
+
+  /// Theme of the player's public profile page (see profile_themes.dart).
+  String profileTheme = 'pt_graphite';
   String tileUrl = '';
 
   /// Last.fm API key (optional) for play-count based rarity. Defaults to the
@@ -257,6 +266,9 @@ class PlayerProfile extends ChangeNotifier {
         'server': serverUrl,
         'authToken': authToken,
         'accountName': accountName,
+        'usernameSet': usernameSet,
+        'onboarded': onboarded,
+        'profileTheme': profileTheme,
         'tileUrl': tileUrl,
         'lastFmKey': lastFmKey,
         'volume': volume,
@@ -343,6 +355,9 @@ class PlayerProfile extends ChangeNotifier {
     serverUrl = j['server'] as String? ?? serverUrl;
     authToken = j['authToken'] as String? ?? '';
     accountName = j['accountName'] as String? ?? '';
+    usernameSet = j['usernameSet'] as bool? ?? false;
+    onboarded = j['onboarded'] as bool? ?? false;
+    profileTheme = j['profileTheme'] as String? ?? profileTheme;
     tileUrl = j['tileUrl'] as String? ?? '';
     lastFmKey = j['lastFmKey'] as String? ?? '';
     volume = (j['volume'] as num?)?.toDouble() ?? volume;

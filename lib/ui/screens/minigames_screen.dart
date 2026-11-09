@@ -101,7 +101,7 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
             const Spacer(),
             Text(data == null ? 'Loading…' : '$pool artists match', style: const TextStyle(color: kTextTertiary, fontSize: 12)),
           ]),
-          _FilterEditor(
+          MinigameFilterEditor(
             filter: filter,
             onChanged: (f) {
               g.profile.minigameFilter = f.toJson();
@@ -198,8 +198,8 @@ Future<bool> _startRound(BuildContext context, String game) async {
   return ok;
 }
 
-class _FilterEditor extends StatelessWidget {
-  const _FilterEditor({required this.filter, required this.onChanged});
+class MinigameFilterEditor extends StatelessWidget {
+  const MinigameFilterEditor({super.key, required this.filter, required this.onChanged});
   final MinigameFilter filter;
   final ValueChanged<MinigameFilter> onChanged;
 

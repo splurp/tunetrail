@@ -8,6 +8,7 @@ import 'card_detail_screen.dart';
 import '../widgets/ui_kit.dart';
 import '../../game/google_auth.dart';
 import 'copyright_screen.dart';
+import 'onboarding_screen.dart' show showChangeUsername;
 import 'debug_screen.dart';
 import 'listing_composer.dart';
 
@@ -137,11 +138,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (p.authToken.isNotEmpty)
           ListTile(
             leading: const Icon(Icons.verified_user, color: kAccent),
-            title: Text('Signed in${p.accountName.isEmpty ? '' : ' as ${p.accountName}'}'),
+            title: Text(p.usernameSet ? 'Signed in as ${p.name}' : 'Signed in'),
             subtitle: const Text('Google account · your market activity follows you to any device'),
             trailing: TextButton(onPressed: () => g.signOut(), child: const Text('Sign out')),
-          )
-        else
+          ),
+        if (p.authToken.isNotEmpty || !g.onlineAccounts)
+          ListTile(
+            leading: const Icon(Icons.alternate_email),
+            title: const Text('Username'),
+            subtitle: Text(p.usernameSet ? p.name : 'Not chosen yet'),
+            trailing: const Icon(Icons.edit, size: 18),
+            onTap: () => showChangeUsername(context),
+          ),
+        if (p.authToken.isEmpty)
           ListTile(
             leading: const Icon(Icons.account_circle_outlined),
             title: const Text('Sign in with Google'),

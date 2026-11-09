@@ -1,0 +1,405 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:tunetrail_core/tunetrail_core.dart';
+
+import '../../data/models.dart';
+import '../app.dart';
+import '../widgets/cards.dart';
+import '../widgets/profile_banner.dart';
+import 'collection_screen.dart';
+import 'favorite_artists_screen.dart';
+import 'market_screen.dart' show ShowcaseView;
+import 'messages_screen.dart';
+
+/// Another player's public profile: their showcase, favourite artists and
+/// collection. Pick songs from the collection to make an offer, or send
+/// them a message.
+class PlayerScreen extends StatefulWidget {
+  const PlayerScreen({super.key, required this.playerId});
+  final String playerId;
+  @override
+  State<PlayerScreen> createState() => _PlayerScreenState();
+}
+
+class _PlayerScreenState extends State<PlayerScreen> {
+  PublicProfile? _p;
+  String? _error;
+  final _search = TextEditingController();
+  Timer? _debounce;
+  final List<CardPayload> _cards = [];
+  int _total = 0;
+  bool _loadingCards = false;
+  bool _more = true;
+  final Map<int, CardPayload> _picked = {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load();
+      _reloadCards();
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await GameScope.read(context).market.player(widget.playerId);
+      if (mounted) {
+        setState(() {
+          _p = p;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    }
+  }
+
+  Future<void> _reloadCards() async {
+    _cards.clear();
+    _more = true;
+    await _page();
+  }
+
+  Future<void> _page() async {
+    if (_loadingCards || !_more) return;
+    setState(() => _loadingCards = true);
+    try {
+      final res = await GameScope.read(context).market.playerCollection(widget.playerId, text: _search.text, offset: _cards.length, limit: 60);
+      if (!mounted) return;
+      setState(() {
+        _cards.addAll(res.cards);
+        _total = res.total;
+        _more = res.cards.length == 60;
+      });
+    } catch (e) {
+      if (mounted) GameScope.read(context).toast('$e');
+    } finally {
+      if (mounted) setState(() => _loadingCards = false);
+    }
+  }
+
+  Future<void> _block(bool on) async {
+    final g = GameScope.read(context);
+    if (on) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Block ${_p!.name}?'),
+          content: const Text('Neither of you will be able to message the other or send direct offers. Open offers between you are returned.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Block')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    try {
+      await g.market.setBlocked(widget.playerId, on);
+      g.toast(on ? 'Blocked' : 'Unblocked');
+      await _load();
+    } catch (e) {
+      g.toast('$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    final p = _p;
+    final me = widget.playerId == g.profile.playerId;
+    if (p == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: Center(child: _error != null ? Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center)) : const CircularProgressIndicator()),
+      );
+    }
+    final joined = p.joinedAt > 0 ? DateTime.fromMillisecondsSinceEpoch(p.joinedAt) : null;
+    final stats = [
+      ('Songs', formatNumber(p.cardCount)),
+      if (p.stats['unique'] != null) ('Unique', formatNumber(p.stats['unique']!.toInt())),
+      if (p.stats['caught'] != null) ('Caught', formatNumber(p.stats['caught']!.toInt())),
+      if (p.stats['shinies'] != null) ('Shinies', formatNumber(p.stats['shinies']!.toInt())),
+      if (p.stats['km'] != null) ('Walked', '${p.stats['km']} km'),
+      if (p.stats['trades'] != null) ('Trades', formatNumber(p.stats['trades']!.toInt())),
+    ];
+    return Scaffold(
+      appBar: AppBar(title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis), actions: [
+        if (!me && !p.isBot)
+          PopupMenuButton<String>(
+            onSelected: (v) => _block(v == 'block'),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: p.blockedByMe ? 'unblock' : 'block', child: Text(p.blockedByMe ? 'Unblock' : 'Block')),
+            ],
+          ),
+      ]),
+      bottomNavigationBar: _picked.isEmpty
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(children: [
+                  TextButton(onPressed: () => setState(_picked.clear), child: const Text('Clear')),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.swap_horiz),
+                      label: Text('Make an offer for ${_picked.length} song${_picked.length == 1 ? '' : 's'}'),
+                      onPressed: () async {
+                        final sent = await composeDirectOffer(context, p, _picked.values.toList());
+                        if (sent == true && mounted) setState(_picked.clear);
+                      },
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (n) {
+          if (n.metrics.pixels > n.metrics.maxScrollExtent - 600) _page();
+          return false;
+        },
+        child: CustomScrollView(slivers: [
+          SliverToBoxAdapter(
+            child: ContentWidth(
+              maxWidth: 1000,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  ProfileBanner(
+                    themeId: p.theme,
+                    name: p.name,
+                    subtitle: [
+                      'Level ${p.level}',
+                      if (p.isBot) 'NPC trader',
+                      if (joined != null) 'joined ${joined.month}/${joined.year}',
+                    ].join(' · '),
+                  ),
+                  const SizedBox(height: 10),
+                  if (!me && !p.isBot)
+                    Row(children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                          label: const Text('Message'),
+                          onPressed: p.blockedByMe
+                              ? null
+                              : () => Navigator.of(context)
+                                  .push(MaterialPageRoute<void>(builder: (_) => ChatScreen(otherId: p.id, otherName: p.name, otherTheme: p.theme))),
+                        ),
+                      ),
+                    ]),
+                  if (p.blockedByMe)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(children: [
+                        const Icon(Icons.block, size: 16, color: kTextTertiary),
+                        const SizedBox(width: 6),
+                        const Expanded(child: Text('You blocked this player.', style: TextStyle(color: kTextTertiary))),
+                        TextButton(onPressed: () => _block(false), child: const Text('Unblock')),
+                      ]),
+                    ),
+                  const SizedBox(height: 12),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final (k, v) in stats)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(12), border: Border.all(color: kOutline)),
+                        child: Column(children: [
+                          Text(v, style: const TextStyle(fontWeight: FontWeight.w800)),
+                          Text(k, style: const TextStyle(fontSize: 10, color: kTextTertiary)),
+                        ]),
+                      ),
+                  ]),
+                  if (p.editionShowcase.isNotEmpty) ...[
+                    const SectionLabel('Showcase'),
+                    LayoutBuilder(builder: (context, box) {
+                      final w = ((box.maxWidth - 16) / 3).clamp(0.0, 180.0);
+                      return Row(children: [
+                        for (final c in p.editionShowcase) ...[
+                          GestureDetector(
+                            onTap: () => g.audio.playOne(c.songId),
+                            child: SongCardView(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial, width: w),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                      ]);
+                    }),
+                  ],
+                  if (p.favoriteArtists.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    FavoriteArtistsTab(artists: p.favoriteArtists),
+                  ],
+                  if (p.showcase != null && (p.showcase!.cards.isNotEmpty || p.showcase!.playlists.isNotEmpty)) ...[
+                    const SizedBox(height: 10),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.collections_bookmark_outlined),
+                        title: Text(p.showcase!.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text('${p.showcase!.cards.length} cards · ${p.showcase!.playlists.length} playlists · ${p.showcase!.likes} likes'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ShowcaseView(showcase: p.showcase!))),
+                      ),
+                    ),
+                  ],
+                  SectionLabel('Collection  ${formatNumber(_total)}'),
+                  if (!me)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text('Tap songs to pick them, then make an offer. Hold a song to hear it.', style: TextStyle(fontSize: 12, color: kTextTertiary)),
+                    ),
+                  TextField(
+                    controller: _search,
+                    decoration: const InputDecoration(hintText: 'Search their songs, artists, albums', prefixIcon: Icon(Icons.search, size: 20)),
+                    onChanged: (_) {
+                      _debounce?.cancel();
+                      _debounce = Timer(const Duration(milliseconds: 350), _reloadCards);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                ]),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: 14 + ((MediaQuery.sizeOf(context).width - 1000) / 2).clamp(0.0, double.infinity)),
+            sliver: SliverGrid.builder(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 130, childAspectRatio: 0.64, crossAxisSpacing: 8, mainAxisSpacing: 8),
+              itemCount: _cards.length,
+              itemBuilder: (context, i) {
+                final c = _cards[i];
+                final on = _picked.containsKey(c.uid);
+                return Stack(children: [
+                  Positioned.fill(
+                    child: CardTile(
+                      song: Song.fromPayload(c),
+                      rarity: c.rarity,
+                      shiny: c.shiny,
+                      edition: c.edition,
+                      serial: c.serial,
+                      onTap: me || p.isBot
+                          ? () => g.audio.playOne(c.songId)
+                          : () => setState(() {
+                                if (on) {
+                                  _picked.remove(c.uid);
+                                } else if (_picked.length < kMaxListingItems) {
+                                  _picked[c.uid] = c;
+                                } else {
+                                  g.toast('Up to $kMaxListingItems songs per offer');
+                                }
+                              }),
+                      onLongPress: () => g.audio.playOne(c.songId),
+                    ),
+                  ),
+                  if (on)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: kAccent, width: 3), color: kAccent.withValues(alpha: 0.15)),
+                          alignment: Alignment.topRight,
+                          padding: const EdgeInsets.all(4),
+                          child: const Icon(Icons.check_circle, color: kAccent, size: 22),
+                        ),
+                      ),
+                    ),
+                ]);
+              },
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: _loadingCards
+                    ? const CircularProgressIndicator()
+                    : _cards.isEmpty
+                        ? Text(_search.text.isEmpty ? 'No songs to show yet.' : 'No matches.', style: const TextStyle(color: kTextTertiary))
+                        : const SizedBox.shrink(),
+              ),
+            ),
+          ),
+          if (p.isBot)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Text('NPC traders only trade through their market listings.', textAlign: TextAlign.center, style: TextStyle(color: kTextTertiary, fontSize: 12)),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Offer some of your songs and/or coins for [wanted] songs from [to]'s
+/// collection.
+Future<bool?> composeDirectOffer(BuildContext context, PublicProfile to, List<CardPayload> wanted) async {
+  final g = GameScope.read(context);
+  if (to.isBot) {
+    g.toast('NPC traders only trade through their market listings');
+    return false;
+  }
+  var uids = <int>[];
+  final coinsCtl = TextEditingController(text: '0');
+  final noteCtl = TextEditingController();
+  final want = wanted.fold<int>(0, (a, c) => a + c.fair);
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setD) {
+      final mine = [for (final u in uids) ?g.collection.byUid(u)];
+      final value = mine.fold<int>(0, (a, c) => a + c.toPayload().fair);
+      return AlertDialog(
+        title: Text('Offer to ${to.name}'),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('You want ${wanted.length} song${wanted.length == 1 ? '' : 's'} (est. ${formatNumber(want)}):', style: const TextStyle(color: kTextSecondary)),
+              for (final c in wanted.take(5)) Text('• ${c.title} — ${c.artistName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+              if (wanted.length > 5) Text('…and ${wanted.length - 5} more', style: const TextStyle(fontSize: 12, color: kTextTertiary)),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: Text('You offer ${mine.length} song${mine.length == 1 ? '' : 's'}${mine.isEmpty ? '' : ' (est. ${formatNumber(value)})'}')),
+                TextButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: Text(mine.isEmpty ? 'Add songs' : 'Change'),
+                  onPressed: () async {
+                    final picked = await pickCards(ctx, title: 'Pick up to $kMaxListingItems songs to offer', max: kMaxListingItems);
+                    if (picked != null) setD(() => uids = picked);
+                  },
+                ),
+              ]),
+              TextField(controller: coinsCtl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '+ coins')),
+              const SizedBox(height: 8),
+              TextField(controller: noteCtl, maxLength: kMaxListingNote, maxLines: 2, decoration: const InputDecoration(labelText: 'Note (optional)')),
+              const Text('Your songs and coins are held until they answer. If they decline, everything comes back.',
+                  style: TextStyle(fontSize: 12, color: kTextTertiary)),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send offer')),
+        ],
+      );
+    }),
+  );
+  if (ok != true) return false;
+  try {
+    await g.makeDirectOffer(to.id, to.name, wanted, uids, int.tryParse(coinsCtl.text.trim()) ?? 0, note: noteCtl.text.trim());
+    g.toast('Offer sent to ${to.name}');
+    return true;
+  } catch (e) {
+    g.toast('$e');
+    return false;
+  }
+}

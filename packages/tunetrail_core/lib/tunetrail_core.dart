@@ -9,3 +9,5 @@ export 'src/rng.dart';
 export 'src/card_payload.dart';
 export 'src/market_models.dart';
 export 'src/market_engine.dart';
+export 'src/social_models.dart';
+export 'src/text_safety.dart';

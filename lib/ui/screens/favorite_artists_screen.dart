@@ -10,7 +10,11 @@ import 'artist_screen.dart';
 /// Pick any number of favourite artists. They're shown on your profile and
 /// showcase, and their songs spawn 10× more often for you.
 class FavoriteArtistsScreen extends StatefulWidget {
-  const FavoriteArtistsScreen({super.key});
+  const FavoriteArtistsScreen({super.key, this.onDone, this.intro});
+
+  /// First-run setup: shows Skip / Done instead of a back button.
+  final VoidCallback? onDone;
+  final String? intro;
   @override
   State<FavoriteArtistsScreen> createState() => _FavoriteArtistsScreenState();
 }
@@ -47,11 +51,24 @@ class _FavoriteArtistsScreenState extends State<FavoriteArtistsScreen> {
   Widget build(BuildContext context) {
     final g = GameScope.of(context);
     final favs = g.profile.favoriteArtists;
+    final done = widget.onDone;
     return Scaffold(
-      appBar: AppBar(title: const Text('Favourite artists')),
+      appBar: AppBar(title: const Text('Favourite artists'), automaticallyImplyLeading: done == null),
+      bottomNavigationBar: done == null
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(children: [
+                  TextButton(onPressed: done, child: const Text('Skip')),
+                  const Spacer(),
+                  FilledButton(onPressed: done, child: Text(favs.isEmpty ? 'Continue' : 'Done · ${favs.length} picked')),
+                ]),
+              ),
+            ),
       body: ContentWidth(maxWidth: 820, child: ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
-        const Text('Shown on your profile for other players. Songs by your favourites spawn 10× more often for you.',
-            style: TextStyle(color: kTextSecondary, fontSize: 13)),
+        Text(widget.intro ?? 'Shown on your profile for other players. Songs by your favourites spawn 10× more often for you.',
+            style: const TextStyle(color: kTextSecondary, fontSize: 13)),
         SectionLabel('Your favourites  ${favs.length}'),
         if (favs.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('None yet — search below.', style: TextStyle(color: kTextTertiary))),
         for (final a in favs)

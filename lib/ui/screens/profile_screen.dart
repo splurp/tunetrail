@@ -8,11 +8,15 @@ import '../../data/samples.dart';
 import '../../game/store_catalog.dart';
 import '../app.dart';
 import '../widgets/figure_preview.dart';
+import '../widgets/profile_banner.dart';
 import '../widgets/cards.dart';
 import '../widgets/stick_figure.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
 import 'favorite_artists_screen.dart';
+import 'messages_screen.dart';
+import 'onboarding_screen.dart' show showChangeUsername;
+import 'player_screen.dart';
 import 'playlists_screen.dart';
 import 'quests_screen.dart';
 import 'scrapyard_screen.dart';
@@ -64,23 +68,28 @@ class ProfileScreen extends StatelessWidget {
         flex: const [5, 6, 5],
         panes: [
           [
+            ProfileBanner(
+              themeId: p.profileTheme,
+              name: p.name,
+              subtitle: 'Level ${p.level} • ${formatNumber(p.xp)} XP',
+              actions: [
+                _BannerButton(icon: Icons.edit, tooltip: 'Change username', onTap: () => showChangeUsername(context)),
+                const SizedBox(width: 6),
+                _BannerButton(
+                  icon: Icons.palette_outlined,
+                  tooltip: 'Profile theme',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ProfileThemePicker())),
+                ),
+                const SizedBox(width: 6),
+                _BannerButton(
+                  icon: Icons.visibility_outlined,
+                  tooltip: 'See my profile as others do',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PlayerScreen(playerId: p.playerId))),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Center(child: Figure3DPreview(look: look, size: 190)),
-            Center(
-              child: TextButton.icon(
-                icon: const Icon(Icons.edit, size: 16),
-                label: Text(p.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                onPressed: () async {
-                  final n = await promptText(context, 'Trainer name', 'Name', initial: p.name);
-                  if (n != null && n.isNotEmpty) {
-                    p.name = n.length > 24 ? n.substring(0, 24) : n;
-                    p.changed();
-                  }
-                },
-              ),
-            ),
-            Center(
-              child: Text('Level ${p.level} • ${formatNumber(p.xp)} XP', style: const TextStyle(color: Colors.white60)),
-            ),
             const SizedBox(height: 16),
             const Text('Figure colour (free)', style: TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
@@ -145,6 +154,8 @@ class ProfileScreen extends StatelessWidget {
           ],
           [
             if (!isWideLayout(context)) const SizedBox(height: 12),
+            _NavTile(icon: Icons.chat_bubble_outline, title: 'Messages', subtitle: 'Chats with other players', page: const ConversationsScreen()),
+            _NavTile(icon: Icons.palette_outlined, title: 'Profile theme', subtitle: 'How your profile looks to others', page: const ProfileThemePicker()),
             _NavTile(icon: Icons.assignment, title: 'Quests', subtitle: 'Daily tasks, artist spotlights & milestones', page: const QuestsScreen()),
             _NavTile(icon: Icons.recycling_rounded, title: 'Scrapyard', subtitle: '${p.cardsScrapped} songs scrapped', page: const ScrapyardScreen()),
             _NavTile(icon: Icons.queue_music, title: 'Playlists', subtitle: '${p.playlists.length} playlists', page: const PlaylistsScreen()),
@@ -154,6 +165,22 @@ class ProfileScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _BannerButton extends StatelessWidget {
+  const _BannerButton({required this.icon, required this.tooltip, required this.onTap});
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.black.withValues(alpha: 0.45),
+          shape: const CircleBorder(),
+          child: InkWell(customBorder: const CircleBorder(), onTap: onTap, child: Padding(padding: const EdgeInsets.all(7), child: Icon(icon, size: 18, color: Colors.white))),
+        ),
+      );
 }
 
 class _Stats extends StatelessWidget {

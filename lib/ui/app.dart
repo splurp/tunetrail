@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 import '../game/game.dart';
 import 'map/map_screen.dart';
 import 'screens/minigames_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/collection_screen.dart';
 import 'screens/market_screen.dart';
 import 'screens/profile_screen.dart';
@@ -194,7 +195,10 @@ class _TunetrailAppState extends State<TunetrailApp> with WidgetsBindingObserver
                 builder: (context, child) => Stack(children: [child!, if (g.profile.debugEnabled && g.profile.showFps) const FpsOverlay()]),
               ),
             ),
-      home: g == null ? _Splash(error: _error) : const HomeShell(),
+      home: g == null
+          ? _Splash(error: _error)
+          // New players sign in and set up their account before playing.
+          : ListenableBuilder(listenable: g, builder: (context, _) => g.needsOnboarding ? const OnboardingScreen() : const HomeShell()),
     );
   }
 }

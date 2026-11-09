@@ -12,6 +12,8 @@ import 'card_detail_screen.dart';
 import 'collection_screen.dart';
 import 'favorite_artists_screen.dart';
 import 'listing_composer.dart';
+import 'messages_screen.dart';
+import 'player_screen.dart';
 
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
@@ -20,15 +22,24 @@ class MarketScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = GameScope.of(context);
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Market'),
           actions: [
+            ValueListenableBuilder<int>(
+              valueListenable: g.unreadMessages,
+              builder: (context, n, _) => IconButton(
+                tooltip: 'Messages',
+                icon: Badge(isLabelVisible: n > 0, label: Text('$n'), child: const Icon(Icons.chat_bubble_outline)),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ConversationsScreen())),
+              ),
+            ),
             Padding(padding: const EdgeInsets.only(right: 12), child: CurrencyChip(icon: kCoinIcon, value: g.profile.coins, color: kCoinColor)),
           ],
           bottom: const TabBar(isScrollable: true, tabAlignment: TabAlignment.start, tabs: [
             Tab(text: 'Browse'),
+            Tab(text: 'Players'),
             Tab(text: 'My listings'),
             Tab(text: 'Trade offers'),
             Tab(text: 'Showcases'),
@@ -48,7 +59,7 @@ class MarketScreen extends StatelessWidget {
               ),
             ]),
           ),
-          const Expanded(child: TabBarView(children: [_Browse(), _MyListings(), _Offers(), _Showcases()])),
+          const Expanded(child: TabBarView(children: [_Browse(), _Players(), _MyListings(), _Offers(), _Showcases()])),
         ])),
       ),
     );
@@ -351,8 +362,12 @@ class _ListingTileState extends State<ListingTile> {
                     if (!single) const Text('  best', style: TextStyle(fontSize: 11, color: kTextTertiary)),
                     const SizedBox(width: 8),
                     Flexible(
-                      child: Text(widget.mine ? (l.acceptsTrades ? 'trades on' : '') : 'by ${l.sellerName}${l.acceptsTrades ? ' · trades' : ''}',
-                          maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: kTextTertiary)),
+                      child: GestureDetector(
+                        onTap: widget.mine ? null : () => openPlayer(context, l.sellerId),
+                        child: Text(widget.mine ? (l.acceptsTrades ? 'trades on' : '') : 'by ${l.sellerName}${l.acceptsTrades ? ' · trades' : ''}',
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: kTextTertiary, decoration: widget.mine ? null : TextDecoration.underline, decorationColor: kTextTertiary)),
+                      ),
                     ),
                   ]),
                   if (l.note.isNotEmpty && !_open)
@@ -519,6 +534,97 @@ Future<bool?> composeOffer(BuildContext context, Listing l) async {
   }
 }
 
+// -------------------------------------------------------------- players
+void openPlayer(BuildContext context, String id) =>
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PlayerScreen(playerId: id)));
+
+/// Search players by username.
+class _Players extends StatefulWidget {
+  const _Players();
+  @override
+  State<_Players> createState() => _PlayersState();
+}
+
+class _PlayersState extends State<_Players> {
+  final _q = TextEditingController();
+  Timer? _debounce;
+  List<PlayerSummary> _results = [];
+  bool _loading = false;
+  String? _error;
+  int _seq = 0;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _q.dispose();
+    super.dispose();
+  }
+
+  void _search(String q) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      final seq = ++_seq;
+      if (q.trim().isEmpty) {
+        return setState(() {
+          _results = const [];
+          _error = null;
+        });
+      }
+      setState(() => _loading = true);
+      try {
+        final r = await GameScope.read(context).market.searchPlayers(q.trim());
+        if (mounted && seq == _seq) {
+          setState(() {
+            _results = r;
+            _error = null;
+          });
+        }
+      } catch (e) {
+        if (mounted && seq == _seq) setState(() => _error = '$e');
+      } finally {
+        if (mounted && seq == _seq) setState(() => _loading = false);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(padding: const EdgeInsets.all(12), children: [
+      TextField(
+        controller: _q,
+        onChanged: _search,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Search players by username',
+          prefixIcon: const Icon(Icons.person_search_outlined, size: 20),
+          suffixIcon: _loading ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : null,
+        ),
+      ),
+      const SizedBox(height: 8),
+      if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!)),
+      if (_q.text.trim().isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(20),
+          child: Text('Find a player to see their profile and collection, make an offer on their songs, or send them a message.',
+              textAlign: TextAlign.center, style: TextStyle(color: kTextTertiary)),
+        )
+      else if (!_loading && _results.isEmpty && _error == null)
+        const Padding(padding: EdgeInsets.all(20), child: Text('No players found.', textAlign: TextAlign.center, style: TextStyle(color: kTextTertiary))),
+      for (final p in _results)
+        Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading: ThemeAvatar(themeId: p.theme, name: p.name),
+            title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text('Level ${p.level} · ${formatNumber(p.cards)} songs', style: const TextStyle(fontSize: 12, color: kTextTertiary)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => openPlayer(context, p.id),
+          ),
+        ),
+    ]);
+  }
+}
+
 // ---------------------------------------------------------- my listings
 class _MyListings extends StatefulWidget {
   const _MyListings();
@@ -594,7 +700,11 @@ class _OffersState extends State<_Offers> {
           return ListView(padding: const EdgeInsets.all(12), children: [
             if (snap.connectionState == ConnectionState.waiting) const Center(child: CircularProgressIndicator()),
             const Text('Incoming', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            if (incoming.isEmpty) const Padding(padding: EdgeInsets.all(12), child: Text('No offers on your listings yet. Enable "Accept trade offers" when listing.', style: TextStyle(color: Colors.white54))),
+            if (incoming.isEmpty)
+              const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text('No offers yet. Players can make offers on your trade-enabled listings, or on any song in your collection from your profile.',
+                      style: TextStyle(color: Colors.white54))),
             for (final o in incoming)
               _OfferCard(
                 o: o,
@@ -647,8 +757,22 @@ class _OfferCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(incoming ? '${o.fromName} wants your ${o.requestedLabel}' : 'Your offer for ${o.requestedLabel}',
-              style: const TextStyle(fontWeight: FontWeight.w600)),
+          GestureDetector(
+            onTap: () => openPlayer(context, incoming ? o.fromId : o.toId),
+            child: Text(incoming ? '${o.fromName} wants your ${o.requestedLabel}' : 'Your offer for ${o.requestedLabel}',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          if (o.direct)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(incoming ? 'From your collection — accepting hands these songs over:' : 'From their collection:',
+                  style: const TextStyle(fontSize: 12, color: kTextTertiary)),
+            ),
+          if (o.direct)
+            for (final c in o.requestedCards.take(6))
+              Text('• ${c.title} — ${c.artistName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+          if (o.direct && o.requestedCards.length > 6) Text('…and ${o.requestedCards.length - 6} more', style: const TextStyle(fontSize: 12, color: kTextTertiary)),
+          if (o.direct) const SizedBox(height: 4),
           if (o.note.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('“${o.note}”', style: const TextStyle(color: kTextSecondary, fontSize: 13))),
           const SizedBox(height: 6),
           for (final c in o.offeredCards)
@@ -757,7 +881,10 @@ class ShowcaseView extends StatelessWidget {
         ),
       ]),
       body: ListView(padding: const EdgeInsets.all(12), children: [
-        Text('by ${s.playerName}', style: const TextStyle(color: kTextSecondary)),
+        GestureDetector(
+          onTap: () => openPlayer(context, s.playerId),
+          child: Text('by ${s.playerName}', style: const TextStyle(color: kTextSecondary, decoration: TextDecoration.underline, decorationColor: kTextSecondary)),
+        ),
         if (s.favoriteArtists.isNotEmpty) ...[
           const SizedBox(height: 12),
           FavoriteArtistsTab(artists: s.favoriteArtists),

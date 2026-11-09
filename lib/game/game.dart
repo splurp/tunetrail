@@ -20,6 +20,7 @@ import '../map3d/props3d.dart';
 import 'genre_zones.dart';
 import 'google_auth.dart';
 import 'movie_service.dart';
+import 'profile_themes.dart';
 import 'sample_player.dart';
 import 'audio_service.dart';
 import 'location_service.dart';
@@ -104,6 +105,8 @@ class Game extends ChangeNotifier {
     mapData.buildingsEnabled = profile.showBuildings;
     mapData.ensureAround(location.position.latitude, location.position.longitude);
     collection.addListener(notifyListeners);
+    collection.addListener(_scheduleCollectionSync);
+    profile.addListener(_scheduleProfileSync);
 
     SampleLibrary.overrides
       ..clear()
@@ -142,6 +145,8 @@ class Game extends ChangeNotifier {
     _tick = Timer.periodic(const Duration(seconds: 5), (_) => _refreshSpawns());
     _inboxTimer = Timer.periodic(const Duration(seconds: 15), (_) => syncInbox());
     _refreshSpawns(force: true);
+    _scheduleCollectionSync(soon: true);
+    _scheduleProfileSync();
   }
 
   // ---------------------------------------------------------------- market
@@ -151,6 +156,7 @@ class Game extends ChangeNotifier {
       market = RemoteMarket(profile.serverUrl, profile.playerId, profile.name, token: profile.authToken);
       try {
         await market.register(profile.playerId, profile.name);
+        _marketReady = true;
         return;
       } catch (e) {
         toast('Market server unreachable — using local market');
@@ -159,6 +165,7 @@ class Game extends ChangeNotifier {
     final local = LocalMarket(dir, catalog, profile.playerId, profile.name);
     await local.init();
     market = local;
+    _marketReady = true;
   }
 
   /// Signs in with Google through the game server; the account then owns
@@ -170,15 +177,18 @@ class Game extends ChangeNotifier {
       final res = await http.post(Uri.parse('$base/auth/google'), headers: {'content-type': 'application/json'}, body: jsonEncode({'idToken': idToken})).timeout(const Duration(seconds: 15));
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode != 200) return j['error'] as String? ?? 'Sign-in failed (${res.statusCode})';
+      final needsName = j['needsUsername'] as bool? ?? false;
       profile
         ..authToken = j['token'] as String
         ..playerId = j['playerId'] as String
-        ..accountName = j['name'] as String? ?? ''
+        ..usernameSet = !needsName
         ..marketMode = MarketMode.online;
+      if (!needsName) profile.name = j['name'] as String? ?? profile.name;
       profile.changed();
       market.dispose();
       await _connectMarket();
       notifyListeners();
+      _scheduleCollectionSync(soon: true);
       return null;
     } catch (e) {
       return '$e'.replaceFirst('Bad state: ', '');
@@ -189,7 +199,8 @@ class Game extends ChangeNotifier {
     await GoogleAuth.signOut();
     profile
       ..authToken = ''
-      ..accountName = '';
+      ..accountName = ''
+      ..usernameSet = false;
     profile.changed();
     market.dispose();
     await _connectMarket();
@@ -239,7 +250,146 @@ class Game extends ChangeNotifier {
       }
       _seenOffers.addAll(incoming.map((o) => o.id));
       _offersPrimed = true;
+      final unread = await market.unreadMessages();
+      if (unread > unreadMessages.value) unawaited(audio.playSfx(Sfx.offer));
+      unreadMessages.value = unread;
     } catch (_) {}
+  }
+
+  // ------------------------------------------------------------- accounts
+  /// This build has online accounts (a server and Google sign-in built in):
+  /// new players sign in and pick a username before playing.
+  bool get onlineAccounts => GoogleAuth.available && PlayerProfile.builtInServer.isNotEmpty;
+
+  /// First-run setup still has steps left.
+  bool get needsOnboarding => onlineAccounts && (profile.authToken.isEmpty || !profile.usernameSet || !profile.onboarded);
+
+  /// Unread direct messages (refreshed with the inbox).
+  final ValueNotifier<int> unreadMessages = ValueNotifier(0);
+
+  /// Null when [name] can be the player's username, else why not.
+  Future<String?> checkUsername(String name) async {
+    final err = usernameError(name.trim());
+    if (err != null) return err;
+    try {
+      return await market.checkUsername(name.trim());
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Claims [name] as this player's unique username.
+  Future<void> chooseUsername(String name) async {
+    final (chosen, token) = await market.setUsername(name.trim());
+    profile
+      ..name = chosen
+      ..usernameSet = true;
+    if (token != null && token.isNotEmpty) profile.authToken = token;
+    profile.changed();
+    _scheduleCollectionSync(soon: true);
+    _profileSig = '';
+    _scheduleProfileSync();
+    unawaited(publishShowcase().catchError((_) {}));
+  }
+
+  void finishOnboarding() {
+    profile.onboarded = true;
+    profile.changed();
+    notifyListeners();
+  }
+
+  /// Whether public data (collection, profile) can be sent to the market.
+  bool _marketReady = false;
+  bool get _canPublish => _marketReady && (market is LocalMarket || (profile.authToken.isNotEmpty && profile.usernameSet));
+
+  Timer? _collectionSync;
+  Timer? _profileSync;
+  String _profileSig = '';
+
+  /// Uploads the collection other players browse, at most every ~20 s.
+  void _scheduleCollectionSync({bool soon = false}) {
+    if (!_canPublish) return;
+    if (!soon && _collectionSync?.isActive == true) return;
+    _collectionSync?.cancel();
+    _collectionSync = Timer(Duration(seconds: soon ? 2 : 20), () async {
+      if (!_canPublish) return;
+      try {
+        await market.uploadCollection([for (var i = 0; i < collection.length; i++) collection.at(i).toPayload()]);
+      } catch (_) {
+        _collectionSync = Timer(const Duration(minutes: 2), () => _scheduleCollectionSync(soon: true));
+      }
+    });
+  }
+
+  Map<String, num> get _publicStats => {
+        'caught': profile.totalCaught,
+        'shinies': profile.shinyCaught,
+        'km': (profile.metersWalked / 100).round() / 10,
+        'packs': profile.packsOpened,
+        'trades': profile.tradesCompleted,
+        'unique': collection.uniqueSongCount,
+      };
+
+  /// Sends the public profile (theme, level, stats, showcased editions)
+  /// when it changes.
+  void _scheduleProfileSync() {
+    if (!_canPublish) return;
+    final sig = '${profile.profileTheme}|${profile.level}|${profile.editionShowcase.join(',')}|${profile.totalCaught ~/ 10}|${profile.tradesCompleted}';
+    if (sig == _profileSig) return;
+    _profileSync?.cancel();
+    _profileSync = Timer(const Duration(seconds: 4), () async {
+      try {
+        await market.setPublicProfile(
+          theme: profile.profileTheme,
+          level: profile.level,
+          stats: _publicStats,
+          editions: [for (final u in profile.editionShowcase) ?collection.byUid(u)?.toPayload()],
+        );
+        _profileSig = sig;
+      } catch (_) {}
+    });
+  }
+
+  void setProfileTheme(String id) {
+    if (!profile.owned.contains(id)) return;
+    profile.profileTheme = id;
+    profile.changed();
+  }
+
+  /// Buys a profile theme with coins and puts it on.
+  void buyProfileTheme(ProfileTheme t) {
+    if (profile.owned.contains(t.id)) return setProfileTheme(t.id);
+    if (!profile.freePurchases || !profile.debugEnabled) {
+      if (profile.coins < t.price) throw MarketException('Not enough coins');
+      profile.coins -= t.price;
+    }
+    profile.owned.add(t.id);
+    profile.profileTheme = t.id;
+    profile.changed();
+    toast('Unlocked ${t.name}');
+  }
+
+  /// Offers cards and/or coins for songs in another player's collection.
+  Future<void> makeDirectOffer(String toId, String toName, List<CardPayload> wanted, List<int> uids, int coins, {String note = ''}) async {
+    if (coins < 0) throw MarketException('Invalid coin amount');
+    if (profile.coins < coins) throw MarketException('Not enough coins');
+    final cards = [for (final u in uids) ?collection.byUid(u)];
+    for (final c in cards) {
+      _removeFromPlaylists(c.uid);
+      collection.remove(c.uid);
+    }
+    profile.coins -= coins;
+    profile.changed();
+    try {
+      await market.createDirectOffer(toId, [for (final w in wanted) w.uid], [for (final c in cards) c.toPayload()], coins, note: note);
+    } catch (e) {
+      for (final c in cards) {
+        acquirePayload(c.toPayload(), c.source);
+      }
+      profile.coins += coins;
+      profile.changed();
+      rethrow;
+    }
   }
 
   // ----------------------------------------------------------- acquiring
@@ -383,7 +533,30 @@ class Game extends ChangeNotifier {
   }
 
   Future<void> acceptOffer(TradeOffer o) async {
-    await market.acceptOffer(o.id);
+    if (!o.direct) {
+      await market.acceptOffer(o.id);
+      await syncInbox();
+      return;
+    }
+    // A direct offer is for songs in this collection: hand them over.
+    final mine = <OwnedCard>[];
+    for (final w in o.requestedCards) {
+      final c = collection.byUid(w.uid);
+      if (c == null) throw MarketException('You no longer have ${w.title} — decline this offer instead');
+      mine.add(c);
+    }
+    for (final c in mine) {
+      _removeFromPlaylists(c.uid);
+      collection.remove(c.uid);
+    }
+    try {
+      await market.acceptOffer(o.id);
+    } catch (e) {
+      for (final c in mine) {
+        acquirePayload(c.toPayload(), c.source);
+      }
+      rethrow;
+    }
     await syncInbox();
   }
 
@@ -1038,6 +1211,8 @@ class Game extends ChangeNotifier {
   void dispose() {
     _tick?.cancel();
     _inboxTimer?.cancel();
+    _collectionSync?.cancel();
+    _profileSync?.cancel();
     _mapDebounce?.cancel();
     mapData.dispose();
     market.dispose();

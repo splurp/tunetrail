@@ -158,7 +158,9 @@ docker compose up -d --build
 6. Check it: open `https://YOUR-SUBDOMAIN.duckdns.org/health` — you should see
    `{"ok":true,...}`.
 
-**Updating the server** later: `cd ~/tunetrail && git pull && cd deploy && docker compose up -d --build`.
+**Updating the server** later (do this whenever the app gets new online
+features — new app builds expect the matching server):
+`cd ~/tunetrail && git pull && cd deploy && docker compose up -d --build`.
 **Logs:** `docker compose logs -f server`.
 
 ## 6. Play
@@ -171,9 +173,18 @@ with Google**.
 
 ## What's online now, and what's next
 
-Online now: the shared market (listings, offers, folders, showcases), the
-shared Canvas/Sample/Live serial numbers, and Google accounts with signed
-sessions, per-address rate limiting, and state saved in Postgres.
+Online now: Google accounts with signed sessions and unique usernames; the
+shared market (listings, offers, folders, showcases); player search and public
+profiles (profile theme, showcase, stats, the whole collection); direct offers
+on any song in another player's collection; direct messages with blocking; the
+shared Canvas/Sample/Live serial numbers; per-address rate limiting; state
+saved in Postgres (collections in their own `tunetrail_collections` table).
+
+Usernames and messages are plain text only: the game never renders them as
+HTML, Markdown or links, the server only stores them inside JSON and sends
+them to Postgres as query parameters, and the shared rules in
+`packages/tunetrail_core/lib/src/text_safety.dart` strip invisible and
+direction-flipping characters and reject look-alike names.
 
 Still on the device (next phases, in this order):
 

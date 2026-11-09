@@ -1,16 +1,61 @@
 import 'card_payload.dart';
 
 class MarketPlayer {
-  MarketPlayer({required this.id, required this.name, this.isBot = false});
+  MarketPlayer({
+    required this.id,
+    required this.name,
+    this.isBot = false,
+    this.named = false,
+    this.theme = '',
+    this.level = 1,
+    this.joinedAt = 0,
+    Map<String, num>? stats,
+    List<CardPayload>? editionShowcase,
+    Set<String>? blocked,
+  })  : stats = stats ?? {},
+        editionShowcase = editionShowcase ?? [],
+        blocked = blocked ?? {};
   final String id;
   String name;
   final bool isBot;
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'bot': isBot};
+  /// The player chose [name] themselves (a unique username).
+  bool named;
+
+  /// Public profile: profile theme id, level, stats and showcased editions.
+  String theme;
+  int level;
+  int joinedAt;
+  Map<String, num> stats;
+  List<CardPayload> editionShowcase;
+
+  /// Players this player has blocked (no messages or offers from them).
+  Set<String> blocked;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'bot': isBot,
+        if (named) 'named': true,
+        if (theme.isNotEmpty) 'theme': theme,
+        if (level > 1) 'level': level,
+        if (joinedAt > 0) 'joined': joinedAt,
+        if (stats.isNotEmpty) 'stats': stats,
+        if (editionShowcase.isNotEmpty) 'editions': [for (final c in editionShowcase) c.toJson()],
+        if (blocked.isNotEmpty) 'blocked': blocked.toList(),
+      };
   factory MarketPlayer.fromJson(Map<String, dynamic> j) => MarketPlayer(
-      id: j['id'] as String,
-      name: j['name'] as String? ?? 'Player',
-      isBot: j['bot'] as bool? ?? false);
+        id: j['id'] as String,
+        name: j['name'] as String? ?? 'Player',
+        isBot: j['bot'] as bool? ?? false,
+        named: j['named'] as bool? ?? false,
+        theme: j['theme'] as String? ?? '',
+        level: (j['level'] as num?)?.toInt() ?? 1,
+        joinedAt: (j['joined'] as num?)?.toInt() ?? 0,
+        stats: {for (final e in (j['stats'] as Map<String, dynamic>? ?? const {}).entries) if (e.value is num) e.key: e.value as num},
+        editionShowcase: [for (final c in (j['editions'] as List? ?? const [])) CardPayload.fromJson(c as Map<String, dynamic>)],
+        blocked: {for (final x in (j['blocked'] as List? ?? const [])) x as String},
+      );
 }
 
 /// Maximum songs in one listing folder.
@@ -46,7 +91,7 @@ class Listing {
 
   final String id;
   final String sellerId;
-  final String sellerName;
+  String sellerName;
   final List<ListingItem> items;
   final bool acceptsTrades;
   final int createdAt;
@@ -107,12 +152,19 @@ class TradeOffer {
     required this.createdAt,
     this.note = '',
     this.status = TradeStatus.pending,
+    this.direct = false,
   });
 
   final String id;
+
+  /// The listing this offer is for ('' for a direct offer).
   final String listingId;
+
+  /// A direct offer for songs in the other player's collection (not a
+  /// listing): the receiver hands the songs over when accepting.
+  final bool direct;
   final String fromId;
-  final String fromName;
+  String fromName;
   final String toId;
   final List<CardPayload> offeredCards;
   final int offeredCoins;
@@ -141,6 +193,7 @@ class TradeOffer {
         'note': note,
         'createdAt': createdAt,
         'status': status.index,
+        if (direct) 'direct': true,
       };
 
   factory TradeOffer.fromJson(Map<String, dynamic> j) {
@@ -159,6 +212,7 @@ class TradeOffer {
       note: j['note'] as String? ?? '',
       createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
       status: TradeStatus.values[(j['status'] as num?)?.toInt() ?? 0],
+      direct: j['direct'] as bool? ?? false,
     );
   }
 }
@@ -195,8 +249,8 @@ class Showcase {
   final List<FavoriteArtist> favoriteArtists;
 
   final String playerId;
-  final String playerName;
-  final String title;
+  String playerName;
+  String title;
   final List<CardPayload> cards;
   final List<ShowcasePlaylist> playlists;
   final int updatedAt;
