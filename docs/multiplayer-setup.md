@@ -184,7 +184,7 @@ accepted offers, even when the game is closed.
 
    | Name | Where |
    |---|---|
-   | `FIREBASE_API_KEY` | Your apps → Android app → **API key** (or Web API key at the top) |
+   | `FIREBASE_API_KEY` | Google Cloud console → APIs & Services → **Credentials** → "Android key (auto created by Firebase)" → Show key (`AIza…`); or `current_key` in the app's google-services.json |
    | `FIREBASE_APP_ID` | Your apps → Android app → **App ID** (`1:…:android:…`) |
    | `FIREBASE_PROJECT_ID` | **Project ID** |
    | `FIREBASE_SENDER_ID` | **Cloud Messaging** tab → **Sender ID** (= project number) |
