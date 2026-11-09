@@ -1,194 +1,91 @@
 # Tunetrail
 
-A location-based music collecting game. Walk around the real world, catch
-popular songs floating on the map, complete quests, open packs, trade on a
-player market and build playlists you can actually listen to.
+**Walk the real world, catch songs, build a collection and trade with other players.**
 
-Built with **Flutter** (Dart, AOT-compiled to native code) from one codebase
-for **Android, iOS, Windows**, plus macOS and Linux.
+Tunetrail is a location-based music collecting game for Android, Windows and Linux.
+Songs float around you on a stylised 3D map of your neighbourhood. Walk up to one,
+tap the ring on the beat to catch it, and it joins your collection as a card you can
+play, showcase, list on the market or trade.
 
-![Tunetrail screenshots](docs/screenshots.jpg)
+> **Status:** public beta (Beta v1.0.x). Downloads are on the
+> [Releases](../../releases) page.
 
----|---|---|---|
-| Player stick figure at the centre, songs float and glow by rarity | Virtualised grid, instant filter & sort | Beat-ring catch minigame with song preview | NPC/online listings, trades, showcases |
+<p align="center">
+  <img src="docs/screenshots/explore.png" width="260" alt="Exploring the map with the Synthwave theme">
+  <img src="docs/screenshots/catch.png" width="260" alt="Catching a song on the beat">
+  <img src="docs/screenshots/collection.png" width="260" alt="The collection">
+</p>
 
----
+## How it plays
 
-## Downloads
+- **Explore.** Your real location, drawn as a 3D city with real building heights.
+  Songs spawn every few minutes; what's around depends on where you are (genre
+  zones), the time of day, and your favourite artists (10× more likely).
+- **Catch.** Tap as the ring lands on the beat of the song. A flawless 100% hit turns
+  the card into an ultra-rare **Shiny**. Out of range? Buy the song with coins and
+  catch it from where you stand.
+- **Rarities and editions.** Every song has one rarity, Common → Legendary, from its
+  popularity. Rare spawns can come as numbered editions: **Canvas** (the music video
+  fills the card, #1–10), **Live** (live performance footage, #1–5) and **Sample**
+  (the song and the record it samples, #1–5).
+- **Collect.** Search, filter and sort thousands of cards, build playlists and listen
+  to them, scrap spares for coins.
 
-Every push builds through GitHub Actions (`.github/workflows/build.yml`) and
-publishes a **GitHub Release** with:
+<p align="center">
+  <img src="docs/screenshots/market.png" width="260" alt="The player market">
+  <img src="docs/screenshots/shop.png" width="260" alt="Packs in the shop">
+  <img src="docs/screenshots/profile.png" width="260" alt="A player profile with a profile theme">
+</p>
 
-* `Tunetrail-windows-x64-setup.exe` (installer) and `Tunetrail-windows-x64.zip` (portable: extract, run `Tunetrail.exe`)
-* `Tunetrail-linux-x64.tar.gz` (extract and run `./tunetrail`; needs GTK 3 and ALSA or PulseAudio)
-* `Tunetrail-android-universal.apk` (any device) and per-ABI APKs (`arm64` suits most phones)
+- **Trade.** A player market with single songs and folders of up to 20, auctions
+  (with Buy It Now and anti-sniping), offers on any song in another player's
+  collection, showcases, player search and direct messages.
+- **Shop.** Gold, Platinum and Prismatic packs, the Artist Blind Box, map themes
+  (Synthwave, Sakura, Aurora, Candy…), profile themes, outfits, backpacks and pets.
+- **Minigames.** Song Guesser, Artist Guesser, Art Guesser and Trivia, tuned to the
+  languages and genres you listen to, for bits every day.
+- **Accounts.** Google sign-in, unique usernames, push notifications (Android), and
+  report and block tools.
 
-### Android signing
+<p align="center">
+  <img src="docs/screenshots/minigames.png" width="260" alt="Minigames">
+</p>
 
-Release APKs are signed with Tunetrail's own release key (not the Android debug key, which antivirus apps commonly flag). Locally, signing reads `android/key.properties` (git-ignored). In CI, add these repository secrets:
+## Music and rights
 
-| Secret | Value |
-|---|---|
-| `TUNETRAIL_KEYSTORE_BASE64` | `base64 -w0 tunetrail-release.jks` |
-| `TUNETRAIL_KEYSTORE_PASSWORD` | keystore password |
-| `TUNETRAIL_KEY_ALIAS` | `tunetrail` |
-| `TUNETRAIL_KEY_PASSWORD` | key password |
-
-Without the secrets, CI falls back to the debug key and prints a warning. Keep the keystore safe: updates must be signed with the same key. Sideloaded apps from developers not registered with Google still show a Play Protect "unrecognised developer" prompt. Distributing through a Play Console testing track (or completing Android developer verification) removes it.
-
-## Gameplay
-
-* **3D world.** A custom renderer turns OpenStreetMap vector data into a stylised ground plane: main roads, parking lots, water, parks, fields and plazas, with **no ordinary buildings or driveways** (only mega-buildings like stadiums, airports, factories and malls, which are extruded as low 3D blocks). Your 3D stick figure walks on it at the centre, with distance fog toward the horizon. Drag to orbit the camera, pinch or scroll to zoom, and use Q/E on PC.
-* **Genre zones.** Every spawn point is scored against the land around it (≈160 m radius), so genres spawn more often where they fit:
-
-  | Zone | Boosted genres | Where |
-  |---|---|---|
-  | Open Country | Country | Farmland, meadows, open land with few roads/buildings |
-  | Concrete Jungle | Hip-Hop | Dense blocks: many buildings, tight street grids |
-  | Waterfront | Blues, Jazz | Rivers, lakes, harbours, coastline |
-  | Industrial Grid | Electronic, Dance | Industrial estates, factories, warehouses, data centres, large corporate buildings |
-  | After Hours | R&B | Bars, lounges, clubs, late-night dining strips |
-  | Iron & Stone | Metal | Rail yards and tracks, quarries, cemeteries, heavy infrastructure |
-  | Arena & Open Road | Rock | Highways, stadiums, arenas, music venues, rocky terrain |
-  | Shopping District | Pop, Top Hits | Malls, retail streets, shops, cinemas |
-  | Neon Campus | K-Pop & Asian | Campuses, arcades, karaoke, theme parks, Korean food |
-  | Plaza & Shore | Latin, Reggaeton, Brazilian | Public squares, markets, beaches, football pitches, Latin American food |
-  | Woodland / Old Town / Café Row / Island Time | Folk / Classical & Film / Soul & Alternative / Reggae | Forests / churches, museums & theatres / cafés & record shops / beaches |
-
-  The map shows the zone you're standing in; tap it to see every zone.
-* **Wild spawns.** The world is split into ~200 m cells and 15-minute windows. Each cell/window is hashed into a seed, so **everyone in the same place at the same time sees the same songs**, with no server needed. Time of day biases genres (electronic & R&B at night, folk & pop in the morning…).
-* **Rarities:** Common (grey), Uncommon (green), Rare (blue), Epic (purple), Legendary (gold). A song's rarity is half *how big the artist is* and half *where the song ranks among that artist's songs*. Tiny artists span Common to Rare; superstars are mostly Epic/Legendary, with Rare reserved for their least-played tracks (deep cuts, remixes, edits). Popularity comes from **Last.fm all-time play counts** when a Last.fm API key is configured (Settings, or `--dart-define=LASTFM_API_KEY=…` / the `LASTFM_API_KEY` repo secret in CI); otherwise Deezer's popularity rank is used, which is less accurate. Rarer spawns glow brighter, and Legendaries get rotating light rays.
-* **Shiny variants** (1/128): an animated glint sweeps across the card and across the rarity name everywhere it's shown (collection, market, playlists, showcases). The label still just says the rarity ("Legendary"), with the glint.
-* **Editions** are exclusive variants: an edition card is shown only as its edition ("Canvas" or "Sample", no rarity, never shiny) and is **serialized** with a number in the corner. Serials are global and strictly sequential: the first one ever found of a song is #1, then #2 and so on. They're claimed from the market server (or the offline market), and once every serial of a song's edition is claimed, that edition stops spawning.
-  * **Canvas** (1 in 500 wild spawns, #1–#10 per song): the whole card is a looping clip of the music video (Apple's free music-video previews via the iTunes Search API, downloaded once and cached) with the details overlaid. Without a video, the cover art fills the card instead.
-  * **Sample** (1 in 5,000 wild spawns, #1–#5 per song): the card shows the song's waveform aligned with the record it samples, Tracklib-style, and plays a scripted breakdown. The breakdown also plays during the catch, and the ring starts when the song comes in (skippable). There's no free sample API (WhoSampled has none, and MusicBrainz rarely records samples), so entries are curated in `lib/data/samples.dart`, with timings measured by spectral alignment of the previews. **Kanye West – I Wonder ← Labi Siffre – My Song**: "My Song" plays ("…And I wonder, if you know, what it means, to find your dreams come true…"), the playhead rewinds to "And I wonder", the line plays up to "what it means", "what it means" repeats as in the hook, and I Wonder enters in sync on Labi's voice. Deezer's preview of "My Song" starts after that line, so the source audio is Apple's preview, played through the platform media player. The debug sync tuner can shift either track.
-* **One copy per variant:** a standard card is song × rarity × shiny; an edition card is song × edition. You own at most one of each variant. Duplicates from catches, packs, trades or returns go straight to the scrapyard for their coin value, with a notice. Buying a variant you already own is blocked.
-* **Favourite artists:** add as many as you like. On your profile (and your public showcase) they're an expandable tab with a scrollable list. Each spawn is 10× as likely to be by *one of* your favourites (the boost is for the list as a whole, not per artist), and that artist is picked at random from your list.
-* **Character:** idles naturally. It glances around, and after standing still for a while it sits down with headphones (notes float out) or summons a turntable and scratches, then gets up smoothly when you move.
-* **Outfits:** shirts, backpacks and hats are real low-poly 3D, built around the posed skeleton and lit like the world, so hats turn with the player. Clothing is depth-sorted part by part (torso, sleeves, pack, straps, hat pieces) against the limbs, head and pet. Sleeves start at the torso surface, straps run down the chest and back under the arms, backpacks sit on the back, and pets disappear behind you when they're on the far side.
-* **Catching:** tap a song within 70 m to open the encounter. The minigame waits for the music, then runs **at the song's BPM, on its beats**: every ring shrinks in from the edge and lands on the target exactly on a beat, where the target flashes and the card thumps. Tempo comes from Deezer. The beat grid comes from onset analysis of the decoded audio (kick plus hi-hat/snare bands; within ~10 ms on test tracks), corrected for audio output latency, with a calibration slider in Settings. If the music hasn't started after 5 s, the ring starts anyway, unsynced. Taps are judged by time from the nearest beat. **A 100% perfect tap (within ±0.25% of a beat) always catches the song and turns it shiny**; 99% doesn't. A caught card spins and pumps toward you, then settles. After a catch you can **List for sale**, **Quicksell**, view the card or go back.
-* **Nearby:** tapping a song in the Nearby list turns the camera to face it if it's in range. Otherwise the view pulls up overhead, draws a trail of footsteps along the streets to it (A* routing over the road network), then drops back down facing the song.
-* **Camera:** turn it Pokémon GO-style by sweeping around your character. Swiping right below it turns counter-clockwise; right above it, clockwise; up on its right, counter-clockwise; up on its left, clockwise. Everything in between blends smoothly, because turning follows the finger's angle around the character. Pinch or scroll to zoom. On Windows/Linux, **Alt** locks the cursor for mouse aiming (the OS cursor is read and re-centred every frame); Alt or Esc releases it. Idle animations wait while you're moving the camera. **Settings → Show buildings** adds low-poly city buildings at their real heights (OpenStreetMap heights via OpenFreeMap), hiding any between the camera and you.
-* **Quests:** 4 rotating dailies; weekly **Artist Spotlights** (collect N songs by an artist → unlock an exclusive Epic/Legendary card of their biggest hit); **Album completion** (own every track on an album → Legendary card); milestones.
-* **Discography browser:** artist pages (picture, top tracks, albums/EPs/singles) and album pages in official track order, showing which tracks you own.
-* **Currencies:** **coins** (earned by catching, quests and selling; spent on the player market) and **bits** (bought with real money; spent on packs).
-* **Minigames** (Games tab) earn bits. Each can be played **3 times a day**, resetting at local midnight. The day is counted on trusted server time (an HTTPS `Date` header), and a change of time zone is only accepted 20 h after the previous one, so changing the device clock or time zone doesn't buy extra plays.
-  * **Song Guesser:** name the song from a 1 s snippet (5 bits). Each miss, or *Longer snippet*, plays a longer one: 2 s (4), 3 s (3), 5 s (2), 10 s (1, then unlimited guesses). The cover and the artist's picture are shown at the end.
-  * **Artist Guesser:** genre, hometown, debut year and a hangman-style name (first letter shown). Each miss, or *Reveal next clue*, adds a clue: a song, then its album, then their picture, then every other letter. Pays 5/4/3/2 bits (1 after that). Previous guesses stay on screen, accents don't matter ("Motorhead" = "Motörhead"), and the picture and song art are shown at the end.
-  * **Album Cover Guesser:** name a popular album from its cover. 3/2/1 bits for the first three tries, then unlimited tries without a reward (with an artist hint).
-  * **Favourite Artist Trivia:** five multiple-choice questions (five answers each, never "all/none of the above") about your favourite artists: most popular song, which album a song is on, debut year, hometown, which song is theirs, how big their following is. 1 bit per correct answer.
-  * A filter picks languages (English, Spanish, French, Portuguese, Korean, …) and genres (rock, metal, hip-hop, K-pop, R&B, country, electronic, pop, indie). Only well-known artists are used: a curated set from Deezer popularity, with hometowns from MusicBrainz (`tool/minigames/`).
-* **Sound effects** for catching, listing, quickselling, a new trade offer, an accepted trade and a sale (original synthesized sounds; toggle in Settings).
-* **Wide screens:** in landscape on PC and tablets, screens split into side-by-side panes (profile, card details, settings) or keep a readable width, instead of stretching the phone layout.
-* **Packs** (bits): Street, Genre (pick a genre), Hi-Fi, Platinum (guaranteed Legendary), Prism (guaranteed Shiny), and the **Artist Blind Box**. Pick any artist: one of their songs drops as a shiny, every rarity they have equally likely, with a 1 in 100 chance of a Canvas edition. It costs 5–100 bits on a log scale of the artist's fans. Drop rates are shown in-app. A song has exactly one rarity, from its popularity; cards from older versions are re-rated.
-* **Player market:** listings are **folders of 1–20 songs**. The seller prices each song, and the folder price is their sum unless the seller sets a bundle discount. Buyers can take the whole folder or individual songs. Listings carry a **note** (up to 200 characters), can accept **trade offers** (songs + coins, with a note) for the whole folder, and are browsed as expandable folders. Players can also publish a **showcase** of favourite cards and playlists.
-* **Quick list:** after a catch (or from any card), list instantly with your preset price and note for that rarity, or open the composer to set them by hand. Presets live in Settings → Quick-list presets.
-* **Scrapyard:** scrap unwanted songs for coins. Payouts grow with the song's streams, rarity and shininess, and one tap selects all your duplicates (keeping your best copy).
-* **Playlists:** build them from owned cards, reorder, and play them back (30-second Deezer previews, auto-advance, mini player).
-* **Character:** a stylised stick figure. Colour is free to change. Hats, shirts, backpacks and pets are sold in the store.
-* **Map themes** (store): Obsidian (default: black, graphite and a soft violet accent), Midnight, Synthwave, Vaporwave (a photoscanned classical marble bust, Poly Haven's CC0 "marble_bust_01" decimated to two levels of detail, plus fluted columns: colossal, one per few-km world cell, deep in the haze and anchored in the world so they drift with parallax and stay put as you approach), Noir (rain), Vintage Vinyl, Digital Rain, Arctic (3D snowfall seen through the camera, over pale glacial blues), Magma (embers), Aurora, Sakura (petals, plus detailed low-poly sakura trees 5–10× the player's height, with branching limbs and layered blossom clouds, that fade out as you approach and back in as you leave). Idle headphones and notes recolour to contrast with each theme.
-* **Filters:** the collection and the market each have a large *Filters* dropdown with Rarity, Variant (Shiny / Not shiny / Standard / Canvas / Sample) and Genre sections. The market also filters by **serial number (#1–#10)**, plus Favourites or Open to trades.
-
-## Developer debug menu
-
-Profile → ⚙ Settings → **Debug menu** switch, then *Open debug menu*:
-
-* Set coin and bit balances (presets up to 10M)
-* **Free real-money purchases** (bits bundles, themes and cosmetics granted with no charge), or unlock everything at once
-* **Joystick movement** with a speed multiplier (×1–×50); on Windows/Linux, **WASD / arrow keys** move relative to the camera and **Q/E** turn it
-* **Teleport:** search any real-world place (OpenStreetMap Nominatim) or pick a preset, then jump there (also on the map's 🔍 button)
-* **Spawn a song:** search any song or artist on Deezer and drop it next to you (optionally shiny, or as a Canvas/Sample edition), or one-tap the **Sample edition of I Wonder**
-* **Sample sync tuner** (on a Sample card's detail page): nudge where the passage starts in each preview and the speed change, audition it, and save
-* Unlimited catch range, respawn nearby songs
-* Stress test: add 1k / 10k / 100k random cards, clear the collection, crawl more of the catalog
-
-## Data sources (all free, no API keys)
-
-| What | Source |
-|---|---|
-| Songs, artists, albums, track order, discographies, cover art, artist photos, 30 s previews | [Deezer public API](https://developers.deezer.com/api) |
-| Map data (vector tiles, Shortbread schema) | © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, served by [VersaTiles](https://versatiles.org) |
-| Place search (teleport) | OpenStreetMap Nominatim |
-| Artist origins and start years (minigames, built offline) | [MusicBrainz](https://musicbrainz.org) |
-| "My Song" preview for the I Wonder breakdown | iTunes Search/Lookup API |
-| City buildings with heights (optional) | [OpenFreeMap](https://openfreemap.org) (OpenMapTiles schema, © OpenStreetMap) |
-| Vaporwave bust model | [Poly Haven](https://polyhaven.com/a/marble_bust_01) (CC0) |
-| Music-video clips (Canvas editions) | [iTunes Search API](https://performance-partners.apple.com/search-api) (`entity=musicVideo` previews) |
-
-The catalog is built progressively: genre charts first (instantly playable),
-then each genre's most popular artists' top tracks, then related artists
-above a fan threshold. **Non-English genres** (Latin, Reggaeton, K-Pop/Asian,
-Brazilian, African, Indian) only admit artists with ≥500k Deezer fans, and
-genre spawn weights keep the game primarily English-language. The crawl
-targets ~60k songs (the debug menu can push it further); the result is cached
-locally as JSON lines.
-
-> **Before a public launch:** host your own vector tiles (VersaTiles or any
-> Shortbread-schema tile server; see `MapData.sources` in
-> `lib/map3d/map_data.dart`) instead of relying on the free public service.
-> Deezer previews are 30 s clips; full-track playback needs a licensed provider.
-
-## Performance (100,000+ cards)
-
-The collection (`lib/data/collection.dart`) is stored **column-wise in typed
-arrays**, about 26 bytes per card, so 100k cards take ~2.6 MB of RAM and load
-from a binary file in milliseconds. Queries filter directly over the arrays,
-then sort by packing *(primary key, secondary key, index)* into one 63-bit
-integer per card and sorting an `Int64List`. Alphabetical sorts use
-precomputed title/artist rank tables, so no strings are compared while
-sorting. The UI is a virtualised grid/list that only builds visible cards,
-decodes artwork at thumbnail size, and shares one animation clock across
-every shiny glint.
-
-`flutter test` includes a 100k-card benchmark (filter, sort by
-date/title/artist/rarity, text search, persistence round trip).
-
-## Multiplayer market server
-
-The app runs a **local market** by default (offline, with simulated NPC
-traders that list, buy and answer trade offers). For real player-to-player
-trading, run the server and switch *Settings → Market → Online*:
-
-```bash
-cd server
-dart pub get
-dart run bin/server.dart --port 8080 --data market.json
-```
-
-The client and the server share the same market engine
-(`packages/tunetrail_core`), so behaviour is identical. This is a **developer
-server**: it has no authentication and trusts client-reported coin balances.
-A production deployment should add accounts and server-side balances, and
-should verify store receipts on the server.
-
-## Real-money purchases
-
-`lib/game/purchase_service.dart` uses `in_app_purchase` (Google Play Billing /
-StoreKit) on Android and iOS. Product IDs are `tt_<id>` (e.g. `tt_bits_550`,
-`tt_theme_synthwave`, `tt_hat_crown`); see `lib/game/store_catalog.dart`.
-Create matching products in Play Console / App Store Connect. Windows has no
-store integration in this build, so use the debug *free purchases* switch.
-
-## Building locally
-
-```bash
-flutter pub get
-flutter run                      # any connected device / desktop
-flutter build apk --release      # Android (Linux/macOS/Windows host)
-flutter build windows --release  # Windows (Windows host required)
-flutter build ios --release      # iOS (macOS + Xcode required)
-flutter test                     # unit tests incl. 100k-card benchmark
-```
+Tunetrail doesn't host or sell music. Song information, 30-second previews, cover art
+and video clips are **streamed** from Deezer and Apple and never stored on the device,
+and every card links to the song on Apple Music and Spotify. Rights holders can ask
+for changes or removal — see *Profile → Settings → Copyright & DMCA* in the game.
 
 ## Project layout
 
+| Path | What's there |
+|---|---|
+| `lib/` | The Flutter app (map renderer, game logic, screens) |
+| `packages/tunetrail_core/` | Shared Dart code: rarities, market engine, auctions, usernames, world spawns |
+| `server/` | The multiplayer server (Dart, Postgres) and its Docker image |
+| `deploy/` | Docker Compose + Caddy for hosting the server |
+| `docs/` | Setup guides ([multiplayer & hosting](docs/multiplayer-setup.md), [admin build](docs/admin-build.md)) |
+
+## Building
+
+Builds and releases run on GitHub Actions (**Actions → Build Tunetrail → Run
+workflow**). To build locally you need Flutter 3.47.9:
+
+```bash
+flutter pub get
+flutter run                       # debug run on a connected device or desktop
+flutter build apk --release       # Android
+flutter build windows --release   # Windows
+flutter build linux --release     # Linux
 ```
-lib/
-  data/        models, Deezer client, catalog crawler, collection store, save file
-  game/        game controller, spawns, quests, packs/store catalog, market, IAP, GPS/joystick, audio
-  map3d/       vector-tile decoder, tile processor (isolate), 3D camera, ground renderer, 3D figure, palettes
-  ui/          app shell, map screen (+ themes, markers), screens, widgets (design kit, cards, glint, stick figure)
-packages/tunetrail_core/   shared pure-Dart logic: rarities, RNG, market engine (+ tests)
-server/                    multiplayer market HTTP server (shelf)
-.github/workflows/         CI: tests → Android APKs + Windows exe/installer → GitHub Release
-```
+
+Without a server address built in, the game runs offline with a local market of
+NPC traders. See [docs/multiplayer-setup.md](docs/multiplayer-setup.md) to run your
+own server.
+
+## Licence
+
+© Tunetrail. All rights reserved. The source is published for reference; it may not
+be copied, redistributed or published (including to app stores) without permission.

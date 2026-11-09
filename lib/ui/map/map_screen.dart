@@ -799,7 +799,7 @@ class _Hud extends StatelessWidget {
                               Text(zone.first.$1.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                               const SizedBox(width: 6),
                               Text(
-                                zone.first.$1.genres.map(genreName).take(2).join(' · '),
+                                zone.first.$1.genres.where((id) => id != 0).map(genreName).take(2).join(' · '),
                                 style: const TextStyle(fontSize: 12, color: Colors.white54),
                               ),
                             ],
@@ -911,7 +911,7 @@ void showZonesSheet(BuildContext context, ZoneReading here) {
                               ),
                           ],
                         ),
-                        Text(z.genres.map(genreName).join(', '), style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                        Text(z.genres.where((id) => id != 0).map(genreName).join(', '), style: const TextStyle(fontSize: 12, color: Colors.white70)),
                         Text(z.description, style: const TextStyle(fontSize: 12, color: Colors.white38)),
                       ],
                     ),
