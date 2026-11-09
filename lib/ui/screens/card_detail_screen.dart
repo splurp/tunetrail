@@ -82,7 +82,7 @@ class CardDetailScreen extends StatelessWidget {
           CardSource.trade => 'Trade',
           CardSource.debug => 'Debug generator',
         }),
-        _InfoRow('Edition', card.edition == Edition.standard ? 'Standard' : '${card.edition.label}${card.serial > 0 ? ' · #${card.serial} of ${card.edition.maxSerials}' : ''}'),
+        _InfoRow('Edition', card.edition == Edition.standard ? 'Regular' : '${card.edition.label}${card.serial > 0 ? ' · #${card.serial} of ${card.edition.maxSerials}' : ''}'),
         _InfoRow('Variants of this song owned', '${g.collection.copiesOf(s.id)}'),
         if (card.edition == Edition.sample && SampleLibrary.of(s.id) != null) ...[
           _InfoRow('Samples', '${SampleLibrary.of(s.id)!.source.title} — ${SampleLibrary.of(s.id)!.source.artistName} (${SampleLibrary.of(s.id)!.sourceYear})'),

@@ -36,7 +36,7 @@ enum Rarity {
 /// *only* that edition — editions don't combine with shininess (and are
 /// shown without a rarity). A player owns at most one card per variant.
 enum Edition {
-  standard('Standard', 1.0, 0),
+  standard('Regular', 1.0, 0),
 
   /// Full-card music-video clip (or full-bleed cover art) with the details
   /// overlaid. Serialized #1–#10 per song.
@@ -57,6 +57,9 @@ enum Edition {
   /// How many numbered copies can ever exist per song (0 = unlimited).
   final int maxSerials;
   bool get serialized => maxSerials > 0;
+
+  /// The order editions are listed in (filters, menus).
+  static const displayOrder = [Edition.standard, Edition.canvas, Edition.live, Edition.sample];
 
   static Edition fromIndex(int i) => Edition.values[i.clamp(0, Edition.values.length - 1)];
 }

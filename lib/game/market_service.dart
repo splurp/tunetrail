@@ -18,6 +18,7 @@ abstract class MarketBackend {
   Future<List<Listing>> myListings();
   Future<Listing> createListing(List<ListingItem> items, {int? folderPrice, String note = '', bool acceptsTrades = false});
   Future<List<CardPayload>> cancelListing(String listingId);
+  Future<Listing> bumpListing(String listingId);
   Future<CardPayload> withdrawItem(String listingId, int cardUid);
   Future<List<CardPayload>> buy(String listingId, int price);
   Future<CardPayload> buyItem(String listingId, int cardUid, int price);
@@ -246,6 +247,8 @@ class LocalMarket extends MarketBackend {
   @override
   Future<List<CardPayload>> cancelListing(String listingId) async => engine.cancelListing(playerId, listingId);
   @override
+  Future<Listing> bumpListing(String listingId) async => engine.bumpListing(playerId, listingId);
+  @override
   Future<CardPayload> withdrawItem(String listingId, int cardUid) async => engine.withdrawItem(playerId, listingId, cardUid);
   @override
   Future<List<CardPayload>> buy(String listingId, int price) async => engine.buyListing(playerId, listingId, expectedPrice: price);
@@ -398,6 +401,9 @@ class RemoteMarket extends MarketBackend {
   @override
   Future<List<CardPayload>> cancelListing(String listingId) async =>
       _list(await _send('POST', '/listings/$listingId/cancel'), CardPayload.fromJson);
+  @override
+  Future<Listing> bumpListing(String listingId) async =>
+      Listing.fromJson(await _send('POST', '/listings/$listingId/bump') as Map<String, dynamic>);
   @override
   Future<CardPayload> withdrawItem(String listingId, int cardUid) async =>
       CardPayload.fromJson(await _send('POST', '/listings/$listingId/items/$cardUid/withdraw') as Map<String, dynamic>);

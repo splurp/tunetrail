@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../../build_flags.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/models.dart';
@@ -22,26 +25,41 @@ class MarketScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = GameScope.of(context);
     return DefaultTabController(
-      length: 5,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Market'),
           actions: [
-            ValueListenableBuilder<int>(
-              valueListenable: g.unreadMessages,
-              builder: (context, n, _) => IconButton(
-                tooltip: 'Messages',
-                icon: Badge(isLabelVisible: n > 0, label: Text('$n'), child: const Icon(Icons.chat_bubble_outline)),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ConversationsScreen())),
-              ),
+            BadgeIcon(
+              tooltip: 'Offers',
+              icon: Icons.swap_horiz_rounded,
+              count: g.newOffers,
+              onTap: () {
+                g.newOffers.value = 0;
+                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const OffersScreen()));
+              },
             ),
+            BadgeIcon(
+              tooltip: 'Messages',
+              icon: Icons.chat_bubble_outline,
+              count: g.unreadMessages,
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ConversationsScreen())),
+            ),
+            BadgeIcon(
+              tooltip: 'My listings',
+              icon: Icons.receipt_long_outlined,
+              count: g.newSales,
+              onTap: () {
+                g.newSales.value = 0;
+                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const MyListingsScreen()));
+              },
+            ),
+            const SizedBox(width: 4),
             Padding(padding: const EdgeInsets.only(right: 12), child: CurrencyChip(icon: kCoinIcon, value: g.profile.coins, color: kCoinColor)),
           ],
           bottom: const TabBar(isScrollable: true, tabAlignment: TabAlignment.start, tabs: [
             Tab(text: 'Browse'),
             Tab(text: 'Players'),
-            Tab(text: 'My listings'),
-            Tab(text: 'Trade offers'),
             Tab(text: 'Showcases'),
           ]),
         ),
@@ -51,7 +69,11 @@ class MarketScreen extends StatelessWidget {
             color: kBg,
             padding: const EdgeInsets.only(left: 14, right: 4),
             child: Row(children: [
-              Expanded(child: Text(g.market.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white54))),
+              Expanded(
+                child: kAdminBuild
+                    ? Text(g.market.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white54))
+                    : const SizedBox(),
+              ),
               TextButton.icon(
                 icon: const Icon(Icons.movie_filter_outlined, size: 18),
                 label: const Text('Edition Checker'),
@@ -59,11 +81,55 @@ class MarketScreen extends StatelessWidget {
               ),
             ]),
           ),
-          const Expanded(child: TabBarView(children: [_Browse(), _Players(), _MyListings(), _Offers(), _Showcases()])),
+          const Expanded(child: TabBarView(children: [_Browse(), _Players(), _Showcases()])),
         ])),
       ),
     );
   }
+}
+
+/// An app-bar icon with a red count badge (new messages, offers, sales).
+class BadgeIcon extends StatelessWidget {
+  const BadgeIcon({super.key, required this.icon, required this.tooltip, required this.count, required this.onTap});
+  final IconData icon;
+  final String tooltip;
+  final ValueListenable<int> count;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+        valueListenable: count,
+        builder: (context, n, _) => IconButton(
+          tooltip: tooltip,
+          onPressed: onTap,
+          icon: Badge(
+            isLabelVisible: n > 0,
+            backgroundColor: const Color(0xFFE53935),
+            textColor: Colors.white,
+            label: Text(n > 99 ? '99+' : '$n'),
+            child: Icon(icon),
+          ),
+        ),
+      );
+}
+
+/// The player's listings (bump, cancel, list more).
+class MyListingsScreen extends StatelessWidget {
+  const MyListingsScreen({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('My listings')),
+        body: const ContentWidth(maxWidth: 1000, child: _MyListings()),
+      );
+}
+
+/// Trade offers sent and received.
+class OffersScreen extends StatelessWidget {
+  const OffersScreen({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Offers')),
+        body: const ContentWidth(maxWidth: 1000, child: _Offers()),
+      );
 }
 
 // --------------------------------------------------------------- browse
@@ -173,8 +239,7 @@ class _BrowseState extends State<_Browse> {
           summary: [
             if (_q.rarities.isNotEmpty) [for (final r in Rarity.values) if (_q.rarities.contains(r.index)) r.label].join(', '),
             if (_q.shinyOnly) 'Shiny',
-            if (_q.normalOnly) 'Not shiny',
-            if (_q.editions.isNotEmpty) [for (final e in Edition.values) if (_q.editions.contains(e.index)) e.label].join(', '),
+            if (_q.editions.isNotEmpty) [for (final e in Edition.displayOrder) if (_q.editions.contains(e.index)) e.label].join(', '),
             if (_q.serials.isNotEmpty) 'Serial ${(_q.serials.toList()..sort()).map((n) => '#$n').join(' ')}',
             if (_q.genres.isNotEmpty) _q.genres.length == 1 ? genreName(_q.genres.first) : '${_q.genres.length} genres',
             if (_q.tradesOnly) 'Trades',
@@ -203,8 +268,7 @@ class _BrowseState extends State<_Browse> {
               onClear: () => _set(_copy(shiny: false, normal: false, editions: {})),
               options: [
                 FilterOption(label: '✦ Shiny', selected: _q.shinyOnly, onTap: () => _set(_copy(shiny: !_q.shinyOnly, normal: false))),
-                FilterOption(label: 'Not shiny', selected: _q.normalOnly, onTap: () => _set(_copy(normal: !_q.normalOnly, shiny: false))),
-                for (final e in Edition.values)
+                for (final e in Edition.displayOrder)
                   FilterOption(
                     label: e.label,
                     selected: _q.editions.contains(e.index),
@@ -426,8 +490,34 @@ class _ListingTileState extends State<ListingTile> {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
             child: widget.mine
-                ? Row(children: [
-                    Expanded(child: OutlinedButton(onPressed: _busy ? null : () => _run(() => g.cancelListing(l), 'Listing cancelled — songs returned'), child: const Text('Cancel listing'))),
+                ? Column(children: [
+                    Builder(builder: (context) {
+                      final now = DateTime.now().millisecondsSinceEpoch;
+                      final left = Duration(milliseconds: l.expiresAt - now);
+                      final canBump = now >= l.nextBumpAt;
+                      final wait = Duration(milliseconds: l.nextBumpAt - now);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          'Expires in ${left.inDays > 0 ? '${left.inDays}d ${left.inHours % 24}h' : '${left.inHours}h ${left.inMinutes % 60}m'}'
+                          '${canBump ? '' : ' · bump again in ${wait.inHours > 0 ? '${wait.inHours}h ${wait.inMinutes % 60}m' : '${wait.inMinutes + 1}m'}'}',
+                          style: const TextStyle(fontSize: 12, color: kTextTertiary),
+                        ),
+                      );
+                    }),
+                    Row(children: [
+                      Expanded(
+                        child: FilledButton.tonalIcon(
+                          icon: const Icon(Icons.vertical_align_top, size: 18),
+                          label: const Text('Bump to top'),
+                          onPressed: _busy || DateTime.now().millisecondsSinceEpoch < l.nextBumpAt
+                              ? null
+                              : () => _run(() => g.market.bumpListing(l.id), 'Bumped to the top of the market'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: OutlinedButton(onPressed: _busy ? null : () => _run(() => g.cancelListing(l), 'Listing cancelled — songs returned'), child: const Text('Cancel listing'))),
+                    ]),
                   ])
                 : Row(children: [
                     if (l.acceptsTrades) ...[

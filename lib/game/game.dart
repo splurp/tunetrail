@@ -252,11 +252,13 @@ class Game extends ChangeNotifier {
         for (final c in i.cards) {
           acquirePayload(c, CardSource.trade);
         }
+        if (i.message.contains('accepted your trade')) newOffers.value++;
         if (i.message.contains('accepted') || i.message.contains('Trade with')) {
           profile.tradesCompleted++;
           unawaited(audio.playSfx(Sfx.tradeAccepted));
         }
         if (i.message.contains('bought your')) {
+          newSales.value++;
           profile.cardsSold++;
           unawaited(audio.playSfx(Sfx.sold));
         }
@@ -269,6 +271,7 @@ class Game extends ChangeNotifier {
       // New trade offers on my listings.
       final incoming = [for (final o in await market.offers()) if (o.toId == profile.playerId) o];
       final fresh = incoming.where((o) => !_seenOffers.contains(o.id)).toList();
+      if (_offersPrimed) newOffers.value += fresh.length;
       if (_offersPrimed && fresh.isNotEmpty) {
         unawaited(audio.playSfx(Sfx.offer));
         toast(fresh.length == 1 ? 'New trade offer from ${fresh.first.fromName}' : '${fresh.length} new trade offers');
@@ -299,6 +302,16 @@ class Game extends ChangeNotifier {
 
   /// Unread direct messages (refreshed with the inbox).
   final ValueNotifier<int> unreadMessages = ValueNotifier(0);
+
+  /// New trade offers and accepted offers since the Offers page was opened.
+  final ValueNotifier<int> newOffers = ValueNotifier(0);
+
+  /// Songs sold since the My listings page was opened.
+  final ValueNotifier<int> newSales = ValueNotifier(0);
+
+  /// Everything new for the Market tab badge.
+  late final Listenable marketActivity = Listenable.merge([unreadMessages, newOffers, newSales]);
+  int get marketBadge => unreadMessages.value + newOffers.value + newSales.value;
 
   /// Null when [name] can be the player's username, else why not.
   Future<String?> checkUsername(String name) async {

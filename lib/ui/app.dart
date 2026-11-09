@@ -272,6 +272,7 @@ class _HomeShellState extends State<HomeShell> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
+    final g = GameScope.of(context);
     const pages = [MapScreen(), CollectionScreen(), MarketScreen(), ShopScreen(), MinigamesScreen(), ProfileScreen()];
     return Scaffold(
       body: IndexedStack(
@@ -286,10 +287,22 @@ class _HomeShellState extends State<HomeShell> with SingleTickerProviderStateMix
         NavigationBar(
           selectedIndex: _tab,
           onDestinationSelected: setTab,
-          destinations: const [
+          destinations: [
             NavigationDestination(icon: Icon(Icons.explore_outlined), selectedIcon: Icon(Icons.explore), label: 'Explore'),
             NavigationDestination(icon: Icon(Icons.grid_view_outlined), selectedIcon: Icon(Icons.grid_view_rounded), label: 'Collection'),
-            NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: 'Market'),
+            NavigationDestination(
+              icon: ListenableBuilder(
+                listenable: g.marketActivity,
+                builder: (context, _) => Badge(
+                  isLabelVisible: g.marketBadge > 0,
+                  backgroundColor: const Color(0xFFE53935),
+                  textColor: Colors.white,
+                  label: Text(g.marketBadge > 99 ? '99+' : '${g.marketBadge}'),
+                  child: Icon(_tab == 2 ? Icons.storefront : Icons.storefront_outlined),
+                ),
+              ),
+              label: 'Market',
+            ),
             NavigationDestination(icon: Icon(Icons.local_mall_outlined), selectedIcon: Icon(Icons.local_mall), label: 'Shop'),
             NavigationDestination(icon: Icon(Icons.sports_esports_outlined), selectedIcon: Icon(Icons.sports_esports), label: 'Games'),
             NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),

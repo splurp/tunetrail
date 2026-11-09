@@ -87,7 +87,19 @@ class Listing {
     required this.createdAt,
     this.manualFolderPrice,
     this.note = '',
-  });
+    int? bumpedAt,
+  }) : bumpedAt = bumpedAt ?? createdAt;
+
+  /// Listings are returned to their seller this long after being listed.
+  static const lifetime = Duration(days: 7);
+
+  /// How often a seller can bump a listing back to the top.
+  static const bumpCooldown = Duration(hours: 12);
+
+  /// Last time the listing was listed or bumped (the market sorts by this).
+  int bumpedAt;
+  int get expiresAt => createdAt + lifetime.inMilliseconds;
+  int get nextBumpAt => bumpedAt + bumpCooldown.inMilliseconds;
 
   final String id;
   final String sellerId;
@@ -119,6 +131,7 @@ class Listing {
         'note': note,
         'trades': acceptsTrades,
         'createdAt': createdAt,
+        'bumpedAt': bumpedAt,
       };
 
   factory Listing.fromJson(Map<String, dynamic> j) => Listing(
@@ -133,6 +146,7 @@ class Listing {
         note: j['note'] as String? ?? '',
         acceptsTrades: j['trades'] as bool? ?? false,
         createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
+        bumpedAt: (j['bumpedAt'] as num?)?.toInt(),
       );
 }
 

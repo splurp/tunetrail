@@ -86,7 +86,9 @@ Future<void> main(List<String> args) async {
       .addMiddleware(_rateLimit())
       .addMiddleware((inner) => (req) async {
             final res = await inner(req);
-            if (req.method != 'GET') await persist();
+            // Reads can change state too (claiming the inbox, expiring
+            // listings, marking messages read); persist() skips clean state.
+            await persist();
             return res;
           })
       .addHandler(app.call);
@@ -271,6 +273,7 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
         );
         return ok(l.toJson());
       }));
+  r.post('/listings/<id>/bump', (Request req, String id) => guard(() async => ok(m.bumpListing(pid(req), id).toJson())));
   r.post('/listings/<id>/cancel', (Request req, String id) => guard(() async =>
       ok([for (final c in m.cancelListing(pid(req), id)) c.toJson()])));
   r.post('/listings/<id>/buy', (Request req, String id) => guard(() async {

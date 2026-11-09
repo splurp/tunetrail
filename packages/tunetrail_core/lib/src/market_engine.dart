@@ -88,6 +88,7 @@ class MarketEngine {
 
   /// Returns and clears everything waiting for [playerId].
   List<InboxItem> claimInbox(String playerId) {
+    expireListings();
     final items = inboxes.remove(playerId) ?? const [];
     if (items.isNotEmpty) _changed();
     return items;
@@ -212,7 +213,37 @@ class MarketEngine {
     return true;
   }
 
+  /// Returns listings older than [Listing.lifetime] to their sellers.
+  int expireListings() {
+    final t = now();
+    final old = listings.values.where((l) => t >= l.expiresAt).toList();
+    for (final l in old) {
+      listings.remove(l.id);
+      _declineOffersFor(l.id, 'The listing expired');
+      final what = l.items.length == 1 ? l.card.title : 'folder of ${l.items.length} songs';
+      _deliver(l.sellerId, 'Your listing of $what expired after 7 days — the songs are back in your collection', cards: l.cards.toList());
+    }
+    if (old.isNotEmpty) _changed();
+    return old.length;
+  }
+
+  /// Sends a listing back to the top of the market.
+  Listing bumpListing(String sellerId, String listingId) {
+    final l = listings[listingId];
+    if (l == null) throw MarketException('Listing not found');
+    if (l.sellerId != sellerId) throw MarketException('Not your listing');
+    final t = now();
+    if (t < l.nextBumpAt) {
+      final mins = ((l.nextBumpAt - t) / 60000).ceil();
+      throw MarketException('You can bump this again in ${mins >= 60 ? '${(mins / 60).ceil()} h' : '$mins min'}');
+    }
+    l.bumpedAt = t;
+    _changed();
+    return l;
+  }
+
   List<Listing> browse(ListingQuery q) {
+    expireListings();
     final text = q.text.trim().toLowerCase();
     final results = listings.values.where((l) {
       if (q.excludeSellerId != null && l.sellerId == q.excludeSellerId) return false;
@@ -224,7 +255,7 @@ class MarketEngine {
     int best(Listing l) => l.cards.map((c) => c.rarity.index * 2 + (c.shiny ? 1 : 0)).reduce(math.max);
     switch (q.sort) {
       case ListingSort.newest:
-        results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        results.sort((a, b) => b.bumpedAt.compareTo(a.bumpedAt));
       case ListingSort.priceLow:
         results.sort((a, b) => a.folderPrice.compareTo(b.folderPrice));
       case ListingSort.priceHigh:
@@ -236,8 +267,10 @@ class MarketEngine {
     return results.sublist(q.offset, math.min(results.length, q.offset + q.limit));
   }
 
-  List<Listing> listingsOf(String sellerId) =>
-      listings.values.where((l) => l.sellerId == sellerId).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  List<Listing> listingsOf(String sellerId) {
+    expireListings();
+    return listings.values.where((l) => l.sellerId == sellerId).toList()..sort((a, b) => b.bumpedAt.compareTo(a.bumpedAt));
+  }
 
   // ----------------------------------------------------------------- trades
   /// Offers cards and/or coins for a whole trade-enabled folder.

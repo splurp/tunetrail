@@ -72,7 +72,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
       if (_q.rarityMask != 0x1F) [for (final r in Rarity.values) if ((_q.rarityMask >> r.index) & 1 == 1) r.label].join(', '),
       if (_q.shinyOnly) 'Shiny',
       if (_q.normalOnly) 'Not shiny',
-      if (_q.editionMask != 0xF) [for (final e in Edition.values) if ((_q.editionMask >> e.index) & 1 == 1) e.label].join(', '),
+      if (_q.editionMask != 0xF) [for (final e in Edition.displayOrder) if ((_q.editionMask >> e.index) & 1 == 1) e.label].join(', '),
       if (_q.genres.isNotEmpty) _q.genres.length == 1 ? genreName(_q.genres.first) : '${_q.genres.length} genres',
       if (_q.favoritesOnly) 'Favourites',
     ];
@@ -203,12 +203,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
                     selected: _q.shinyOnly,
                     onTap: () => _setQuery(_q.copyWith(shinyOnly: !_q.shinyOnly, normalOnly: false)),
                   ),
-                  FilterOption(
-                    label: 'Not shiny',
-                    selected: _q.normalOnly,
-                    onTap: () => _setQuery(_q.copyWith(normalOnly: !_q.normalOnly, shinyOnly: false)),
-                  ),
-                  for (final e in Edition.values)
+                  for (final e in Edition.displayOrder)
                     FilterOption(
                       label: '${e.label}  ${formatNumber(c.editionCounts[e.index])}',
                       selected: _q.editionMask != 0xF && (_q.editionMask >> e.index) & 1 == 1,
