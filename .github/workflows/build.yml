@@ -165,6 +165,7 @@ jobs:
         with:
           name: tunetrail-windows
           path: dist/*
+          retention-days: 1
       # Admin build: debug tools compiled in (they only unlock for accounts in
       # the server's ADMINS list). Kept as a workflow artifact for people with
       # repository access — never attached to a public release.
@@ -209,6 +210,7 @@ jobs:
         with:
           name: tunetrail-linux
           path: dist/*
+          retention-days: 1
 
   server:
     # Full builds only for releases (manual runs and version tags): pushes just

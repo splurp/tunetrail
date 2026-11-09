@@ -1,0 +1,35 @@
+name: Clean up old builds
+
+# Lists (and, when confirmed, deletes):
+#  - every workflow artifact (admin builds included); releases keep their own copies
+#  - every "dev-build-N" release and its tag (builds from before Beta v1.0.0
+#    had the debug menu available to every player)
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DELETE to delete; anything else only lists what would be deleted'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find (and delete) old builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" --jq '.artifacts[] | "\(.id) \(.name) (run \(.workflow_run.id), \(.created_at))"' > artifacts.txt
+          gh api --paginate "repos/$REPO/releases?per_page=100" --jq '.[] | select(.tag_name | startswith("dev-build-")) | .tag_name' > releases.txt
+          echo "== Artifacts ($(wc -l < artifacts.txt))"; cat artifacts.txt
+          echo "== Dev-build releases ($(wc -l < releases.txt))"; cat releases.txt
+          if [ "$CONFIRM" != "DELETE" ]; then echo "Dry run: nothing deleted. Run again with DELETE to delete the above."; exit 0; fi
+          while read -r id _; do gh api -X DELETE "repos/$REPO/actions/artifacts/$id" && echo "deleted artifact $id"; done < artifacts.txt
+          while read -r tag; do gh release delete "$tag" --repo "$REPO" --cleanup-tag --yes && echo "deleted release $tag"; done < releases.txt
