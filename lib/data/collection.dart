@@ -465,6 +465,10 @@ class CollectionStore extends ChangeNotifier {
     _changed();
   }
 
+  /// Call after adding cards with `notify: false` (packs): refreshes every
+  /// view of the collection and saves.
+  void commit() => _changed();
+
   void _changed() {
     version++;
     _scheduleSave();

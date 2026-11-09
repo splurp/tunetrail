@@ -3,6 +3,7 @@ import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../app.dart';
 import '../widgets/cards.dart';
+import '../../data/collection.dart';
 import 'collection_screen.dart';
 
 /// Scrap unwanted songs for coins. More-streamed (and rarer, and shiny)
@@ -26,6 +27,8 @@ class _ScrapyardScreenState extends State<ScrapyardScreen> {
       final sid = c.songIdAt(i);
       final score = c.rarityAt(i) * 2 + (c.shinyAt(i) ? 1 : 0);
       final uid = c.uidAt(i);
+      // Editions can't be scrapped.
+      if (c.byUid(uid)?.edition != Edition.standard) continue;
       all.add((sid, score, uid, c.rarityAt(i)));
       final b = best[sid];
       if (b == null || score > b.$1) best[sid] = (score, uid);
@@ -71,7 +74,7 @@ class _ScrapyardScreenState extends State<ScrapyardScreen> {
               avatar: const Icon(Icons.add, size: 16),
               label: const Text('Choose songs'),
               onPressed: () async {
-                final picked = await pickCards(context, title: 'Pick songs to scrap', max: 500, exclude: _selected.toSet());
+                final picked = await pickCards(context, title: 'Pick songs to scrap (editions can\'t be scrapped)', max: 500, exclude: _selected.toSet(), query: const CollectionQuery(editionMask: 0x1));
                 if (picked != null) setState(() => _selected.addAll(picked));
               },
             ),

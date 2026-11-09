@@ -82,6 +82,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   /// A Canvas spawn stays a Canvas even without a music video — its
   /// canvas falls back to the cover art.
   Edition get _edition => widget.spawn.edition;
+  bool get _purchased => _game?.isPurchased(widget.spawn) ?? false;
 
   /// Serial number shown on edition cards: the one claimed once caught,
   /// before that the next one still free.
@@ -299,7 +300,8 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     HapticFeedback.mediumImpact();
     _attempts++;
     // A 100% perfect beat always catches — and turns the song shiny.
-    final success = hit == _Hit.perfect || _rand.nextDouble() < catchChance(r, acc);
+    // A bought song can't get away (it's still shiny on a perfect beat).
+    final success = hit == _Hit.perfect || _purchased || _rand.nextDouble() < catchChance(r, acc);
     setState(() {
       _accuracy = acc;
       _perfect = hit == _Hit.perfect;

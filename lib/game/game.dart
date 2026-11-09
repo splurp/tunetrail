@@ -490,10 +490,11 @@ class Game extends ChangeNotifier {
   OwnedCard? acquire(int songId, Rarity rarity, bool shiny, Edition edition, CardSource source,
       {int? uid, bool notify = true, bool announce = true, int serial = 0}) {
     if (edition != Edition.standard) shiny = false;
+    // Editions are never auto-scrapped: each copy has its own serial.
     // One rarity per song, whatever the source says.
     final known = catalog.songs[songId];
     if (known != null) rarity = catalog.rarityOf(known);
-    if (collection.ownsVariant(songId, rarity, shiny, edition)) {
+    if (edition == Edition.standard && collection.ownsVariant(songId, rarity, shiny, edition)) {
       final song = catalog.songs[songId];
       final coins = scrapValue(rarity, shiny, song?.rank ?? 0, edition: edition);
       lastDuplicateCoins = coins;
@@ -834,6 +835,7 @@ class Game extends ChangeNotifier {
       metersBetween(location.position, s.point) <= catchRangeMeters;
 
   void _markSpent(Spawn s) {
+    purchasedSpawns.remove(s.id);
     profile.spentSpawns[s.id] = s.expiresAt.millisecondsSinceEpoch + 60000;
     spawns = spawns.where((x) => x.id != s.id).toList();
     profile.changed();
@@ -855,17 +857,22 @@ class Game extends ChangeNotifier {
     return ((lo + (hi - lo) * t) / 5).round() * 5;
   }
 
-  /// Buys an out-of-range spawn for [spawnPrice] coins. Returns the card
-  /// (null if that variant was already owned and got scrapped).
-  OwnedCard? buySpawn(Spawn s) {
+  /// Spawns paid for but not yet caught (the catch minigame follows; leaving
+  /// it doesn't lose the purchase).
+  final Set<String> purchasedSpawns = {};
+
+  bool isPurchased(Spawn s) => purchasedSpawns.contains(s.id);
+
+  /// Pays [spawnPrice] coins for an out-of-range spawn; the catch minigame
+  /// then plays as usual, except the song can't get away.
+  void buySpawn(Spawn s) {
+    if (isPurchased(s)) return;
     final price = spawnPrice(s);
     if (price == null) throw MarketException('This song can\'t be bought — go and catch it');
     if (profile.coins < price) throw MarketException('Not enough coins ($price needed)');
     profile.coins -= price;
-    _markSpent(s);
-    final card = acquire(s.song.id, s.rarity, false, Edition.standard, CardSource.market);
+    purchasedSpawns.add(s.id);
     profile.changed();
-    return card;
   }
 
   /// Catches a spawn. A 100% perfect catch makes any song shiny.
@@ -880,9 +887,9 @@ class Game extends ChangeNotifier {
     var serial = 0;
     lastCatchNote = null;
     if (edition != Edition.standard) {
-      if (collection.ownsVariant(s.song.id, s.rarity, false, edition)) {
-        // Already own this edition: don't burn a serial on a duplicate.
-      } else {
+      // Every edition copy gets its own serial (editions are never
+      // scrapped, so a second copy is kept).
+      {
         int? n;
         try {
           n = await market.claimSerial(s.song.id, edition);
@@ -999,8 +1006,7 @@ class Game extends ChangeNotifier {
       final card = acquire(r.$1.id, rarity, isShiny, ed, CardSource.pack, notify: false, announce: false, serial: serial);
       out.add(PackPull(card ?? OwnedCard(-1, r.$1, rarity, isShiny, false, DateTime.now(), CardSource.pack, ed), card == null ? lastDuplicateCoins : 0));
     }
-    collection.notifyListeners();
-    unawaited(collection.save());
+    collection.commit();
     profile.packsOpened++;
     questEvent(QuestKind.openPack);
     profile.changed();
@@ -1130,7 +1136,7 @@ class Game extends ChangeNotifier {
     var n = 0;
     for (final uid in uids.toList()) {
       final c = collection.byUid(uid);
-      if (c == null) continue;
+      if (c == null || !canScrap(c.edition)) continue;
       total += scrapValueOf(c);
       _removeFromPlaylists(uid);
       collection.remove(uid);

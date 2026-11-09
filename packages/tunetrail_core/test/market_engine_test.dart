@@ -129,7 +129,7 @@ void main() {
     expect(scrapValue(Rarity.common, false, 0), 25);
     expect(scrapValue(Rarity.legendary, false, 0), 400);
     expect(scrapValue(Rarity.rare, true, 500000), scrapValue(Rarity.rare, false, 500000) * 10);
-    expect(scrapValue(Rarity.epic, false, 0, edition: Edition.canvas), 3000);
+    expect(scrapValue(Rarity.epic, false, 0, edition: Edition.canvas), 0);
   });
 
   test('rng is deterministic', () {

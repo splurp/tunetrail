@@ -376,7 +376,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _tapSpawn(Game g, Spawn s) async {
-    if (!g.inRange(s)) {
+    if (!g.inRange(s) && !g.isPurchased(s)) {
       final d = metersBetween(g.location.position, s.point).round();
       if (g.spawnPrice(s) == null) {
         g.toast('Too far — get within ${Game.catchRangeMeters.round()} m ($d m away)');
@@ -538,6 +538,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   /// Out of range: buy the song with coins instead of walking there.
   Future<void> _offerPurchase(Game g, Spawn s) async {
+    if (g.isPurchased(s)) return _tapSpawn(g, s);
     final price = g.spawnPrice(s);
     if (price == null) return;
     final d = metersBetween(g.location.position, s.point).round();
@@ -555,11 +556,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
     if (ok != true) return;
     try {
-      final card = g.buySpawn(s);
-      g.toast(card == null ? 'Already owned — scrapped for ${g.lastDuplicateCoins} coins' : 'Bought ${s.song.title}!');
+      g.buySpawn(s);
     } catch (e) {
       g.toast('$e');
+      return;
     }
+    // Paid: now catch it (it can't get away).
+    if (mounted) await _tapSpawn(g, s);
   }
 
   void _showNearby(Game g) {

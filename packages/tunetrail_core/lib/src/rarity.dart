@@ -101,20 +101,14 @@ int fairValue(Rarity r, bool shiny, {int popularity = 500000, Edition edition = 
       Rarity.legendary => (800, 2000),
     };
 
-/// Scrap value relative to a regular card, per edition (editions are
-/// rarer than shinies, so they scrap for more).
-double editionScrapMultiplier(Edition e) => switch (e) {
-      Edition.standard => 1,
-      Edition.canvas => 15,
-      Edition.live => 20,
-      Edition.sample => 30,
-    };
+/// Canvas, Live and Sample editions can't be scrapped.
+bool canScrap(Edition e) => e == Edition.standard;
 
 /// Coins for scrapping a card: half of what the same drop costs to buy on
-/// the map (from just out of range); Shinies ×10, editions more. [rank] is
-/// kept for callers but no longer matters.
+/// the map (from just out of range); Shinies ×10. Editions: 0 (they can't
+/// be scrapped). [rank] is kept for callers but no longer matters.
 int scrapValue(Rarity r, bool shiny, int rank, {Edition edition = Edition.standard}) {
+  if (!canScrap(edition)) return 0;
   final base = mapPriceRange(r).$1 ~/ 2;
-  if (edition != Edition.standard) return (base * editionScrapMultiplier(edition)).round();
   return shiny ? base * 10 : base;
 }

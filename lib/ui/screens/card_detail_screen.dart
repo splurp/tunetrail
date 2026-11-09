@@ -108,7 +108,7 @@ class CardDetailScreen extends StatelessWidget {
           ),
           ]),
         ),
-        _InfoRow('Scrap value', '${g.scrapValueOf(card)} coins'),
+        _InfoRow('Scrap value', canScrap(card.edition) ? '${g.scrapValueOf(card)} coins' : 'Editions can\'t be scrapped'),
         const Divider(height: 28),
         ListTile(
           leading: const Icon(Icons.person),
