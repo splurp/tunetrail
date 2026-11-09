@@ -227,11 +227,26 @@ void buildBackpack(OutfitBuilder o, String id, Map<String, V3> j, double s, doub
       }
     case 'bag_wings':
       final flap = walking ? math.sin(time * 9) * 0.25 : math.sin(time * 2) * 0.08;
+      // Solid 3D wings (visible from every side): a curved wing arm from
+      // the shoulder blade to the tip, with a fan of tapered feathers
+      // hanging from it, longest near the body.
+      const white = Color(0xFFFAFAFA), shade = Color(0xFFE6E8F0), tipCol = Color(0xFFDDE3F2);
       for (final side in [-1.0, 1.0]) {
-        final root = back(-0.2 * s, side * 0.3 * s, 0.6 * s);
-        final tip = back((-1.2 - flap * 2) * s, side * 3.4 * s, (1.6 + flap * 3) * s);
-        final low = back((-0.9 - flap) * s, side * 2.6 * s, -0.9 * s);
-        o.panel(root, tip, low, back(-0.3 * s, side * 0.4 * s, -0.5 * s), const Color(0xFFFAFAFA));
+        final root = back(-0.25 * s, side * 0.35 * s, 0.7 * s);
+        final elbow = back((-0.65 - flap) * s, side * 1.7 * s, (1.55 + flap * 1.5) * s);
+        final tip = back((-1.15 - flap * 2) * s, side * 3.4 * s, (1.75 + flap * 3) * s);
+        o.tube(root, elbow, 0.3 * s, 0.26 * s, 6, white);
+        o.tube(elbow, tip, 0.26 * s, 0.12 * s, 6, white);
+        const feathers = 7;
+        for (var k = 0; k < feathers; k++) {
+          final t = k / (feathers - 1);
+          // Along the arm (root → elbow → tip).
+          final start = t < 0.5 ? _lerp(root, elbow, t * 2) : _lerp(elbow, tip, (t - 0.5) * 2);
+          // Feathers sweep down and out, shorter towards the tip.
+          final len = (2.6 - 1.6 * t) * s;
+          final end = _add(start, ((-0.25 - flap * 0.6) * s, side * (0.35 + 0.9 * t) * s, -len));
+          o.tube(start, end, (0.34 - 0.12 * t) * s, 0.08 * s, 5, k.isEven ? white : (t > 0.7 ? tipCol : shade));
+        }
       }
       return; // wings have no straps
     default:

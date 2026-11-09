@@ -84,6 +84,7 @@ const kPetProducts = [
   Product(id: 'pet_slime', name: 'Bass Slime', kind: ProductKind.pet, usd: 1.99, color: Color(0xFF76FF03), icon: Icons.bubble_chart),
   Product(id: 'pet_robot', name: 'Drum Bot', kind: ProductKind.pet, usd: 3.49, color: Color(0xFF90A4AE), icon: Icons.smart_toy),
   Product(id: 'pet_ghost', name: 'Echo Ghost', kind: ProductKind.pet, usd: 2.99, color: Color(0xFFE0E0E0), icon: Icons.blur_on),
+  Product(id: 'pet_hamster', name: 'Hip-Hop Hamster', kind: ProductKind.pet, usd: 2.49, color: Color(0xFFE0A15E), icon: Icons.cruelty_free),
   Product(id: 'pet_dragon', name: 'Mini Dragon', kind: ProductKind.pet, usd: 4.99, color: Color(0xFFD50000), icon: Icons.whatshot),
 ];
 

@@ -449,6 +449,27 @@ class StickFigurePainter extends CustomPainter {
         canvas.drawPath(path, Paint()..color = Colors.white.withValues(alpha: 0.85));
         canvas.drawCircle(base + f + const Offset(-3.5, -2), 1.8, eye);
         canvas.drawCircle(base + f + const Offset(3.5, -2), 1.8, eye);
+      case 'pet_hamster':
+        // A round golden hamster with a cream belly, little ears, pink
+        // cheeks and paws, nibbling (cheeks puff in and out).
+        final fur = Paint()..color = const Color(0xFFE0A15E);
+        final cream = Paint()..color = const Color(0xFFFFF1DC);
+        final pink = Paint()..color = const Color(0xFFFFA8B8);
+        final nibble = walking ? 0.0 : (math.sin(phase * 6) * 0.5 + 0.5);
+        final b = base + const Offset(0, 2);
+        canvas.drawOval(Rect.fromCenter(center: b, width: 24, height: 19), fur);
+        canvas.drawOval(Rect.fromCenter(center: b + const Offset(0, 3), width: 15, height: 11), cream);
+        for (final d in [-1.0, 1.0]) {
+          canvas.drawCircle(b + Offset(d * 7, -8.5), 3.4, fur);
+          canvas.drawCircle(b + Offset(d * 7, -8.5), 1.8, pink);
+          canvas.drawOval(Rect.fromCenter(center: b + Offset(d * 7.5, 1.5), width: 6 + nibble * 1.6, height: 4.5 + nibble), Paint()..color = const Color(0x66FF7A90));
+          canvas.drawOval(Rect.fromCenter(center: b + Offset(d * 3, 8.5), width: 4, height: 3), pink); // paws
+        }
+        canvas.drawCircle(b + const Offset(-4, -2.5), 1.7, eye);
+        canvas.drawCircle(b + const Offset(4, -2.5), 1.7, eye);
+        canvas.drawCircle(b + const Offset(-3.5, -3.1), 0.55, Paint()..color = Colors.white);
+        canvas.drawCircle(b + const Offset(4.5, -3.1), 0.55, Paint()..color = Colors.white);
+        canvas.drawCircle(b + const Offset(0, 0.3), 1.1, pink); // nose
       case 'pet_dragon':
         final p = Paint()..color = const Color(0xFFD50000);
         final flap = math.sin(phase * 4) * 0.4;

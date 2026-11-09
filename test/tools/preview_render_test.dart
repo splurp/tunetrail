@@ -18,7 +18,7 @@ void main() {
           color: const Color(0xFF1E1E24),
           child: const Row(mainAxisSize: MainAxisSize.min, children: [
             Figure3DPreview(look: FigureLook(color: Color(0xFFE9E6FF), shirt: 'shirt_hoodie', backpack: 'bag_classic', hat: 'hat_tophat'), size: 200),
-            Figure3DPreview(look: FigureLook(color: Color(0xFFE9E6FF), pet: 'pet_dog', hat: 'hat_cap'), size: 200),
+            Figure3DPreview(look: FigureLook(color: Color(0xFFE9E6FF), pet: 'pet_hamster', hat: 'hat_cap'), size: 200),
             Figure3DPreview(look: FigureLook(color: Color(0xFFE9E6FF), shirt: 'shirt_tux', backpack: 'bag_wings'), size: 200),
           ]),
         ),
