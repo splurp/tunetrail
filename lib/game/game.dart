@@ -14,6 +14,7 @@ import '../data/models.dart';
 import '../data/profile.dart';
 import '../data/samples.dart';
 import '../map3d/map_data.dart';
+import '../map3d/props3d.dart';
 import 'genre_zones.dart';
 import 'movie_service.dart';
 import 'sample_player.dart';
@@ -77,6 +78,7 @@ class Game extends ChangeNotifier {
     final audio = AudioService(catalog);
     final tilesDir = Directory('${dir.path}/tiles');
     await tilesDir.create(recursive: true);
+    await PropsPainter.loadModels();
     final movies = MovieService(dir);
     await movies.load();
     final g = Game._(dir, api, catalog, collection, profile, location, audio, MapData(tilesDir), movies);

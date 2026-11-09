@@ -44,9 +44,18 @@ void main() {
     final canvas = Canvas(rec);
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFE9D5F3));
     PropsPainter(camera: cam, set: PropSet.vaporMonuments, fog: const Color(0xFFB9F2F0))
-        .debugDraw(canvas, size, PropInstance(PropsPainter.bustMesh, 0, 900, scale: 3.5, yaw: -(180 + 30) * 3.14159 / 180));
+        .debugDraw(canvas, size, PropInstance(LowPolyMesh.fromBinary(File('assets/models/bust_hi.bin').readAsBytesSync().buffer.asByteData(), const Color(0xFFF4EEF8)), 0, 900, scale: 3.5, yaw: -(180 + 30) * 3.14159 / 180));
     final img = await rec.endRecording().toImage(480, 800);
     final png = await img.toByteData(format: ui.ImageByteFormat.png);
     File('build/props_bust.png').writeAsBytesSync(png!.buffer.asUint8List());
+    final rec2 = ui.PictureRecorder();
+    final c2 = Canvas(rec2);
+    c2.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFF6E8EE));
+    for (var i = 0; i < 2; i++) {
+      PropsPainter(camera: cam, set: PropSet.sakuraTrees, fog: const Color(0xFFFFF4F8))
+          .debugDraw(c2, size, PropInstance(PropsPainter.treeMesh(i), -180.0 + i * 360, 1100, scale: 14, yaw: i * 1.3));
+    }
+    final img2 = await rec2.endRecording().toImage(480, 800);
+    File('build/props_tree.png').writeAsBytesSync((await img2.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List());
   });
 }
