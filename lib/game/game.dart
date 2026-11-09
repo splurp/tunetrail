@@ -749,6 +749,40 @@ class Game extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Coins to buy an out-of-range spawn without walking there: more for
+  /// rarer songs and further away. Null when it can't be bought — in range
+  /// (catch it!), or a Shiny / Canvas / Live / Sample, which you have to go
+  /// to in person.
+  int? spawnPrice(Spawn s) {
+    if (s.shiny || s.edition != Edition.standard) return null;
+    final d = metersBetween(location.position, s.point);
+    if (d <= catchRangeMeters) return null;
+    final (lo, hi) = switch (s.rarity) {
+      Rarity.common => (50, 100),
+      Rarity.uncommon => (100, 200),
+      Rarity.rare => (200, 400),
+      Rarity.epic => (400, 800),
+      Rarity.legendary => (800, 2000),
+    };
+    // Just outside the catch circle costs the low end; the far edge of the
+    // nearby area (~500 m) the high end.
+    final t = ((d - catchRangeMeters) / (500 - catchRangeMeters)).clamp(0.0, 1.0);
+    return ((lo + (hi - lo) * t) / 5).round() * 5;
+  }
+
+  /// Buys an out-of-range spawn for [spawnPrice] coins. Returns the card
+  /// (null if that variant was already owned and got scrapped).
+  OwnedCard? buySpawn(Spawn s) {
+    final price = spawnPrice(s);
+    if (price == null) throw MarketException('This song can\'t be bought — go and catch it');
+    if (profile.coins < price) throw MarketException('Not enough coins ($price needed)');
+    profile.coins -= price;
+    _markSpent(s);
+    final card = acquire(s.song.id, s.rarity, false, Edition.standard, CardSource.market);
+    profile.changed();
+    return card;
+  }
+
   /// Catches a spawn. A 100% perfect catch makes any song shiny.
   /// Returns the new card, or null if that variant was already owned (it is
   /// then auto-scrapped; see [lastDuplicateCoins]).

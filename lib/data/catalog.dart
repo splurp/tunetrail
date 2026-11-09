@@ -16,7 +16,9 @@ import 'models.dart';
 /// most popular artists' top tracks, then related artists) and persisted as
 /// an append-only JSON-lines file so it loads in milliseconds next launch.
 class Catalog extends ChangeNotifier {
-  Catalog(this.api, this.dir);
+  Catalog(this.api, this.dir) {
+    artistGenreLookup = artistGenre;
+  }
 
   final DeezerApi api;
   final Directory dir;
@@ -97,6 +99,7 @@ class Catalog extends ChangeNotifier {
               duration: s.duration)
           : s;
       songs[s.id] = song;
+      if (song.genreId != 0) _artistSongGenre.putIfAbsent(song.artistId, () => song.genreId);
       if (existing == null) {
         _genrePools.putIfAbsent(song.genreId, () => []).add(song.id);
         added++;
@@ -109,6 +112,16 @@ class Catalog extends ChangeNotifier {
     }
     return added;
   }
+
+  /// An artist's genre: from the artist, else the genre most of their
+  /// known songs were found under (0 when unknown).
+  int artistGenre(int artistId) {
+    final a = artists[artistId];
+    if (a != null && a.genreId != 0) return a.genreId;
+    return _artistSongGenre[artistId] ?? 0;
+  }
+
+  final Map<int, int> _artistSongGenre = {};
 
   void addArtist(ArtistInfo a) {
     final existing = artists[a.id];

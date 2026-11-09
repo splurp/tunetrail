@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:tunetrail_core/tunetrail_core.dart' show Edition;
 
 import '../../build_flags.dart';
 import 'package:flutter/scheduler.dart';
@@ -93,7 +94,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     HardwareKeyboard.instance.addHandler(_onKey);
   }
 
+  Duration _lastFrame = Duration.zero;
+
   void _onTick(Duration d) {
+    // Battery Saver: at most 60 map frames a second (high-refresh screens
+    // would otherwise draw 90–144).
+    if (mounted && GameScope.read(context).profile.batterySaver && d - _lastFrame < const Duration(microseconds: 16000)) return;
+    _lastFrame = d;
     _pollMouseLook();
     _clock.value = d.inMicroseconds / 1e6;
     if (!mounted) return;
@@ -371,7 +378,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _tapSpawn(Game g, Spawn s) async {
     if (!g.inRange(s)) {
       final d = metersBetween(g.location.position, s.point).round();
-      g.toast('Too far — get within ${Game.catchRangeMeters.round()} m ($d m away)');
+      if (g.spawnPrice(s) == null) {
+        g.toast('Too far — get within ${Game.catchRangeMeters.round()} m ($d m away)');
+      } else {
+        await _offerPurchase(g, s);
+      }
       return;
     }
     await Navigator.of(context).push(
@@ -525,6 +536,32 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Out of range: buy the song with coins instead of walking there.
+  Future<void> _offerPurchase(Game g, Spawn s) async {
+    final price = g.spawnPrice(s);
+    if (price == null) return;
+    final d = metersBetween(g.location.position, s.point).round();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.song.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+        content: Text('${s.song.artistName} · ${s.rarity.label}\n\n$d m away — walk within ${Game.catchRangeMeters.round()} m to catch it, '
+            'or buy it now for ${formatNumber(price)} coins.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Walk there')),
+          FilledButton(onPressed: g.profile.coins < price ? null : () => Navigator.pop(ctx, true), child: Text('Buy · ${formatNumber(price)} coins')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final card = g.buySpawn(s);
+      g.toast(card == null ? 'Already owned — scrapped for ${g.lastDuplicateCoins} coins' : 'Bought ${s.song.title}!');
+    } catch (e) {
+      g.toast('$e');
+    }
+  }
+
   void _showNearby(Game g) {
     final list = [...g.spawns]..sort((a, b) => metersBetween(g.location.position, a.point).compareTo(metersBetween(g.location.position, b.point)));
     showModalBottomSheet<void>(
@@ -556,18 +593,45 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 itemBuilder: (_, i) {
                   final s = list[i];
                   final d = metersBetween(g.location.position, s.point).round();
+                  final price = g.spawnPrice(s);
+                  final icon = Icon(
+                    metersBetween(g.location.position, s.point) <= Game.catchRangeMeters ? Icons.center_focus_strong_outlined : Icons.near_me_outlined,
+                    size: 18,
+                    color: kTextTertiary,
+                  );
+                  // Shiny and edition spawns stay a mystery until you're there.
+                  if (s.shiny || s.edition != Edition.standard) {
+                    return ListTile(
+                      leading: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(color: kSurface2, borderRadius: BorderRadius.circular(8), border: Border.all(color: kOutline)),
+                        alignment: Alignment.center,
+                        child: const Text('?', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: kTextSecondary)),
+                      ),
+                      title: const Text('???', style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text('Something special · $d m', style: const TextStyle(fontSize: 12, color: kTextTertiary)),
+                      trailing: icon,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _guideTo(g, s);
+                      },
+                    );
+                  }
                   return CardRow(
                     song: s.song,
                     rarity: s.rarity,
                     shiny: s.shiny,
-                    subtitle: '${s.song.artistName} · ${genreName(s.song.genreId)} · $d m',
-                    trailing: Icon(
-                      metersBetween(g.location.position, s.point) <= Game.catchRangeMeters
-                          ? Icons.center_focus_strong_outlined
-                          : Icons.near_me_outlined,
-                      size: 18,
-                      color: kTextTertiary,
-                    ),
+                    subtitle: '${s.song.artistName}${songGenreName(s.song).isEmpty ? '' : ' · ${songGenreName(s.song)}'} · $d m',
+                    trailing: price == null
+                        ? icon
+                        : TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _offerPurchase(g, s);
+                            },
+                            child: Text('Buy · ${formatNumber(price)}'),
+                          ),
                     onTap: () {
                       Navigator.pop(ctx);
                       _guideTo(g, s);

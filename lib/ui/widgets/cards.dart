@@ -214,7 +214,7 @@ class SongCardView extends StatelessWidget {
         SizedBox(height: width * 0.05),
         Row(children: [
           Expanded(child: VariantLabel(rarity: rarity, shiny: shiny, edition: edition, fontSize: width * 0.048)),
-          Text(genreName(song.genreId).toUpperCase(), style: TextStyle(color: kTextTertiary, fontSize: width * 0.038, letterSpacing: 0.8)),
+          Text(songGenreName(song).toUpperCase(), style: TextStyle(color: kTextTertiary, fontSize: width * 0.038, letterSpacing: 0.8)),
         ]),
         SizedBox(height: width * 0.02),
         Text(song.title,
@@ -295,7 +295,7 @@ class SongCardView extends StatelessWidget {
           right: width * 0.05,
           bottom: width * 0.05,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(genreName(song.genreId).toUpperCase(), style: TextStyle(color: Colors.white60, fontSize: width * 0.036, letterSpacing: 0.8)),
+            Text(songGenreName(song).toUpperCase(), style: TextStyle(color: Colors.white60, fontSize: width * 0.036, letterSpacing: 0.8)),
             SizedBox(height: width * 0.01),
             Text(song.title,
                 maxLines: 2,

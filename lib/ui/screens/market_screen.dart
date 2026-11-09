@@ -302,7 +302,7 @@ class _BrowseState extends State<_Browse> {
               title: 'Genre',
               onClear: () => _set(_copy(genres: {})),
               options: [
-                for (final gd in kGenres)
+                for (final gd in kDisplayGenres)
                   FilterOption(
                     label: gd.name,
                     selected: _q.genres.contains(gd.id),

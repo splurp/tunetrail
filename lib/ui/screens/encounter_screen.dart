@@ -55,7 +55,6 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   /// Waiting for the music to start (the ring appears once it does).
   bool _waiting = true;
   bool _synced = false;
-  double? _bpm;
 
   /// Song seconds = stopwatch seconds + [_clockOffset] (synced mode).
   double _clockOffset = 0;
@@ -83,6 +82,16 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   /// A Canvas spawn stays a Canvas even without a music video — its
   /// canvas falls back to the cover art.
   Edition get _edition => widget.spawn.edition;
+
+  /// Serial number shown on edition cards: the one claimed once caught,
+  /// before that the next one still free.
+  int get _serial {
+    if (_edition == Edition.standard) return 0;
+    final got = _card?.serial ?? 0;
+    if (got > 0) return got;
+    final left = _game?.serialsLeft(widget.spawn.song.id, _edition);
+    return left == null || left <= 0 ? 0 : _edition.maxSerials - left + 1;
+  }
 
   bool get _alreadyOwned => _game?.collection.ownsVariant(widget.spawn.song.id, r, widget.spawn.shiny, _edition) ?? false;
 
@@ -180,7 +189,6 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
         setState(() {
           _waiting = false;
           _synced = true;
-          _bpm = beats.bpm;
         });
         _ring.repeat();
         return;
@@ -433,7 +441,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                               transform: _spinMatrix(_spin.value)..scaleByDouble(1 + (_caught ? 0 : 0.035 * _beatPulse), 1 + (_caught ? 0 : 0.035 * _beatPulse), 1, 1),
                               child: child,
                             ),
-                            child: SongCardView(song: s.song, rarity: s.rarity, shiny: s.shiny || _perfect, edition: _edition, width: cardW),
+                            child: SongCardView(song: s.song, rarity: s.rarity, shiny: s.shiny || _perfect, edition: _edition, serial: _serial, width: cardW),
                           ),
                         ),
                       ),
@@ -552,7 +560,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                             TextButton.icon(onPressed: _skipBreakdown, icon: const Icon(Icons.skip_next), label: const Text('Skip to the song')),
                           const SizedBox(height: 6),
                           Text(
-                            '${_synced ? '${_bpm!.round()} BPM · ' : (_waiting ? '' : 'Not synced · ')}Base catch ${(_baseCatch[r.index] * 100).round()}% · 90%+ timing always catches · a flawless 100% beat makes it shiny${_alreadyOwned ? '\nYou already own this variant — a catch is auto-scrapped unless it turns shiny' : ''}',
+                            'A flawless catch (100% timing) will reward you with an ultra-rare Shiny edition!${_alreadyOwned ? '\nYou already own this variant — a catch is auto-scrapped unless it turns shiny' : ''}',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: Colors.white54, fontSize: 12),
                           ),

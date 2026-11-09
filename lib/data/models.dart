@@ -290,6 +290,21 @@ const List<GenreDef> kGenres = [
   GenreDef(81, 'Indian', 1, nonEnglish: true),
 ];
 
+/// Genres shown to players. (Genre 0 is Deezer's all-genre chart, which
+/// the catalogue crawls for popular songs; it isn't a genre.)
+final List<GenreDef> kDisplayGenres = [for (final g in kGenres) if (g.id != 0) g];
+
+/// Finds an artist's genre (set up by the catalogue).
+int Function(int artistId)? artistGenreLookup;
+
+/// The genre to show for [s]: its own, or for songs found through the
+/// all-genre chart, its artist's genre ('' when still unknown).
+String songGenreName(Song s) {
+  var id = s.genreId;
+  if (id == 0) id = artistGenreLookup?.call(s.artistId) ?? 0;
+  return id == 0 ? '' : genreName(id);
+}
+
 String genreName(int id) =>
     kGenres.firstWhere((g) => g.id == id, orElse: () => const GenreDef(-1, 'Other', 0)).name;
 

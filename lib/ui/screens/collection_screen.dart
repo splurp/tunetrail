@@ -219,7 +219,7 @@ class _CollectionBrowserState extends State<CollectionBrowser> {
                 title: 'Genre',
                 onClear: () => _setQuery(_q.copyWith(genres: const {})),
                 options: [
-                  for (final gd in kGenres)
+                  for (final gd in kDisplayGenres)
                     FilterOption(
                       label: gd.name,
                       selected: _q.genres.contains(gd.id),
