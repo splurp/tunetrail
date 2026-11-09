@@ -12,7 +12,7 @@ void main() {
     const size = Size(480, 800);
     final rec = ui.PictureRecorder();
     final canvas = Canvas(rec);
-    const bgs = [Color(0xFFDCE8F0), Color(0xFF5D4037), Color(0xFF2B0A05), Color(0xFFFBE4EC)];
+    const bgs = [Color(0xFFDCE8F0), Color(0xFF5D4037), Color(0xFF2B0A05), Color(0xFFFBE4EC), Color(0xFFFDE7F3)];
     for (var k = 0; k < Particle3DKind.values.length; k++) {
       canvas.save();
       canvas.translate(k * size.width, 0);
@@ -31,7 +31,7 @@ void main() {
       p.paint(canvas, size);
       canvas.restore();
     }
-    final img = await rec.endRecording().toImage((size.width * 4).round(), size.height.round());
+    final img = await rec.endRecording().toImage((size.width * 5).round(), size.height.round());
     File('build/particles.png').writeAsBytesSync((await img.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List());
   });
 }

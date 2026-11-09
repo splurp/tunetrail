@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'camera.dart';
 
 /// Kinds of weather / ambience particles living in 3D around the player.
-enum Particle3DKind { snow, dust, embers, petals }
+enum Particle3DKind { snow, dust, embers, petals, sweets }
 
 /// Theme particles (snow, record-shop dust, embers, sakura petals) as real
 /// 3D points in a box of air around the player, seen through the map
@@ -45,6 +45,7 @@ class Particles3DPainter extends CustomPainter {
         Particle3DKind.dust => 320,
         Particle3DKind.embers => 360,
         Particle3DKind.petals => 260,
+        Particle3DKind.sweets => 160,
       };
 
   double get _height => switch (kind) {
@@ -52,6 +53,7 @@ class Particles3DPainter extends CustomPainter {
         Particle3DKind.dust => 60,
         Particle3DKind.embers => 140,
         Particle3DKind.petals => 120,
+        Particle3DKind.sweets => 150,
       };
 
   @override
@@ -100,6 +102,12 @@ class Particles3DPainter extends CustomPainter {
           x = wx0 + t * 4 + math.sin(t * (0.5 + _r(i, 4)) + i) * 7;
           y = wy0 + t * 1.5 + math.cos(t * 0.7 + i) * 5;
           z = height - ((_r(i, 5) * height + t * speed) % height);
+        case Particle3DKind.sweets:
+          // Wrapped sweets drifting slowly down.
+          final speed = 2.5 + 2.5 * _r(i, 1);
+          x = wx0 + math.sin(t * 0.3 + i) * 4;
+          y = wy0 + math.cos(t * 0.25 + i * 1.7) * 4;
+          z = height - ((_r(i, 5) * height + t * speed) % height);
       }
       x = (x - (bx - _box / 2)) % _box + (bx - _box / 2);
       y = (y - (by - _box / 2)) % _box + (by - _box / 2);
@@ -111,6 +119,52 @@ class Particles3DPainter extends CustomPainter {
       final sx = ccx + f * xa / zc, sy = ccy - f * ((ya * eu + z * eb) / ed) / zc;
       if (sx < -12 || sx > w + 12 || sy < -12 || sy > h + 12) continue;
       final k = f / zc; // pixels per metre at this depth
+      if (kind == Particle3DKind.sweets) {
+        // A candy ball with its wrapper twisted into a bow at each end,
+        // turning slowly.
+        final br = (0.9 * k).clamp(3.2, 12.0) * (0.8 + 0.4 * _r(i, 6));
+        final a = t * (0.25 + 0.35 * _r(i, 8)) * (_r(i, 10) < 0.5 ? -1 : 1) + i;
+        final ca = math.cos(a), sa = math.sin(a);
+        if (nt + 64 > _tri.length) {
+          _tri = Float32List(_tri.length * 2)..setRange(0, nt, _tri);
+          _triCol = Int32List(_triCol.length * 2)..setRange(0, ntc, _triCol);
+        }
+        const balls = [0xFFFF4FA3, 0xFFFFC107, 0xFF7C4DFF, 0xFF00BFA5, 0xFFFF5252, 0xFF40C4FF];
+        final ball = balls[(_r(i, 9) * balls.length).floor() % balls.length];
+        final wrap = (ball & 0x00FFFFFF) | 0xB0000000; // translucent wrapper, same hue
+        // Bows: a triangle on each side, tip at the ball, flaring out.
+        for (final side in const [1.0, -1.0]) {
+          final tipX = sx + ca * br * 0.8 * side, tipY = sy + sa * br * 0.8 * side;
+          final fx = sx + ca * br * 2.1 * side, fy = sy + sa * br * 2.1 * side;
+          final px2 = -sa * br * 0.9, py2 = ca * br * 0.9;
+          _tri
+            ..[nt++] = tipX
+            ..[nt++] = tipY
+            ..[nt++] = fx + px2
+            ..[nt++] = fy + py2
+            ..[nt++] = fx - px2
+            ..[nt++] = fy - py2;
+          for (var q = 0; q < 3; q++) {
+            _triCol[ntc++] = wrap;
+          }
+        }
+        // The ball: an octagon, with a lighter highlight wedge.
+        for (var q = 0; q < 8; q++) {
+          final a0 = q * math.pi / 4, a1 = (q + 1) * math.pi / 4;
+          _tri
+            ..[nt++] = sx
+            ..[nt++] = sy
+            ..[nt++] = sx + math.cos(a0) * br
+            ..[nt++] = sy + math.sin(a0) * br
+            ..[nt++] = sx + math.cos(a1) * br
+            ..[nt++] = sy + math.sin(a1) * br;
+          final c = q == 5 ? (ball & 0xFF000000) | (((ball >> 16 & 0xFF) + 255) ~/ 2 << 16) | (((ball >> 8 & 0xFF) + 255) ~/ 2 << 8) | (((ball & 0xFF) + 255) ~/ 2) : ball;
+          for (var r = 0; r < 3; r++) {
+            _triCol[ntc++] = c;
+          }
+        }
+        continue;
+      }
       if (kind == Particle3DKind.petals) {
         // A small kite-shaped petal, tumbling.
         final len = (2.2 * k).clamp(4.0, 16.0) * (0.75 + 0.5 * _r(i, 6));
@@ -148,7 +202,7 @@ class Particles3DPainter extends CustomPainter {
         Particle3DKind.snow => (0.55 * k).clamp(0.7, 4.5) * (0.7 + 0.6 * _r(i, 6)),
         Particle3DKind.dust => (0.45 * k).clamp(1.0, 3.2) * (0.6 + 0.8 * _r(i, 6)),
         Particle3DKind.embers => (0.35 * k).clamp(0.8, 3.6) * (0.6 + 0.8 * _r(i, 6)),
-        Particle3DKind.petals => 0.0,
+        Particle3DKind.petals || Particle3DKind.sweets => 0.0,
       };
       final sb = (radius / 4.5 * _sizeBuckets).floor().clamp(0, _sizeBuckets - 1);
       // Embers: colour band by how high they've risen (yellow → deep red).
@@ -160,7 +214,7 @@ class Particles3DPainter extends CustomPainter {
       buf[_n[b]++] = sy;
     }
 
-    if (kind == Particle3DKind.petals) {
+    if (kind == Particle3DKind.petals || kind == Particle3DKind.sweets) {
       if (nt > 0) {
         final v = ui.Vertices.raw(VertexMode.triangles, Float32List.sublistView(_tri, 0, nt), colors: Int32List.sublistView(_triCol, 0, ntc));
         canvas.drawVertices(v, BlendMode.dst, Paint());
@@ -200,6 +254,7 @@ class Particles3DPainter extends CustomPainter {
                 ..color = c.withValues(alpha: 0.85 - cb * 0.12)
                 ..strokeWidth = r * 2);
             case Particle3DKind.petals:
+            case Particle3DKind.sweets:
               break;
           }
         }

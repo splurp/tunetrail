@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import 'camera.dart';
 
 /// Which set of 3D props stands on the ground for a theme.
-enum PropSet { none, vaporMonuments, sakuraTrees }
+enum PropSet { none, vaporMonuments, sakuraTrees, lollipops }
 
 /// A flat-shaded low-poly mesh: a soup of triangles in local metres
 /// (x east, y north, z up). Each triangle also records the centre of the
@@ -259,6 +259,7 @@ class PropsPainter extends CustomPainter {
     final items = switch (set) {
       PropSet.vaporMonuments => _vaporInstances(cam),
       PropSet.sakuraTrees => _treeInstances(cam),
+      PropSet.lollipops => _lollipopInstances(cam),
       PropSet.none => const <PropInstance>[],
     };
     final light = switch (set) {
@@ -722,6 +723,96 @@ class PropsPainter extends CustomPainter {
           yaw: _hash(gx, gy, 5) * math.pi * 2,
           // Player figure ≈ 37 m tall; trees ≈ 20 units × scale.
           scale: 9.5 + _hash(gx, gy, 6) * 8.5,
+          alpha: alpha * alpha * (3 - 2 * alpha),
+        ));
+      }
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------- candy
+  /// Giant lollipops: a white stick with a candy on top — a flat spiral
+  /// disc in two or rainbow colours, or a round striped ball. About 24
+  /// units tall.
+  static List<LowPolyMesh> _lollipopMeshes() {
+    const stick = Color(0xFFFFFBF5);
+    final out = <LowPolyMesh>[];
+    const spirals = [
+      [Color(0xFFFF4FA3), Color(0xFFFFFFFF)],
+      [Color(0xFFFF5252), Color(0xFFFFD54F), Color(0xFF69F0AE), Color(0xFF40C4FF), Color(0xFFB388FF)],
+      [Color(0xFF7C4DFF), Color(0xFFFFFFFF)],
+      [Color(0xFF00BFA5), Color(0xFFFFF59D)],
+    ];
+    for (var v = 0; v < spirals.length; v++) {
+      final m = LowPolyMesh();
+      const stickTop = 14.0, r = 7.5, t = 1.4; // disc radius, thickness
+      m.tube([0, 0, -0.5], [0, 0, stickTop + r * 0.4], 0.45, 0.45, 8, stick);
+      final cols = spirals[v];
+      const cz = stickTop + r;
+      if (v == 3) {
+        // A round ball lollipop with candy stripes.
+        m.ellipsoid(0, 0, cz - 1.5, 6, 6, 6, cols[0], lat: 8, lon: 14, bandColor: (b) => cols[b % 2]);
+      } else {
+        // A spiral disc facing ±y: colour by angle + radius (a spiral).
+        const seg = 36, rings = 10;
+        final centre = [0.0, 0.0, cz];
+        List<double> at(double rr, double a, double y) => [math.cos(a) * rr, y, cz + math.sin(a) * rr];
+        // Spiral arms: the colour band turns as it moves outwards.
+        Color colAt(int ring, int k) => cols[((k / seg * cols.length * 2) + ring / rings * 3).floor() % cols.length];
+        for (var ring = 0; ring < rings; ring++) {
+          final r0 = r * ring / rings, r1 = r * (ring + 1) / rings;
+          for (var k = 0; k < seg; k++) {
+            final a0 = k * 2 * math.pi / seg, a1 = (k + 1) * 2 * math.pi / seg;
+            final c = colAt(ring, k);
+            for (final y in [t / 2, -t / 2]) {
+              final q0 = at(r0, a0, y), q1 = at(r0, a1, y), q2 = at(r1, a1, y), q3 = at(r1, a0, y);
+              if (ring > 0) m.tri(q0, q1, q2, c, centre);
+              m.tri(q0, q2, q3, c, centre);
+            }
+            if (ring == rings - 1) {
+              // Rim.
+              m.tri(at(r1, a0, t / 2), at(r1, a1, t / 2), at(r1, a1, -t / 2), c, centre);
+              m.tri(at(r1, a0, t / 2), at(r1, a1, -t / 2), at(r1, a0, -t / 2), c, centre);
+            }
+          }
+        }
+      }
+      out.add(m);
+    }
+    return out;
+  }
+
+  static final _lollies = _lollipopMeshes();
+
+  /// A lollipop mesh (for render checks).
+  static LowPolyMesh lollipopMesh(int i) => _lollies[i % _lollies.length];
+
+  static const _lolliCell = 640.0;
+
+  /// Lollipops on a world-anchored grid, rising out of the ground; like the
+  /// sakura trees they fade out near the player and back in further away.
+  List<PropInstance> _lollipopInstances(Camera3D cam) {
+    final out = <PropInstance>[];
+    const reach = 2600.0;
+    final c0x = ((cam.px - reach) / _lolliCell).floor(), c1x = ((cam.px + reach) / _lolliCell).ceil();
+    final c0y = ((cam.py - reach) / _lolliCell).floor(), c1y = ((cam.py + reach) / _lolliCell).ceil();
+    for (var gx = c0x; gx <= c1x; gx++) {
+      for (var gy = c0y; gy <= c1y; gy++) {
+        if (_hash(gx, gy, 31) > 0.5) continue;
+        final x = (gx + 0.15 + 0.7 * _hash(gx, gy, 32)) * _lolliCell;
+        final y = (gy + 0.15 + 0.7 * _hash(gx, gy, 33)) * _lolliCell;
+        final dx = x - cam.px, dy = y - cam.py;
+        final d = math.sqrt(dx * dx + dy * dy);
+        if (d > reach) continue;
+        if (cam.alignY(x, y) < cam.yNear + 60) continue;
+        final alpha = ((d - 260) / 200).clamp(0.0, 1.0);
+        if (alpha <= 0) continue;
+        out.add(PropInstance(
+          _lollies[(_hash(gx, gy, 34) * _lollies.length).floor() % _lollies.length],
+          x,
+          y,
+          yaw: _hash(gx, gy, 35) * math.pi * 2,
+          scale: 8 + _hash(gx, gy, 36) * 7,
           alpha: alpha * alpha * (3 - 2 * alpha),
         ));
       }

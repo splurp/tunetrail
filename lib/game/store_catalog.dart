@@ -50,6 +50,7 @@ const kThemeProducts = [
   Product(id: 'theme_arctic', name: 'Arctic', kind: ProductKind.theme, usd: 1.99, description: 'Icy blues with gentle snowfall.', color: Color(0xFF80DEEA), icon: Icons.ac_unit),
   Product(id: 'theme_lava', name: 'Magma', kind: ProductKind.theme, usd: 2.99, description: 'Molten streets and drifting embers.', color: Color(0xFFFF5722), icon: Icons.local_fire_department),
   Product(id: 'theme_aurora', name: 'Aurora', kind: ProductKind.theme, usd: 3.99, description: 'Shimmering northern lights over dark streets.', color: Color(0xFF69F0AE), icon: Icons.auto_awesome),
+  Product(id: 'theme_candy', name: 'Candy', kind: ProductKind.theme, usd: 2.99, description: 'Giant lollipops and wrapped sweets drifting down from a sugar-pink sky.', color: Color(0xFFFF4FA3), icon: Icons.cake),
   Product(id: 'theme_sakura', name: 'Sakura', kind: ProductKind.theme, usd: 2.99, description: 'Soft pink blossoms drifting through town.', color: Color(0xFFF8BBD0), icon: Icons.local_florist),
 ];
 

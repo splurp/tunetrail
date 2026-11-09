@@ -7,7 +7,7 @@ import '../../map3d/palette.dart';
 import '../../map3d/props3d.dart';
 import '../../map3d/sky_painter.dart';
 
-enum MapEffect { none, grid, rain, snow, embers, petals, digitalRain, aurora, dust, stars }
+enum MapEffect { none, grid, rain, snow, embers, petals, digitalRain, aurora, dust, stars, sweets }
 
 /// A visual style for the 3D world: palette + an animated screen overlay.
 class MapThemeDef {
@@ -32,6 +32,7 @@ const Map<String, MapThemeDef> kMapThemes = {
   'theme_arctic': MapThemeDef(id: 'theme_arctic', palette: kArctic, effect: MapEffect.snow, vignette: Color(0x22004466)),
   'theme_lava': MapThemeDef(id: 'theme_lava', palette: kMagma, effect: MapEffect.embers, vignette: Color(0x88300000)),
   'theme_aurora': MapThemeDef(id: 'theme_aurora', palette: kAurora, sky: SkyDecor.aurora),
+  'theme_candy': MapThemeDef(id: 'theme_candy', palette: kCandy, effect: MapEffect.sweets, props: PropSet.lollipops, vignette: Color(0x22FF4FA3)),
   'theme_sakura': MapThemeDef(id: 'theme_sakura', palette: kSakura, effect: MapEffect.petals, props: PropSet.sakuraTrees, vignette: Color(0x22F06292)),
 };
 
@@ -68,6 +69,8 @@ class MapEffectPainter extends CustomPainter {
           _fall(canvas, size, 36, Colors.white.withValues(alpha: 0.45), 1.3, 8, wobble: 30);
         case MapEffect.stars:
           _stars(canvas, size);
+        case MapEffect.sweets:
+          break; // drawn in 3D (Particles3DPainter)
       }
     }
     final rect = Offset.zero & size;

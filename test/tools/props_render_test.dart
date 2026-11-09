@@ -16,6 +16,7 @@ void main() {
       ('vapor_90', PropSet.vaporMonuments, 90.0),
       ('vapor_200', PropSet.vaporMonuments, 200.0),
       ('sakura', PropSet.sakuraTrees, 0.0),
+      ('candy', PropSet.lollipops, 30.0),
     ]) {
       final cam = Camera3D()
         ..bearing = bearing
@@ -56,6 +57,15 @@ void main() {
           .debugDraw(c2, size, PropInstance(PropsPainter.treeMesh(i), -180.0 + i * 360, 1100, scale: 14, yaw: i * 1.3));
     }
     final img2 = await rec2.endRecording().toImage(480, 800);
+    final rec3 = ui.PictureRecorder();
+    final c3 = Canvas(rec3);
+    c3.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFFDE7F3));
+    for (var i = 0; i < 4; i++) {
+      PropsPainter(camera: cam, set: PropSet.lollipops, fog: const Color(0xFFFFF0FA))
+          .debugDraw(c3, size, PropInstance(PropsPainter.lollipopMesh(i), -330.0 + i * 220, 1100, scale: 9, yaw: 0.4 + i * 0.5));
+    }
+    final img3 = await rec3.endRecording().toImage(480, 800);
+    File('build/props_lolli.png').writeAsBytesSync((await img3.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List());
     File('build/props_tree.png').writeAsBytesSync((await img2.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List());
   });
 }

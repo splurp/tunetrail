@@ -285,6 +285,27 @@ const kSakura = MapPalette(
   accent: Color(0xFFD45D8C),
 );
 
+const kCandy = MapPalette(
+  ground: Color(0xFFFDE7F3),
+  field: Color(0xFFE3F8EF),
+  forest: Color(0xFFCFF3E2),
+  park: Color(0xFFD7F5E6),
+  sand: Color(0xFFFFF3D6),
+  campus: Color(0xFFF3E5FF),
+  parking: Color(0xFFF5DDEC),
+  plaza: Color(0xFFFFE9F4),
+  water: Color(0xFFB8E8FF),
+  roadMinor: Color(0xFFFFFFFF),
+  roadMajor: Color(0xFFFFC2DF),
+  roadHighway: Color(0xFFB39DFF),
+  buildingWall: Color(0xFFF8B6D6),
+  buildingRoof: Color(0xFFFFF0F8),
+  buildingEdge: Color(0x66FFFFFF),
+  skyTop: Color(0xFFB9E6FF),
+  skyBottom: Color(0xFFFFF0FA),
+  accent: Color(0xFFFF4FA3),
+);
+
 /// A colour that stands out clearly against [p]'s ground (used for idle
 /// props like headphones and music notes): opposite lightness to the
 /// ground, and a hue complementary to it (or the accent's, on greyish

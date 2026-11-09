@@ -585,6 +585,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         MapEffect.dust => Particle3DKind.dust,
         MapEffect.embers => Particle3DKind.embers,
         MapEffect.petals => Particle3DKind.petals,
+        MapEffect.sweets => Particle3DKind.sweets,
         _ => null,
       };
 }
