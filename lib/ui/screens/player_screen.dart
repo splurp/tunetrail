@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/models.dart';
+import '../../build_flags.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
 import '../widgets/profile_banner.dart';
 import '../widgets/showcase_strip.dart';
+import 'admin_player_tools.dart';
 import 'collection_screen.dart';
 import 'favorite_artists_screen.dart';
 
@@ -149,6 +151,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
           backgroundColor: Colors.transparent,
           title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
+            // Admin build, admin accounts: gifts and song spawns.
+            if (kAdminBuild && GameScope.of(context).profile.isAdmin && !p.isBot)
+              IconButton(
+                tooltip: 'Admin tools',
+                icon: const Icon(Icons.admin_panel_settings_outlined),
+                onPressed: () => showAdminPlayerTools(context, p.id, p.name),
+              ),
             if (!me && !p.isBot)
               PopupMenuButton<String>(
                 onSelected: (v) => v == 'report' ? showPlayerReport(context, p.id, p.name) : _block(v == 'block'),

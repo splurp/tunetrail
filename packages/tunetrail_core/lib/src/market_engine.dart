@@ -146,6 +146,13 @@ class MarketEngine {
         credited: credited));
   }
 
+  /// A message for [playerId] (in their inbox and as a notification).
+  void notice(String playerId, String message, {String title = 'Tunetrail'}) {
+    _deliver(playerId, message);
+    _notify(playerId, title, message);
+    _changed();
+  }
+
   List<InboxItem> peekInbox(String playerId) =>
       List.unmodifiable(inboxes[playerId] ?? const []);
 

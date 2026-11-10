@@ -82,6 +82,9 @@ class Account {
   final List<int> recentThrows = [];
 
   final List<CheatFlag> flags = [];
+
+  /// What admins gave this player: {by, what, at}.
+  final List<Map<String, dynamic>> adminLog = [];
   int flagsSeen = 0;
 
   static String variantOf(CardPayload c) => '${c.songId}:${c.rarity.index}:${c.shiny ? 1 : 0}:${c.edition.index}';
@@ -172,6 +175,7 @@ class Account {
         'plays': {for (final e in plays.entries) e.key: [e.value.$1, e.value.$2]},
         'round': roundBits,
         'flags': [for (final f in flags) f.toJson()],
+        'adminLog': adminLog,
         'flagsSeen': flagsSeen,
       };
 
@@ -211,6 +215,7 @@ class Account {
     });
     (j['round'] as Map<String, dynamic>? ?? const {}).forEach((k, v) => a.roundBits[k] = (v as num).toInt());
     a.flags.addAll([for (final f in (j['flags'] as List? ?? const [])) CheatFlag.fromJson(f as Map<String, dynamic>)]);
+    a.adminLog.addAll([for (final x in (j['adminLog'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)]);
     return a;
   }
 }
@@ -679,10 +684,10 @@ class Economy {
   }
 
   /// Admin: puts [song] a few metres from the player.
-  Map<String, dynamic> debugSpawn(String id, SongInfo song, double lat, double lng, {bool shiny = false, Edition edition = Edition.standard}) {
+  Map<String, dynamic> debugSpawn(String id, SongInfo song, double lat, double lng, {bool shiny = false, Edition edition = Edition.standard, Rarity? rarity}) {
     if (!admins.contains(id)) throw MarketException('Admins only');
     final a = account(id);
-    final r = catalog.songs.containsKey(song.id) ? catalog.pool.rarityOf(song.id) : Rarity.common;
+    final r = rarity ?? (catalog.songs.containsKey(song.id) ? catalog.pool.rarityOf(song.id) : Rarity.common);
     final s = WorldSpawn(
       id: 'debug:${song.id}:${now()}',
       lat: lat,
@@ -695,6 +700,81 @@ class Economy {
     );
     a.memo[s.id] = s;
     return s.toJson();
+  }
+
+  void _logAdmin(Account a, String adminId, String what) {
+    a.adminLog.add({'by': engine.nameOf(adminId), 'id': adminId, 'what': what, 'at': now()});
+    if (a.adminLog.length > 200) a.adminLog.removeAt(0);
+  }
+
+  /// Admin: puts [song] 15–30 m from where [targetId] last was, with any
+  /// rarity and variant. The player is told (their game then refreshes its
+  /// spawns).
+  Map<String, dynamic> adminSpawnFor(String adminId, String targetId, SongInfo song,
+      {bool shiny = false, Edition edition = Edition.standard, Rarity? rarity}) {
+    if (!admins.contains(adminId)) throw MarketException('Admins only');
+    final a = accounts[targetId];
+    if (a == null || !a.imported) throw MarketException('That player isn\'t on the server economy yet (they need to open the updated game once)');
+    final lat0 = a.lat, lng0 = a.lng;
+    if (lat0 == null || lng0 == null) throw MarketException('No recent location for that player — they need to open the map first');
+    final ang = rng.nextDouble() * 2 * math.pi, dist = 15 + rng.nextDouble() * 15;
+    final lat = lat0 + math.cos(ang) * dist / 111132.95;
+    final lng = lng0 + math.sin(ang) * dist / (111319.49 * math.cos(lat0 * math.pi / 180));
+    final r = rarity ?? (catalog.songs.containsKey(song.id) ? catalog.pool.rarityOf(song.id) : Rarity.common);
+    final s = WorldSpawn(
+      id: 'debug:${song.id}:${now()}',
+      lat: lat,
+      lng: lng,
+      song: song,
+      rarity: r,
+      shiny: shiny && edition == Edition.standard,
+      edition: edition,
+      expiresAt: now() + 60 * 60000,
+    );
+    a.memo[s.id] = s;
+    final what = edition != Edition.standard ? '${edition.label} edition' : '${shiny ? 'shiny ' : ''}${r.label}';
+    _logAdmin(a, adminId, 'spawned ${song.title} ($what)');
+    engine.notice(targetId, 'A special song appeared near you: ${song.title} by ${song.artistName} ($what) — it stays for an hour', title: 'A song appeared near you');
+    touch(a);
+    return s.toJson();
+  }
+
+  /// Admin: gives [targetId] a shop item (free — e.g. paid outside the app
+  /// stores) and/or coins and bits. Returns what was given.
+  String adminGrant(String adminId, String targetId, {String? item, String? label, int coins = 0, int bits = 0}) {
+    if (!admins.contains(adminId)) throw MarketException('Admins only');
+    final a = accounts[targetId];
+    if (a == null || !a.imported) throw MarketException('That player isn\'t on the server economy yet (they need to open the updated game once)');
+    if (coins < 0 || bits < 0 || coins > 100000000 || bits > 10000000) throw MarketException('Invalid amount');
+    final given = <String>[];
+    if (item != null && item.isNotEmpty) {
+      final it = shopItem(item);
+      if (it == null) throw MarketException('Unknown item');
+      if (it.kind == ShopKind.bits) {
+        a.bits += it.bits;
+        given.add('${it.bits} bits');
+      } else {
+        a.owned.add(item);
+        if (it.bundleOf != null) a.owned.addAll(shopIdsOfKind(it.bundleOf!));
+        // The game sends the item's display name ("Aurora") for the notice.
+        final name = label == null ? '' : cleanUserText(label, maxLength: 60);
+        given.add(name.isEmpty ? item : name);
+      }
+    }
+    if (coins > 0) {
+      a.coins += coins;
+      given.add('$coins coins');
+    }
+    if (bits > 0) {
+      a.bits += bits;
+      given.add('$bits bits');
+    }
+    if (given.isEmpty) throw MarketException('Nothing to give');
+    final what = given.join(', ');
+    _logAdmin(a, adminId, 'gave $what');
+    engine.notice(targetId, 'You received a gift: $what', title: 'You received a gift');
+    touch(a);
+    return what;
   }
 
   // ----------------------------------------------------------------- packs

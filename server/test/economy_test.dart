@@ -154,6 +154,26 @@ void main() {
       expect(copy.recentPullsOf(Edition.canvas).length, 1);
     });
 
+    test('admins can gift items and coins and spawn any song next to a player', () async {
+      econ.import('p2', {});
+      expect(() => econ.adminGrant('p2', 'p1', item: 'pet_cat'), throwsA(isA<MarketException>()));
+      econ.admins.add('p2');
+      expect(econ.adminGrant('p2', 'p1', item: 'bundle_hats', coins: 100), contains('100 coins'));
+      expect(econ.account('p1').owned.containsAll(shopIdsOfKind(ShopKind.hat)), true);
+      expect(engine.peekInbox('p1').last.message, contains('gift'));
+      // Spawning needs to know where the player is.
+      final song = econ.catalog.songs.values.first;
+      expect(() => econ.adminSpawnFor('p2', 'p1', song), throwsA(isA<MarketException>()));
+      econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
+      final s = WorldSpawn.fromJson(econ.adminSpawnFor('p2', 'p1', song, rarity: Rarity.legendary, edition: Edition.live));
+      expect(s.rarity, Rarity.legendary);
+      expect(distanceMeters(s.lat, s.lng, 40.7812, -73.9665), inInclusiveRange(14, 31));
+      expect(econ.spawnsAround('p1', 40.7812, -73.9665).any((x) => x['id'] == s.id), true);
+      final r = await econ.throwAt('p1', s.id, 40.7812, -73.9665, 100);
+      expect(r.card!.edition, Edition.live);
+      expect(econ.account('p1').adminLog.length, 2);
+    });
+
     test('teleporting across the city is flagged', () {
       econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
       clock += 10000;

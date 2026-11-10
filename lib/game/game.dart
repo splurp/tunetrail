@@ -343,7 +343,11 @@ class Game extends ChangeNotifier {
         toast(i.message);
       }
       if (items.isNotEmpty) {
-        if (serverEconomy) await econ.sync();
+        if (serverEconomy) {
+          await econ.sync();
+          // (A gift or a song an admin placed nearby.)
+          _refreshSpawns(force: true);
+        }
         profile.changed();
         notifyListeners();
       }

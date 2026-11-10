@@ -184,6 +184,26 @@ void addEconomyRoutes(
             shiny: b['shiny'] == true, edition: Edition.fromIndex((b['ed'] as num?)?.toInt() ?? 0));
         return ok(s);
       }));
+  r.post('/admin/players/<player>/grant', (Request req, String player) => guard(() async {
+        final id = admin(req);
+        final b = await body(req);
+        final what = e.adminGrant(id, Uri.decodeComponent(player),
+            item: b['item'] as String?, label: b['label'] as String?, coins: (b['coins'] as num?)?.toInt() ?? 0, bits: (b['bits'] as num?)?.toInt() ?? 0);
+        return ok({'given': what});
+      }));
+  r.post('/admin/players/<player>/spawn', (Request req, String player) => guard(() async {
+        final id = admin(req);
+        final b = await body(req);
+        final s = e.adminSpawnFor(id, Uri.decodeComponent(player), SongInfo.fromJson(b['song'] as Map<String, dynamic>),
+            shiny: b['shiny'] == true,
+            edition: Edition.fromIndex((b['ed'] as num?)?.toInt() ?? 0),
+            rarity: b['rarity'] == null ? null : Rarity.fromIndex((b['rarity'] as num).toInt()));
+        return ok(s);
+      }));
+  r.get('/admin/players/<player>/log', (Request req, String player) => guard(() async {
+        admin(req);
+        return ok(e.accounts[Uri.decodeComponent(player)]?.adminLog.reversed.take(50).toList() ?? const []);
+      }));
   r.get('/admin/flags', (Request req) => guard(() async {
         admin(req);
         return ok(e.flagged());
