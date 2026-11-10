@@ -25,10 +25,91 @@ class _CanvasCheckerScreenState extends State<CanvasCheckerScreen> {
   bool _loading = false;
   String? _error;
 
+  /// Latest pulls per edition (shown until something is searched).
+  final Map<Edition, List<Map<String, dynamic>>> _recent = {};
+  final Set<Edition> _recentLoading = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // Clearing the search goes back to the recent pulls.
+    _q.addListener(() {
+      if (_q.text.trim().isEmpty && (_results.isNotEmpty || _error != null)) {
+        setState(() {
+          _results = [];
+          _error = null;
+        });
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadRecent(_edition);
+  }
+
+  Future<void> _loadRecent(Edition e, {bool force = false}) async {
+    if ((!force && _recent.containsKey(e)) || !_recentLoading.add(e)) return;
+    try {
+      final list = await GameScope.read(context).market.recentPulls(e);
+      if (mounted) setState(() => _recent[e] = list);
+    } catch (_) {
+      if (mounted) setState(() => _recent[e] = const []);
+    } finally {
+      _recentLoading.remove(e);
+    }
+  }
+
   @override
   void dispose() {
     _q.dispose();
     super.dispose();
+  }
+
+  static String _ago(int ms) {
+    final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inHours < 1) return '${d.inMinutes} min ago';
+    if (d.inDays < 1) return '${d.inHours} h ago';
+    return '${d.inDays} d ago';
+  }
+
+  Widget _recentList() {
+    final pulls = _recent[_edition];
+    final library = _edition == Edition.sample ? [for (final x in SampleLibrary.all) x.song] : const <Song>[];
+    return RefreshIndicator(
+      onRefresh: () => _loadRecent(_edition, force: true),
+      child: ListView(children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 6, 16, 2),
+          child: Text('Recently pulled:', style: TextStyle(fontSize: 11, color: kTextTertiary)),
+        ),
+        if (pulls == null)
+          const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))))
+        else if (pulls.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text('No ${_edition.label} editions pulled yet.', style: const TextStyle(fontSize: 13, color: kTextSecondary)),
+          )
+        else
+          for (final p in pulls)
+            _Row(
+              key: ValueKey('recent-${p['song']['id']}-${p['sn']}-${_edition.name}'),
+              song: Song.fromInfo(SongInfo.fromJson(p['song'] as Map<String, dynamic>)),
+              edition: _edition,
+              pulled: '#${p['sn']} pulled ${_ago((p['at'] as num).toInt())}${p['by'] == null ? '' : ' by ${p['by']}'}',
+            ),
+        // The Sample tab also lists every song that has a Sample edition.
+        if (library.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 2),
+            child: Text('Songs with a Sample edition:', style: TextStyle(fontSize: 11, color: kTextTertiary)),
+          ),
+          for (final s in library) _Row(key: ValueKey('lib-${s.id}'), song: s, edition: _edition),
+        ],
+      ]),
+    );
   }
 
   Future<void> _search() async {
@@ -85,7 +166,10 @@ class _CanvasCheckerScreenState extends State<CanvasCheckerScreen> {
               ],
               selected: {_edition},
               showSelectedIcon: false,
-              onSelectionChanged: (s) => setState(() => _edition = s.first),
+              onSelectionChanged: (s) {
+                setState(() => _edition = s.first);
+                _loadRecent(s.first);
+              },
             ),
           ),
           Padding(
@@ -102,8 +186,9 @@ class _CanvasCheckerScreenState extends State<CanvasCheckerScreen> {
           if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: kTextSecondary))),
           Expanded(
             child: Builder(builder: (context) {
-              // Before a search, the Sample tab lists every song that has one.
-              final list = _results.isEmpty && _edition == Edition.sample ? [for (final x in SampleLibrary.all) x.song] : _results;
+              // Before a search: the latest pulls of this edition.
+              if (_results.isEmpty) return _recentList();
+              final list = _results;
               return ListView.builder(
                 itemCount: list.length,
                 itemBuilder: (_, i) => _Row(key: ValueKey('${list[i].id}-${_edition.name}'), song: list[i], edition: _edition),
@@ -117,9 +202,12 @@ class _CanvasCheckerScreenState extends State<CanvasCheckerScreen> {
 }
 
 class _Row extends StatefulWidget {
-  const _Row({super.key, required this.song, required this.edition});
+  const _Row({super.key, required this.song, required this.edition, this.pulled});
   final Song song;
   final Edition edition;
+
+  /// For a recent pull: which serial, when and by whom.
+  final String? pulled;
   @override
   State<_Row> createState() => _RowState();
 }
@@ -182,7 +270,7 @@ class _RowState extends State<_Row> {
     return ListTile(
       leading: Art(s.cover(120), size: 48, radius: 6),
       title: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('${s.artistName}\n$status$kind', maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: Text('${s.artistName}\n${widget.pulled ?? status}$kind', maxLines: 2, overflow: TextOverflow.ellipsis),
       isThreeLine: true,
       trailing: Icon(editionIcon(e), color: found != null && found > 0 ? editionColor(e) : kTextTertiary),
       onTap: impossible

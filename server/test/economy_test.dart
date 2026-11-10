@@ -139,6 +139,21 @@ void main() {
       expect((await econ.throwAt('p1', again.id, away, again.lng, 100)).result, 'caught');
     });
 
+    test('caught editions show up in recent pulls', () async {
+      econ.admins.add('p1');
+      final song = econ.catalog.songs.values.first;
+      final s = WorldSpawn.fromJson(econ.debugSpawn('p1', song, 40.78, -73.96, edition: Edition.canvas));
+      expect((await econ.throwAt('p1', s.id, s.lat, s.lng, 50)).result, 'caught');
+      final pulls = engine.recentPullsOf(Edition.canvas);
+      expect(pulls.single['sn'], 1);
+      expect(pulls.single['by'], 'One');
+      expect((pulls.single['song'] as Map)['id'], song.id);
+      expect(engine.recentPullsOf(Edition.live), isEmpty);
+      // Kept with the market state.
+      final copy = MarketEngine()..loadJson(engine.toJson());
+      expect(copy.recentPullsOf(Edition.canvas).length, 1);
+    });
+
     test('teleporting across the city is flagged', () {
       econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
       clock += 10000;

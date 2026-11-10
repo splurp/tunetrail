@@ -1120,7 +1120,7 @@ class Game extends ChangeNotifier {
       {
         int? n;
         try {
-          n = await market.claimSerial(s.song.id, edition);
+          n = await market.claimSerial(s.song.id, edition, song: s.song.toInfo());
         } catch (_) {}
         final key = '${s.song.id}:${edition.index}';
         if (n == null) {
@@ -1280,7 +1280,7 @@ class Game extends ChangeNotifier {
       var serial = 0;
       if (r.$3) {
         try {
-          final n = await market.claimSerial(r.$1.id, Edition.canvas);
+          final n = await market.claimSerial(r.$1.id, Edition.canvas, song: r.$1.toInfo());
           if (n != null) {
             ed = Edition.canvas;
             serial = n;
@@ -1337,7 +1337,7 @@ class Game extends ChangeNotifier {
     var serial = 0;
     if (rng.nextInt(100) == 0 && !collection.ownsVariant(song.id, rarity, false, Edition.canvas)) {
       try {
-        final n = await market.claimSerial(song.id, Edition.canvas);
+        final n = await market.claimSerial(song.id, Edition.canvas, song: song.toInfo());
         if (n != null) {
           edition = Edition.canvas;
           serial = n;

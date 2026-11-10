@@ -640,7 +640,7 @@ class Economy {
     var serial = 0;
     String? note;
     if (edition != Edition.standard) {
-      final claimed = engine.claimSerial(s.song.id, edition);
+      final claimed = engine.claimSerial(s.song.id, edition, song: s.song, playerId: id);
       if (claimed == null) {
         note = 'Every ${edition.label} edition of this song has been claimed — you caught a standard card.';
         edition = Edition.standard;
@@ -713,7 +713,7 @@ class Economy {
       var ed = Edition.standard;
       var serial = 0;
       if (r.canvas) {
-        final n = engine.claimSerial(r.song.id, Edition.canvas);
+        final n = engine.claimSerial(r.song.id, Edition.canvas, song: r.song, playerId: id);
         if (n != null) {
           ed = Edition.canvas;
           serial = n;
@@ -760,7 +760,7 @@ class Economy {
     var edition = Edition.standard;
     var serial = 0;
     if (rng.nextInt(kBlindBoxCanvasOdds) == 0) {
-      final n = engine.claimSerial(song.id, Edition.canvas);
+      final n = engine.claimSerial(song.id, Edition.canvas, song: song, playerId: id);
       if (n != null) {
         edition = Edition.canvas;
         serial = n;

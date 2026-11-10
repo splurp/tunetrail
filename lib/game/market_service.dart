@@ -32,8 +32,13 @@ abstract class MarketBackend {
   Future<int> likeShowcase(String ownerId);
 
   /// Global serial numbers for Canvas/Sample editions.
-  Future<int?> claimSerial(int songId, Edition edition);
+  /// Claims the next serial; [song] lets it show in the Edition Checker's
+  /// recent pulls.
+  Future<int?> claimSerial(int songId, Edition edition, {SongInfo? song});
   Future<int> serialsLeft(int songId, Edition edition);
+
+  /// The latest pulls of an edition anywhere: {song, ed, sn, at, by}.
+  Future<List<Map<String, dynamic>>> recentPulls(Edition edition);
 
   // ------------------------------------------------------------- social
   /// Sets this player's unique username; returns (name, new session token).
@@ -288,8 +293,11 @@ class LocalMarket extends MarketBackend {
   @override
   Future<List<InboxItem>> claimInbox() async => engine.claimInbox(playerId);
   @override
-  Future<int?> claimSerial(int songId, Edition edition) async {
-    return engine.claimSerial(songId, edition);
+  Future<List<Map<String, dynamic>>> recentPulls(Edition edition) async => engine.recentPullsOf(edition);
+
+  @override
+  Future<int?> claimSerial(int songId, Edition edition, {SongInfo? song}) async {
+    return engine.claimSerial(songId, edition, song: song, playerId: playerId);
   }
 
   @override
@@ -492,8 +500,11 @@ class RemoteMarket extends MarketBackend {
   @override
   Future<List<InboxItem>> claimInbox() async => _list(await _send('GET', '/inbox'), InboxItem.fromJson);
   @override
-  Future<int?> claimSerial(int songId, Edition edition) async =>
-      ((await _send('POST', '/serials/$songId/${edition.index}/claim') as Map)['serial'] as num?)?.toInt();
+  Future<int?> claimSerial(int songId, Edition edition, {SongInfo? song}) async =>
+      ((await _send('POST', '/serials/$songId/${edition.index}/claim', body: {if (song != null) 'song': song.toJson()}) as Map)['serial'] as num?)?.toInt();
+  @override
+  Future<List<Map<String, dynamic>>> recentPulls(Edition edition) async =>
+      [for (final x in (await _send('GET', '/editions/recent', q: {'ed': '${edition.index}'}) as List)) x as Map<String, dynamic>];
   @override
   Future<int> serialsLeft(int songId, Edition edition) async =>
       ((await _send('GET', '/serials/$songId/${edition.index}') as Map)['left'] as num).toInt();

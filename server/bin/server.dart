@@ -275,8 +275,15 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}, Ec
         'left': m.serialsLeft(int.parse(song), Edition.fromIndex(int.parse(edition))),
       })));
   r.post('/serials/<song>/<edition>/claim', (Request req, String song, String edition) => guard(() async {
-        pid(req);
-        return ok({'serial': m.claimSerial(int.parse(song), Edition.fromIndex(int.parse(edition)))});
+        final me = pid(req);
+        // Games may send the song, for the Edition Checker's recent pulls.
+        final b = await body(req);
+        final info = b['song'] is Map<String, dynamic> ? SongInfo.fromJson(b['song'] as Map<String, dynamic>) : null;
+        return ok({'serial': m.claimSerial(int.parse(song), Edition.fromIndex(int.parse(edition)), song: info?.id == int.parse(song) ? info : null, playerId: me)});
+      }));
+  r.get('/editions/recent', (Request req) => guard(() async {
+        final e = Edition.fromIndex(int.tryParse(req.url.queryParameters['ed'] ?? '') ?? Edition.canvas.index);
+        return ok(m.recentPullsOf(e));
       }));
   r.get('/health', (Request req) => ok({'ok': true, 'listings': m.listings.length, 'players': m.players.length}));
 

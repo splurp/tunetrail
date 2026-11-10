@@ -5,6 +5,7 @@ import 'card_payload.dart';
 import 'market_models.dart';
 import 'rarity.dart';
 import 'social_models.dart';
+import 'song_catalog.dart';
 import 'text_safety.dart';
 
 /// Authoritative, in-memory player market.
@@ -32,15 +33,35 @@ class MarketEngine {
 
   /// Claims the next serial number of [edition] for [songId], or null once
   /// all of them have been claimed.
-  int? claimSerial(int songId, Edition edition) {
+  /// [song] and [playerId] (when known) go into [recentPulls].
+  int? claimSerial(int songId, Edition edition, {SongInfo? song, String? playerId}) {
     if (!edition.serialized) return null;
     final key = '$songId:${edition.index}';
     final n = serials[key] ?? 0;
     if (n >= edition.maxSerials) return null;
     serials[key] = n + 1;
+    if (song != null) {
+      recentPulls.insert(0, {
+        'song': song.toJson(),
+        'ed': edition.index,
+        'sn': n + 1,
+        'at': now(),
+        if (playerId != null) 'by': nameOf(playerId),
+      });
+      if (recentPulls.length > kRecentPulls) recentPulls.removeRange(kRecentPulls, recentPulls.length);
+    }
     onChanged?.call();
     return n + 1;
   }
+
+  /// The latest Canvas / Sample / Live editions pulled anywhere, newest
+  /// first: {song, ed, sn, at, by}.
+  final List<Map<String, dynamic>> recentPulls = [];
+  static const kRecentPulls = 90;
+
+  /// Recent pulls of [edition] (up to [limit]).
+  List<Map<String, dynamic>> recentPullsOf(Edition edition, {int limit = 30}) =>
+      recentPulls.where((p) => p['ed'] == edition.index).take(limit).toList();
 
   /// How many serials of [edition] for [songId] are still unclaimed.
   int serialsLeft(int songId, Edition edition) =>
@@ -1001,6 +1022,7 @@ class MarketEngine {
         },
         'counter': _counter,
         'serials': serials,
+        'pulls': recentPulls,
         'messages': {
           for (final e in messages.entries) e.key: [for (final m in e.value) m.toJson()]
         },
@@ -1015,6 +1037,9 @@ class MarketEngine {
     serials
       ..clear()
       ..addAll({for (final e in (j['serials'] as Map<String, dynamic>? ?? const {}).entries) e.key: (e.value as num).toInt()});
+    recentPulls
+      ..clear()
+      ..addAll([for (final p in (j['pulls'] as List? ?? const [])) Map<String, dynamic>.from(p as Map)]);
     players
       ..clear()
       ..addEntries([
