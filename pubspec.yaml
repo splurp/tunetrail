@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # Build numbers: 5000 + the version (1.0.5 -> 5105). Every APK shares this
 # code (android/gradle.properties); it must stay above the old per-
 # architecture codes (up to 4104 for 1.0.4).
-version: 1.0.4+104
+version: 1.0.5+5105
 
 environment:
   sdk: ^3.13.7
