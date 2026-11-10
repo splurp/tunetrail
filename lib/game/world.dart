@@ -172,8 +172,24 @@ class WorldState extends ChangeNotifier {
     notifyListeners();
   }
 
+  final Map<String, IdleDirector> _djIdles = {};
+
+  /// A DJ's animation state: always at the turntable.
+  IdleDirector djIdle(String id) => _djIdles.putIfAbsent(id, () => IdleDirector(hashString(id) & 0xffff, false)..holdTurntable());
+
+  final Map<String, (int, double, double)> _djSpots = {};
+
   /// Where a DJ stands on the map: beside the nearest road, off buildings.
   (double, double) djPosition(DjNpc dj) {
+    final hit = _djSpots[dj.id];
+    if (hit != null && hit.$1 == g.mapData.version) return (hit.$2, hit.$3);
+    final p = _djSpot(dj);
+    if (_djSpots.length > 60) _djSpots.clear();
+    _djSpots[dj.id] = (g.mapData.version, p.$1, p.$2);
+    return p;
+  }
+
+  (double, double) _djSpot(DjNpc dj) {
     final map = g.mapData;
     final (x, y) = map.toWorld(dj.lat, dj.lng);
     final road = map.nearestRoad(x, y, within: 60);
@@ -298,6 +314,10 @@ class WorldState extends ChangeNotifier {
       p.drawHeading = (p.drawHeading + dh * math.min(1.0, dt * 4) + 360) % 360;
       p.idle.update(dt, p.moving && far > 0.6);
     }
+    for (final dj in djs) {
+      djIdle(dj.id).update(dt, false);
+    }
+    if (_djIdles.length > 40) _djIdles.removeWhere((id, _) => !djs.any((d) => d.id == id));
   }
 
   Future<void> setShowOnMap(bool show) async {

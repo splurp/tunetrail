@@ -92,6 +92,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
        [
         const _Header('Graphics'),
         SwitchListTile(
+          title: const Text('Show me on other players\' maps'),
+          subtitle: const Text('Players within about 600 m see your character and username while you\'re playing. Off: you\'re hidden (you still see them).'),
+          value: p.showOnMap,
+          onChanged: (v) => g.world.setShowOnMap(v).catchError((Object e) => g.toast('$e')),
+        ),
+        SwitchListTile(
           title: const Text('Show buildings'),
           subtitle: const Text('Low-poly city buildings at their real heights (OpenStreetMap via OpenFreeMap), alongside the roads'),
           value: p.showBuildings,

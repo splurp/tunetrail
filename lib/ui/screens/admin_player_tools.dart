@@ -37,6 +37,10 @@ class _AdminToolsState extends State<_AdminTools> {
   _Variant _variant = _Variant.regular;
   bool _busy = false;
   List<dynamic> _log = [];
+  final _xp = TextEditingController();
+  Map<String, dynamic> _progress = const {};
+
+  int _bonusCount(Bonus b) => Bonuses.fromJson(_progress['bonuses'] as Map<String, dynamic>?).of(b);
 
   @override
   void initState() {
@@ -46,6 +50,7 @@ class _AdminToolsState extends State<_AdminTools> {
 
   @override
   void dispose() {
+    _xp.dispose();
     _coins.dispose();
     _bits.dispose();
     _q.dispose();
@@ -63,6 +68,10 @@ class _AdminToolsState extends State<_AdminTools> {
     try {
       final l = await _m?.send('GET', '/admin/players/$_pid/log');
       if (mounted && l is List) setState(() => _log = l);
+    } catch (_) {}
+    try {
+      final p = await _m?.send('GET', '/admin/players/$_pid/progress');
+      if (mounted && p is Map<String, dynamic>) setState(() => _progress = p);
     } catch (_) {}
   }
 
@@ -130,6 +139,28 @@ class _AdminToolsState extends State<_AdminTools> {
           },
         });
         return 'Placed ${s.title} next to ${widget.name} (it stays for an hour)';
+      });
+
+  Future<void> _giveXp(int sign) => _run((m) async {
+        final n = int.tryParse(_xp.text.trim()) ?? 0;
+        if (n <= 0) return 'Enter an amount of XP';
+        await m.send('POST', '/admin/players/$_pid/xp', body: {'delta': n * sign});
+        _xp.clear();
+        return sign > 0 ? 'Gave ${widget.name} $n XP' : 'Took $n XP from ${widget.name}';
+      });
+
+  Future<void> _bonus(Bonus b, int delta) => _run((m) async {
+        await m.send('POST', '/admin/players/$_pid/bonus', body: {'bonus': b.name, 'delta': delta});
+        return delta > 0 ? 'Added a ${b.label} bonus to ${widget.name}' : 'Removed a ${b.label} bonus from ${widget.name}';
+      });
+
+  Future<void> _summonDj() => _run((m) async {
+        final g = GameScope.read(context);
+        final j = await m.send('POST', '/admin/players/$_pid/dj') as Map<String, dynamic>;
+        final dj = j['dj'] as Map<String, dynamic>;
+        // On the admin's own account it shows up on the map right away.
+        if (widget.playerId == g.profile.playerId) g.refreshWorld();
+        return '${dj['name']} turned up next to ${widget.name} (for half an hour)';
       });
 
   Future<void> _restore() => _run((m) async {
@@ -238,6 +269,36 @@ class _AdminToolsState extends State<_AdminTools> {
           label: Text(_song == null ? 'Pick a song' : 'Spawn ${_song!.title}', overflow: TextOverflow.ellipsis),
         ),
       ),
+        const Divider(height: 32),
+        const SectionLabel('XP and bonuses'),
+        Text(
+          _progress.isEmpty ? 'Not on the server economy yet' : 'Level ${_progress['level']} · ${_progress['xp']} XP',
+          style: const TextStyle(fontSize: 12, color: kTextSecondary),
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: TextField(controller: _xp, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'XP', isDense: true))),
+          const SizedBox(width: 8),
+          OutlinedButton(onPressed: _busy ? null : () => _giveXp(-1), child: const Text('Take')),
+          const SizedBox(width: 8),
+          FilledButton(onPressed: _busy ? null : () => _giveXp(1), child: const Text('Give')),
+        ]),
+        const SizedBox(height: 4),
+        for (final b in Bonus.values)
+          Row(children: [
+            Expanded(child: Text('${b.label}  ×${_bonusCount(b)}', style: const TextStyle(fontSize: 13))),
+            IconButton(tooltip: 'Remove one', onPressed: _busy || _bonusCount(b) <= 0 ? null : () => _bonus(b, -1), icon: const Icon(Icons.remove_circle_outline)),
+            IconButton(tooltip: 'Add one', onPressed: _busy ? null : () => _bonus(b, 1), icon: const Icon(Icons.add_circle_outline)),
+          ]),
+        const Divider(height: 32),
+        const SectionLabel('DJ battle'),
+        const Text('A DJ turns up about 30 m from where this player last was, for half an hour. Only they see it; players nearby can join the battle.',
+            style: TextStyle(fontSize: 12, color: kTextSecondary)),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonalIcon(onPressed: _busy ? null : _summonDj, icon: const Icon(Icons.album_outlined), label: const Text('Summon a DJ')),
+        ),
         const Divider(height: 32),
         const SectionLabel('Minigames'),
         Wrap(

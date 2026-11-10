@@ -22,6 +22,10 @@ enum _Hit { perfect, great, good, miss }
 class EncounterScreen extends StatefulWidget {
   const EncounterScreen({super.key, required this.spawn});
   final Spawn spawn;
+
+  /// Timing accuracy (0–100) for a tap [diff] of a beat off the beat: 100
+  /// only within ±0.25% of a beat.
+  static int accuracyOf(double diff) => _EncounterScreenState.accuracyFor(diff);
   @override
   State<EncounterScreen> createState() => _EncounterScreenState();
 }

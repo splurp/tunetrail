@@ -894,6 +894,13 @@ class Game extends ChangeNotifier {
     if (spawns.isEmpty) _refreshSpawns(force: true);
   }
 
+  /// Fetches the world around the player again (spawns, glowing features,
+  /// DJs) and who's nearby.
+  void refreshWorld() {
+    _refreshSpawns(force: true);
+    unawaited(world.refreshPresence());
+  }
+
   void _refreshSpawns({bool force = false}) {
     final now = DateTime.now();
     final w = now.millisecondsSinceEpoch ~/ SpawnEngine.window.inMilliseconds;
@@ -1477,7 +1484,7 @@ class Game extends ChangeNotifier {
   }
 
   /// Scrapyard value of a card: rarer and more-streamed songs pay more.
-  int scrapValueOf(OwnedCard c) => scrapValue(c.rarity, c.shiny, c.song.rank, edition: c.edition);
+  int scrapValueOf(OwnedCard c) => profile.bonuses.scaleScrap(scrapValue(c.rarity, c.shiny, c.song.rank, edition: c.edition));
 
   /// Scraps cards for coins. Returns the coins earned.
   Future<int> scrap(Iterable<int> uids) async {

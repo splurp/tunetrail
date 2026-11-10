@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../build_flags.dart';
+
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
@@ -19,6 +22,7 @@ import '../../map3d/props3d.dart';
 import '../../map3d/particles3d.dart';
 import '../../map3d/camera.dart';
 import '../../platform/pointer_lock.dart';
+import '../../map3d/features3d.dart';
 import '../../map3d/figure3d.dart';
 import '../../map3d/footsteps_painter.dart';
 import '../../map3d/router.dart';
@@ -26,13 +30,18 @@ import '../../map3d/sky_painter.dart';
 import '../../map3d/ground_painter.dart';
 import '../app.dart';
 import '../screens/debug_screen.dart';
+import '../screens/dj_battle_screen.dart';
 import '../screens/encounter_screen.dart';
+import '../screens/level_screen.dart';
 import '../screens/quests_screen.dart';
+import '../widgets/showcase_strip.dart';
 import '../widgets/cards.dart';
 import '../widgets/joystick.dart';
 import '../widgets/stick_figure.dart';
 import 'map_themes.dart';
 import 'spawn_marker.dart';
+import 'treasure_map.dart';
+import 'world_layers.dart';
 
 /// The 3D world: the stylised map is the ground plane, the player's stick
 /// figure walks on it at the centre, songs float above it.
@@ -106,7 +115,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final g = GameScope.read(context);
     // Turning the camera keeps a new idle from starting; walking ends one.
     final cameraBusy = DateTime.now().difference(_lastCameraInput) < const Duration(milliseconds: 1500) || _guide.isAnimating;
-    _idle.update(_clock.value - _lastT, g.location.moving, busy: cameraBusy);
+    _idle.update(_clock.value - _lastT, g.location.moving, busy: cameraBusy || _actionKind != null);
+    g.world.animate(_clock.value - _lastT);
     _lastT = _clock.value;
     final (tx, ty) = g.mapData.toWorld(g.location.position.latitude, g.location.position.longitude);
     var changed = false;
@@ -220,6 +230,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _ticker.dispose();
+    _actionCtl.dispose();
     _guide.dispose();
     _trailVanish.dispose();
     HardwareKeyboard.instance.removeHandler(_onKey);
@@ -374,6 +385,163 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (mounted) GameScope.read(context).location.setJoystick(0, 0);
   }
 
+  // ------------------------------------------------------------ features
+  /// The dig / fish / mine animation being played.
+  late final AnimationController _actionCtl = AnimationController(vsync: this);
+  FigureActionKind? _actionKind;
+  double _actionReach = 22;
+  bool _usingFeature = false;
+
+  FigureAction? get _action => _actionKind == null ? null : FigureAction(_actionKind!, _actionCtl.value, reach: _actionReach);
+
+  /// Turns the character towards a world point and plays an action.
+  Future<void> _play(FigureActionKind kind, double x, double y, Duration length) async {
+    _targetFacing = _cam.bearingTo(x, y);
+    _actionReach = math.sqrt((x - _cam.px) * (x - _cam.px) + (y - _cam.py) * (y - _cam.py));
+    _actionKind = kind;
+    _actionCtl.duration = length;
+    await _actionCtl.forward(from: 0);
+    _actionKind = null;
+  }
+
+  /// A glowing feature was tapped. Out of range (or while something else
+  /// is going on) nothing happens at all.
+  Future<void> _useFeature(Game g, MapFeature f) async {
+    if (_usingFeature || !f.glow || f.kind.nest || !g.serverEconomy || !g.world.inRange(f.point)) return;
+    _usingFeature = true;
+    try {
+      switch (f.kind) {
+        case FeatureKind.grate:
+          final j = await g.world.claim(f);
+          final coins = (j['coins'] as num?)?.toInt() ?? 0;
+          if (mounted) {
+            await showRewardDialog(
+              context,
+              icon: kCoinIcon,
+              color: kCoinColor,
+              amount: '+${formatNumber(coins)} coins',
+              text: 'Found under a glowing sewer grate.',
+            );
+          }
+        case FeatureKind.sandcastle:
+          await g.world.claim(f);
+          g.toast('You found a treasure map!');
+          if (mounted) await showTreasureMap(context);
+        case FeatureKind.lilypad || FeatureKind.rocks:
+          final fishing = f.kind == FeatureKind.lilypad;
+          final req = g.world.claim(f);
+          // Whatever the server says is shown once the animation is over.
+          unawaited(req.then<void>((_) {}, onError: (_) {}));
+          await _play(fishing ? FigureActionKind.fish : FigureActionKind.mine, f.x, f.y, Duration(milliseconds: fishing ? 3600 : 3200));
+          final j = await req;
+          final card = CardPayload.fromJson(j['card'] as Map<String, dynamic>);
+          final dup = (j['dup'] as num?)?.toInt();
+          g.toast(
+            dup != null
+                ? '${fishing ? 'Fished up' : 'Mined'} ${card.title} — you already own it, so it was scrapped for ${formatNumber(dup)} coins'
+                : '${fishing ? 'Fished up' : 'Mined'} ${card.title} (${card.rarity.label})',
+          );
+          if (mounted) await showCardFullView(context, card);
+        case FeatureKind.bush || FeatureKind.sapling:
+          break;
+      }
+    } catch (e) {
+      g.toast('$e');
+    } finally {
+      _usingFeature = false;
+    }
+  }
+
+  /// The treasure map icon: digs when standing on the X, otherwise shows
+  /// the map.
+  Future<void> _treasure(Game g) async {
+    final spot = g.world.treasureSpot;
+    if (spot == null || _usingFeature) return;
+    if (!g.world.atTreasure) return showTreasureMap(context);
+    _usingFeature = true;
+    try {
+      final req = g.world.dig();
+      unawaited(req.then<void>((_) {}, onError: (_) {}));
+      // Dig a few steps ahead, facing the way the character already is.
+      final fr = _facing * math.pi / 180;
+      await _play(FigureActionKind.dig, _cam.px + math.sin(fr) * 12, _cam.py + math.cos(fr) * 12, const Duration(milliseconds: 4200));
+      final bits = await req;
+      if (mounted) await showRewardDialog(context, icon: kBitsIcon, color: kBitsColor, amount: '+$bits bits', text: 'The treasure chest was full of bits!');
+    } catch (e) {
+      g.toast('$e');
+    } finally {
+      _usingFeature = false;
+    }
+  }
+
+  // ------------------------------------------------------------------ DJs
+  Future<void> _openBattle(Game g, Future<Map<String, dynamic>> Function() start) async {
+    try {
+      final battle = await start();
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DjBattleScreen(battle: battle)));
+      unawaited(g.world.refreshPresence());
+    } catch (e) {
+      g.toast('$e');
+    }
+  }
+
+  /// A DJ was tapped: who they are, what they play, and the challenge.
+  Future<void> _tapDj(Game g, DjNpc dj) async {
+    final near = g.world.inRange(LatLng(dj.lat, dj.lng));
+    final d = metersBetween(g.location.position, LatLng(dj.lat, dj.lng)).round();
+    final go = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Center(child: SheetHandle()),
+              Text('${dj.name} wants a battle', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Text(
+                'Playing ${dj.song.title} by ${dj.song.artistName} · scratches at about ${dj.accuracy.round()}% accuracy',
+                style: const TextStyle(color: kTextSecondary),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Tap the ring on every beat for $kBattleSeconds seconds. Beat the DJ\'s accuracy and one player in the battle wins a Canvas of the song; '
+                'everyone gets $kDjBattleXp XP. Players nearby can join while it\'s on — each one lifts the team\'s accuracy.',
+                style: TextStyle(fontSize: 13, color: kTextSecondary),
+              ),
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.album_outlined),
+                  label: Text(near ? 'Challenge' : 'Walk closer ($d m away)'),
+                  onPressed: near ? () => Navigator.pop(ctx, true) : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (go == true && mounted) await _openBattle(g, () => g.world.challenge(dj));
+  }
+
+  /// A bonus to choose (every five levels): asked once when it's earned.
+  void _maybeOfferBonus(Game g) {
+    final p = g.profile;
+    final earned = bonusChoicesAt(p.level);
+    if (!g.serverEconomy || p.bonuses.unspent(p.level) <= 0 || p.bonusPromptedAt >= earned) return;
+    if (!(ModalRoute.of(context)?.isCurrent ?? false) || HomeShell.currentTab.value != 0) return;
+    p.bonusPromptedAt = earned;
+    p.changed();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showBonusChooser(context);
+    });
+  }
+
   Future<void> _tapSpawn(Game g, Spawn s) async {
     if (!g.inRange(s) && !g.isPurchased(s)) {
       final d = metersBetween(g.location.position, s.point).round();
@@ -401,6 +569,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final p = g.profile;
     final theme = themeById(p.activeTheme);
     final look = FigureLook(color: Color(p.figureColor), hat: p.hat, shirt: p.shirt, pet: p.pet, backpack: p.backpack);
+    final contrast = contrastColor(theme.palette);
+    _maybeOfferBonus(g);
 
     return MouseRegion(
       cursor: _mouseLook ? SystemMouseCursors.none : MouseCursor.defer,
@@ -450,7 +620,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     // The footstep trail lies on the ground, under buildings.
                     footsteps: () => _prints.isEmpty
                         ? null
-                        : FootstepsPainter(camera: _cam, prints: _prints, reveal: _trailReveal.value, vanish: _trailVanish.value, opacity: 1, color: theme.accent),
+                        : FootstepsPainter(
+                            camera: _cam,
+                            prints: _prints,
+                            reveal: _trailReveal.value,
+                            vanish: _trailVanish.value,
+                            opacity: 1,
+                            color: theme.accent,
+                          ),
                   ),
                 ),
               ),
@@ -466,6 +643,39 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
+              // Bushes, rocks, lily pads, saplings, sand castles and sewer
+              // grates; the ones with something to give glow faintly.
+              IgnorePointer(
+                child: RepaintBoundary(
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _clock,
+                    builder: (context, t, _) => CustomPaint(
+                      painter: FeatureGlowPainter(camera: _cam, features: g.world.features, color: theme.accent, time: t),
+                    ),
+                  ),
+                ),
+              ),
+              IgnorePointer(
+                child: RepaintBoundary(
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _groundDirty,
+                    builder: (context, _, _) => CustomPaint(
+                      painter: FeaturesPainter(camera: _cam, features: g.world.features, palette: theme.palette, front: false),
+                    ),
+                  ),
+                ),
+              ),
+              // Other players and DJs behind the player.
+              IgnorePointer(
+                child: RepaintBoundary(
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _clock,
+                    builder: (context, t, _) => CustomPaint(
+                      painter: ActorsPainter(camera: _cam, game: g, time: t, front: false, accent: theme.accent, contrast: contrast),
+                    ),
+                  ),
+                ),
+              ),
               // Songs behind the player, then the player, then songs in front.
               ValueListenableBuilder<double>(
                 valueListenable: _clock,
@@ -476,10 +686,43 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   child: ValueListenableBuilder<double>(
                     valueListenable: _clock,
                     builder: (context, t, _) => CustomPaint(
-                      painter: Figure3DPainter(camera: _cam, look: look, time: t, idle: _idle, facing: _facing, accent: theme.accent, contrast: contrastColor(theme.palette)),
+                      painter: Figure3DPainter(
+                        camera: _cam,
+                        look: look,
+                        time: t,
+                        idle: _idle,
+                        facing: _facing,
+                        accent: theme.accent,
+                        contrast: contrast,
+                        action: _action,
+                      ),
                     ),
                   ),
                 ),
+              ),
+              IgnorePointer(
+                child: RepaintBoundary(
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _groundDirty,
+                    builder: (context, _, _) => CustomPaint(
+                      painter: FeaturesPainter(camera: _cam, features: g.world.features, palette: theme.palette, front: true),
+                    ),
+                  ),
+                ),
+              ),
+              IgnorePointer(
+                child: RepaintBoundary(
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _clock,
+                    builder: (context, t, _) => CustomPaint(
+                      painter: ActorsPainter(camera: _cam, game: g, time: t, front: true, accent: theme.accent, contrast: contrast),
+                    ),
+                  ),
+                ),
+              ),
+              ValueListenableBuilder<int>(
+                valueListenable: _groundDirty,
+                builder: (context, _, _) => WorldTapLayer(cam: _cam, game: g, onFeature: (f) => _useFeature(g, f), onDj: (dj) => _tapDj(g, dj)),
               ),
               ValueListenableBuilder<double>(
                 valueListenable: _clock,
@@ -526,6 +769,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   },
                   onNearby: () => _showNearby(g),
                   onCompass: () => _cam.bearing = 0,
+                  onTreasure: () => _treasure(g),
+                  onJoinBattle: (b) => _openBattle(g, () => g.world.join(b.id)),
                 ),
               ),
             ],
@@ -545,8 +790,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(s.song.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-        content: Text('${s.song.artistName} · ${s.rarity.label}\n\n$d m away — walk within ${Game.catchRangeMeters.round()} m to catch it, '
-            'or buy it now for ${formatNumber(price)} coins.'),
+        content: Text(
+          '${s.song.artistName} · ${s.rarity.label}\n\n$d m away — walk within ${Game.catchRangeMeters.round()} m to catch it, '
+          'or buy it now for ${formatNumber(price)} coins.',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Walk there')),
           FilledButton(onPressed: g.profile.coins < price ? null : () => Navigator.pop(ctx, true), child: Text('Buy · ${formatNumber(price)} coins')),
@@ -607,9 +854,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       leading: Container(
                         width: 44,
                         height: 44,
-                        decoration: BoxDecoration(color: kSurface2, borderRadius: BorderRadius.circular(8), border: Border.all(color: kOutline)),
+                        decoration: BoxDecoration(
+                          color: kSurface2,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: kOutline),
+                        ),
                         alignment: Alignment.center,
-                        child: const Text('?', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: kTextSecondary)),
+                        child: const Text(
+                          '?',
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: kTextSecondary),
+                        ),
                       ),
                       title: const Text('???', style: TextStyle(fontWeight: FontWeight.w700)),
                       subtitle: Text('Something special · $d m', style: const TextStyle(fontSize: 12, color: kTextTertiary)),
@@ -649,13 +903,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   static Particle3DKind? _particleKind(MapEffect e) => switch (e) {
-        MapEffect.snow => Particle3DKind.snow,
-        MapEffect.dust => Particle3DKind.dust,
-        MapEffect.embers => Particle3DKind.embers,
-        MapEffect.petals => Particle3DKind.petals,
-        MapEffect.sweets => Particle3DKind.sweets,
-        _ => null,
-      };
+    MapEffect.snow => Particle3DKind.snow,
+    MapEffect.dust => Particle3DKind.dust,
+    MapEffect.embers => Particle3DKind.embers,
+    MapEffect.petals => Particle3DKind.petals,
+    MapEffect.sweets => Particle3DKind.sweets,
+    _ => null,
+  };
 }
 
 /// Billboarded spawns, projected through the 3D camera each frame.
@@ -716,7 +970,11 @@ class _Hud extends StatelessWidget {
     required this.onJoystickEnd,
     required this.onNearby,
     required this.onCompass,
+    required this.onTreasure,
+    required this.onJoinBattle,
   });
+  final VoidCallback onTreasure;
+  final void Function(NearbyBattle) onJoinBattle;
   final Game g;
   final Camera3D cam;
   final void Function(double, double) onJoystick;
@@ -731,6 +989,7 @@ class _Hud extends StatelessWidget {
     final from = xpForLevel(lvl), need = xpToNextLevel(lvl);
     final frac = need == 0 ? 1.0 : ((p.xp - from) / need).clamp(0.0, 1.0);
     final zone = g.zoneHere.active;
+    final battle = g.world.battles.where((b) => !b.joined && b.endAt - g.world.serverNow > 8000).firstOrNull;
     final status = g.findingSongs
         ? 'Finding songs nearby…'
         : (g.mapData.tiles.isEmpty && g.mapData.isLoading)
@@ -746,33 +1005,37 @@ class _Hud extends StatelessWidget {
           children: [
             Row(
               children: [
-                Glass(
-                  padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 30,
-                        height: 30,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            CircularProgressIndicator(value: frac, strokeWidth: 2, color: kAccent, backgroundColor: Colors.white10),
-                            Text('$lvl', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                          ],
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LevelScreen())),
+                  child: Glass(
+                    padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 30,
+                          height: 30,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              CircularProgressIndicator(value: frac, strokeWidth: 2, color: kAccent, backgroundColor: Colors.white10),
+                              Text('$lvl', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 120),
-                        child: Text(
-                          p.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        const SizedBox(width: 10),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 120),
+                          child: Text(
+                            p.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
                         ),
-                      ),
-                    ],
+                        if (p.bonuses.unspent(lvl) > 0) ...[const SizedBox(width: 6), const Icon(Icons.add_circle, size: 16, color: kAccent)],
+                      ],
+                    ),
                   ),
                 ),
                 const Spacer(),
@@ -807,6 +1070,33 @@ class _Hud extends StatelessWidget {
                 ),
               ],
             ),
+            if (battle != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () => onJoinBattle(battle),
+                    child: Glass(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.album_outlined, size: 18, color: kAccent),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              '${battle.dj.name} battle nearby (${battle.players} playing) — tap to join',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (status != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -821,10 +1111,7 @@ class _Hud extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                if (g.location.joystickMode)
-                  Joystick(onChanged: (x, y) => (x == 0 && y == 0) ? onJoystickEnd() : onJoystick(x, y))
-                else
-                  const SizedBox(),
+                if (g.location.joystickMode) Joystick(onChanged: (x, y) => (x == 0 && y == 0) ? onJoystickEnd() : onJoystick(x, y)) else const SizedBox(),
                 const Spacer(),
                 Column(
                   mainAxisSize: MainAxisSize.min,
@@ -834,6 +1121,16 @@ class _Hud extends StatelessWidget {
                         icon: Icons.travel_explore,
                         tooltip: 'Teleport',
                         onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TeleportScreen())),
+                      ),
+                    if (p.treasure != null)
+                      HudButton(
+                        tooltip: g.world.atTreasure ? 'Dig here!' : 'Treasure map',
+                        onTap: onTreasure,
+                        child: Icon(
+                          g.world.atTreasure ? Icons.hardware : Icons.map_outlined,
+                          size: 20,
+                          color: g.world.atTreasure ? kBitsColor : const Color(0xFFE9D8AE),
+                        ),
                       ),
                     HudButton(
                       icon: Icons.checklist_rounded,
@@ -874,10 +1171,7 @@ void showZonesSheet(BuildContext context, ZoneReading here) {
           const SheetHandle(),
           const Text('Genre zones', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          const Text(
-            'Songs spawn more often in places that fit their sound. Zone boosts stack with time of day.',
-            style: TextStyle(color: Colors.white60),
-          ),
+          const Text('Songs spawn more often in places that fit their sound. Zone boosts stack with time of day.', style: TextStyle(color: Colors.white60)),
           const SizedBox(height: 16),
           for (final z in kZones)
             Padding(

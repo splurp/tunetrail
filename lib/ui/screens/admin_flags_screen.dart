@@ -34,6 +34,8 @@ class _AdminFlagsScreenState extends State<AdminFlagsScreen> {
     'many_grants': 'Many store grants',
     'minigame_bits': 'Asked for too many minigame bits',
     'device_merge': 'Merged progress from another device',
+    'feature_out_of_range': 'Used a map feature from too far away',
+    'dj_accuracy': 'Near-perfect accuracy in a DJ battle',
   };
 
   Future<void> _clear(String id) async {

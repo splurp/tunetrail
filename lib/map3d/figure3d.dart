@@ -9,6 +9,18 @@ import 'outfit3d.dart';
 /// Idle activities the character can drift into when standing still.
 enum IdleActivity { none, headphones, turntable }
 
+/// One-off actions the character plays at a glowing map feature.
+enum FigureActionKind { dig, fish, mine }
+
+/// An action in progress: [t] runs 0 → 1; [reach] is how far ahead of the
+/// character (metres) the thing it's working on is.
+class FigureAction {
+  const FigureAction(this.kind, this.t, {this.reach = 22});
+  final FigureActionKind kind;
+  final double t;
+  final double reach;
+}
+
 /// Drives walking/idle blending and look-around. Updated every frame by the
 /// map screen; all transitions are eased so the figure never snaps.
 class IdleDirector {
@@ -35,6 +47,18 @@ class IdleDirector {
   double _stillFor = 0, _nextIdleAt = 10, _activityLength = 16, _lookTarget = 0, _lookTimer = 2;
   bool _ending = false;
   IdleActivity _last = IdleActivity.turntable;
+
+  /// Stands at the turntable until further notice (a DJ in a battle): the
+  /// deck rises out of the ground as usual.
+  void holdTurntable() {
+    if (activity != IdleActivity.turntable) {
+      activity = IdleActivity.turntable;
+      activityTime = 0;
+      blend = 0;
+    }
+    _ending = false;
+    _activityLength = double.infinity;
+  }
 
   /// [moving]: the character walks (ends any idle). [busy]: something
   /// else, like the camera turning, that only keeps a new idle from
@@ -128,7 +152,26 @@ class Figure3DPainter extends CustomPainter {
     required this.accent,
     required this.contrast,
     this.wave = 0,
+    this.x,
+    this.y,
+    this.disc = true,
+    this.action,
+    this.beat,
   });
+
+  /// Where the figure stands in world metres (the camera's player
+  /// position when null).
+  final double? x, y;
+
+  /// Draw the accent disc under the figure (the player's own marker).
+  final bool disc;
+
+  /// A one-off action being played (digging, fishing, mining).
+  final FigureAction? action;
+
+  /// At a turntable: progress through the current beat (0 on the beat →
+  /// 1 just before the next), so the scratching follows the music.
+  final double? beat;
 
   /// Progress through a wave hello (0 = not waving, 0→1 over the wave).
   final double wave;
@@ -212,11 +255,13 @@ class Figure3DPainter extends CustomPainter {
 
   /// Standing at a turntable: one hand scratching, one on the fader.
   _Pose _turntablePose(double t, double deckTop) {
-    final beat = math.sin(t * math.pi * 2 * 2.0);
+    final u = this.beat;
+    final beat = u == null ? math.sin(t * math.pi * 2 * 2.0) : math.exp(-u * 5);
     final nod = math.max(0.0, beat) * 0.25 * s;
-    // Scratch: quick back-and-forth bursts with short pauses.
+    // Scratch: quick back-and-forth bursts with short pauses — or, in a
+    // battle, a sharp scratch on every beat.
     final burst = math.sin(t * 1.3) > -0.3 ? 1.0 : 0.15;
-    final scratch = math.sin(t * math.pi * 2 * 3.2) * 0.45 * s * burst;
+    final scratch = u == null ? math.sin(t * math.pi * 2 * 3.2) * 0.45 * s * burst : math.sin(u * math.pi * 6) * math.exp(-u * 3.5) * 0.75 * s;
     final fader = math.sin(t * math.pi * 2 * 0.9) * 0.35 * s;
     final hipZ = _z(76) - 0.25 * s;
     return _Pose({
@@ -233,6 +278,263 @@ class Figure3DPainter extends CustomPainter {
       'elbowR': (1.4 * s, 1.35 * s, deckTop + 1.0 * s),
       'handR': (2.55 * s + scratch * 0.4, 1.05 * s + scratch, deckTop + 0.15 * s),
     });
+  }
+
+  // ------------------------------------------------------------ actions
+  static double _strike(double q) => q < 0.6 ? _ease(q / 0.6) * 0.15 : 0.15 + 0.85 * math.pow((q - 0.6) / 0.4, 3).toDouble();
+
+  /// The pose while digging, fishing or mining (blended in and out at the
+  /// ends so the character never snaps).
+  _Pose _actionPose(_Pose base, FigureAction a) {
+    final t = a.t.clamp(0.0, 1.0);
+    final amt = _ease(t / 0.08) * _ease((1 - t) / 0.06);
+    final shZ = _z(42), hipZ = _z(76);
+    final j = Map.of(base.j);
+    void set(String k, (double, double, double) v) => j[k] = _mix(j[k]!, v, amt);
+    void lean(double f, double down) {
+      for (final (k, up) in const [('shoulder', 0.7), ('neck', 0.85), ('head', 1.0)]) {
+        final p = base.j[k]!;
+        set(k, (p.$1 + f * up, p.$2, p.$3 - down * up));
+      }
+    }
+
+    switch (a.kind) {
+      case FigureActionKind.dig:
+        if (t < 0.7) {
+          // Four digs: the shovel goes in, then lifts and tosses.
+          final q = (t / 0.7 * 4) % 1.0;
+          final d = math.sin(q * math.pi);
+          lean(0.9 * s * d, 0.5 * s * d);
+          set('elbowR', (1.0 * s + 0.5 * s * d, 1.2 * s, shZ - 1.3 * s - 0.6 * s * d));
+          set('handR', (1.9 * s + 0.9 * s * d, 0.35 * s, shZ - 2.2 * s - 1.5 * s * d));
+          set('elbowL', (0.5 * s + 0.3 * s * d, -1.2 * s, shZ - 1.1 * s - 0.4 * s * d));
+          set('handL', (1.0 * s + 0.5 * s * d, -0.3 * s, shZ - 1.2 * s - 1.0 * s * d));
+        } else {
+          // The chest comes up: arms thrown in the air.
+          final c = _ease((t - 0.7) / 0.12);
+          final bounce = math.sin(t * 40) * 0.12 * s * c;
+          set('elbowR', (0.2 * s, 1.7 * s, shZ + 0.8 * s * c));
+          set('handR', (0.3 * s, 2.0 * s, shZ + 2.6 * s * c + bounce));
+          set('elbowL', (0.2 * s, -1.7 * s, shZ + 0.8 * s * c));
+          set('handL', (0.3 * s, -2.0 * s, shZ + 2.6 * s * c - bounce));
+        }
+      case FigureActionKind.fish:
+        final ang = _rodAngle(t);
+        // The rod hand follows the rod: back over the shoulder to cast,
+        // out in front while waiting, up high for the catch.
+        final hx = 1.5 * s * math.cos(ang).clamp(-0.4, 1.0), hz = shZ - 0.5 * s + 1.0 * s * math.sin(ang).clamp(0.0, 1.0);
+        set('elbowR', (0.6 * s + hx * 0.3, 1.4 * s, shZ - 1.2 * s + (hz - shZ) * 0.3));
+        set('handR', (0.4 * s + hx, 1.0 * s, hz));
+        set('elbowL', (0.5 * s, -1.3 * s, shZ - 1.4 * s));
+        set('handL', (1.1 * s, -0.5 * s, hipZ + 0.6 * s));
+        if (t > 0.75) lean(-0.5 * s * _ease((t - 0.75) / 0.1), 0);
+      case FigureActionKind.mine:
+        // Five swings of the pickaxe: up over the head, then down hard.
+        final q = (t * 5) % 1.0;
+        final k = _strike(q); // 0 = raised, 1 = struck
+        final up = 1 - k;
+        lean(0.3 * s + 0.9 * s * k, 0.6 * s * k);
+        set('elbowR', (0.8 * s + 0.6 * s * k, 1.2 * s, shZ + 0.9 * s * up - 0.9 * s * k));
+        set('handR', (0.9 * s + 1.5 * s * k, 0.3 * s, shZ + 2.2 * s * up - 1.6 * s * k));
+        set('elbowL', (0.7 * s + 0.6 * s * k, -1.2 * s, shZ + 0.8 * s * up - 0.9 * s * k));
+        set('handL', (0.7 * s + 1.3 * s * k, -0.3 * s, shZ + 1.8 * s * up - 1.3 * s * k));
+    }
+    return _Pose(j);
+  }
+
+  /// The fishing rod's angle above the horizon (radians) through the cast,
+  /// the wait and the catch.
+  static double _rodAngle(double t) {
+    if (t < 0.1) return 0.7 + 1.6 * _ease(t / 0.1); // swing back
+    if (t < 0.2) return 2.3 - 1.75 * _ease((t - 0.1) / 0.1); // cast
+    if (t < 0.75) return 0.55 + 0.05 * math.sin(t * 30);
+    return 0.55 + 1.0 * _ease((t - 0.75) / 0.1); // strike!
+  }
+
+  /// The tool in the character's hands, and what it's working on.
+  void _drawActionProps(Canvas canvas, Camera3D cam, FigureAction a, _Pose pose, (double, double, double) Function((double, double, double)) w, double lineW) {
+    final t = a.t.clamp(0.0, 1.0);
+    final amt = _ease(t / 0.08) * _ease((1 - t) / 0.06);
+    if (amt <= 0.02) return;
+    Offset? pr((double, double, double) p) {
+      final q = w(p);
+      return cam.project(q.$1, q.$2, q.$3);
+    }
+
+    final outline = HSLColor.fromColor(contrast).lightness > 0.5 ? const Color(0xFF101014) : Colors.white;
+    void line((double, double, double) p0, (double, double, double) p1, double width, {Color? color}) {
+      final o0 = pr(p0), o1 = pr(p1);
+      if (o0 == null || o1 == null) return;
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+      if (color == null) canvas.drawLine(o0, o1, paint..color = outline.withValues(alpha: amt)..strokeWidth = width + 2);
+      canvas.drawLine(o0, o1, paint..color = (color ?? contrast).withValues(alpha: amt)..strokeWidth = width);
+    }
+
+    final hR = pose.j['handR']!, hL = pose.j['handL']!;
+    final reach = a.reach.clamp(4.5 * s, 9.0 * s);
+    switch (a.kind) {
+      case FigureActionKind.dig:
+        if (t < 0.7) {
+          // Shovel: shaft through both hands down to the blade.
+          final dx = hR.$1 - hL.$1, dz = hR.$3 - hL.$3;
+          final l = math.max(0.01, math.sqrt(dx * dx + dz * dz));
+          final tip = (hR.$1 + dx / l * 2.0 * s, hR.$2, math.max(0.0, hR.$3 + dz / l * 2.0 * s));
+          line((hL.$1 - dx / l * 0.6 * s, hL.$2, hL.$3 - dz / l * 0.6 * s), tip, lineW * 0.55);
+          line(tip, (tip.$1 + dx / l * 0.9 * s, tip.$2, math.max(0.0, tip.$3 + dz / l * 0.9 * s)), lineW * 1.5);
+          // Dirt flying from the hole.
+          final q = (t / 0.7 * 4) % 1.0;
+          if (q > 0.55) {
+            final f = (q - 0.55) / 0.45;
+            for (var k = 0; k < 4; k++) {
+              final o = pr((3.2 * s - f * (1.5 + k * 0.5) * s, (k - 1.5) * 0.7 * s, (0.6 + 2.6 * math.sin(f * math.pi) + k * 0.3) * s));
+              if (o != null) canvas.drawCircle(o, lineW * (0.42 - 0.05 * k), Paint()..color = contrast.withValues(alpha: amt * (1 - f)));
+            }
+          }
+        }
+        _drawChest(canvas, cam, w, t, amt, lineW);
+      case FigureActionKind.fish:
+        final ang = _rodAngle(t);
+        final tip = (hR.$1 + math.cos(ang) * 5.2 * s, hR.$2, hR.$3 + math.sin(ang) * 5.2 * s);
+        line(hR, tip, lineW * 0.42);
+        // The line: slack while the rod swings, then out to the float.
+        final cast = _ease((t - 0.12) / 0.14);
+        final bob = math.sin(t * 22) * 0.25 * s;
+        var end = (hR.$1 + (reach - hR.$1) * cast, hR.$2 * (1 - cast), 0.4 * s + bob * cast + (1 - cast) * (tip.$3 - 2 * s));
+        if (t > 0.75) {
+          final up = _ease((t - 0.75) / 0.15);
+          end = (end.$1 + (tip.$1 - end.$1) * up * 0.75, end.$2, end.$3 + (tip.$3 - 1.5 * s - end.$3) * up);
+        }
+        if (t > 0.1) line(tip, end, math.max(1.0, lineW * 0.14), color: outline);
+        final e = pr(end);
+        if (e != null && t > 0.2) {
+          if (t < 0.75) {
+            canvas.drawCircle(e, lineW * 0.5, Paint()..color = const Color(0xFFE5484D).withValues(alpha: amt));
+            // Ripples on the water.
+            for (var k = 0; k < 2; k++) {
+              final r = ((t * 6 + k * 0.5) % 1.0);
+              canvas.drawOval(
+                  Rect.fromCenter(center: e.translate(0, lineW * 0.3), width: lineW * (2 + 6 * r), height: lineW * (0.8 + 2.4 * r)),
+                  Paint()
+                    ..style = PaintingStyle.stroke
+                    ..strokeWidth = 1.2
+                    ..color = contrast.withValues(alpha: amt * (1 - r) * 0.8));
+            }
+          } else {
+            _drawCatch(canvas, e, lineW, amt);
+          }
+        }
+      case FigureActionKind.mine:
+        final q = (t * 5) % 1.0;
+        final k = _strike(q);
+        // Handle through both hands; the head swings from behind the
+        // shoulder down onto the rocks.
+        final ang = 2.15 - 2.5 * k;
+        final top = (hR.$1 + math.cos(ang) * 3.0 * s, (hR.$2 + hL.$2) / 2, hR.$3 + math.sin(ang) * 3.0 * s);
+        line(((hR.$1 + hL.$1) / 2 - math.cos(ang) * 0.7 * s, (hR.$2 + hL.$2) / 2, (hR.$3 + hL.$3) / 2 - math.sin(ang) * 0.7 * s), top, lineW * 0.55);
+        final px = -math.sin(ang), pz = math.cos(ang);
+        final a0 = (top.$1 + px * 1.5 * s - math.cos(ang) * 0.5 * s, top.$2, top.$3 + pz * 1.5 * s - math.sin(ang) * 0.5 * s);
+        final a1 = (top.$1 - px * 1.5 * s - math.cos(ang) * 0.5 * s, top.$2, top.$3 - pz * 1.5 * s - math.sin(ang) * 0.5 * s);
+        line(a0, top, lineW * 0.6);
+        line(top, a1, lineW * 0.6);
+        // Sparks and chips at each strike.
+        if (q > 0.92 || q < 0.18) {
+          final f = q > 0.92 ? (q - 0.92) / 0.26 : (q + 0.08) / 0.26;
+          final hit = pr((math.min(reach, 4.6 * s), 0, 1.2 * s));
+          if (hit != null) {
+            for (var i = 0; i < 6; i++) {
+              final an = -math.pi * (0.15 + 0.7 * i / 5);
+              final r0 = lineW * (0.6 + 2.2 * f), r1 = lineW * (1.4 + 3.4 * f);
+              canvas.drawLine(
+                  hit + Offset(math.cos(an) * r0, math.sin(an) * r0),
+                  hit + Offset(math.cos(an) * r1, math.sin(an) * r1),
+                  Paint()
+                    ..strokeCap = StrokeCap.round
+                    ..strokeWidth = math.max(1.2, lineW * 0.2)
+                    ..color = accent.withValues(alpha: amt * (1 - f)));
+            }
+          }
+        }
+        if (t > 0.86) {
+          final e = pr((math.min(reach, 4.6 * s), 0, (1.5 + 5 * _ease((t - 0.86) / 0.1)) * s));
+          if (e != null) _drawCatch(canvas, e, lineW, amt);
+        }
+    }
+  }
+
+  /// A little glowing song card: what was fished up or mined.
+  void _drawCatch(Canvas canvas, Offset at, double lineW, double alpha) {
+    final r = RRect.fromRectAndRadius(Rect.fromCenter(center: at, width: lineW * 2.6, height: lineW * 3.6), Radius.circular(lineW * 0.4));
+    canvas.drawRRect(
+        r.inflate(lineW * 0.9),
+        Paint()
+          ..color = accent.withValues(alpha: 0.45 * alpha)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, lineW * 1.2));
+    canvas.drawRRect(r, Paint()..color = const Color(0xFF17171C).withValues(alpha: alpha));
+    canvas.drawRRect(
+        r,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1.2, lineW * 0.22)
+          ..color = accent.withValues(alpha: alpha));
+    canvas.drawCircle(at.translate(0, -lineW * 0.3), lineW * 0.55, Paint()..color = accent.withValues(alpha: alpha));
+  }
+
+  /// The treasure chest rising out of the hole (the last third of a dig).
+  void _drawChest(Canvas canvas, Camera3D cam, (double, double, double) Function((double, double, double)) w, double t, double alpha, double lineW) {
+    if (t < 0.66) return;
+    final rise = Curves.easeOutBack.transform(((t - 0.66) / 0.16).clamp(0.0, 1.0));
+    const h = 1.9 * s, f0 = 2.3 * s, f1 = 4.3 * s, r0 = -1.6 * s, r1 = 1.6 * s;
+    final top = h * rise, base = top - h;
+    Offset? p(double f, double r, double z) {
+      final q = w((f, r, math.max(0.0, z)));
+      return cam.project(q.$1, q.$2, q.$3);
+    }
+
+    final corners = [(f0, r0), (f1, r0), (f1, r1), (f0, r1)];
+    final faces = <(double, List<Offset>)>[];
+    for (var i = 0; i < 4; i++) {
+      final a = corners[i], b = corners[(i + 1) % 4];
+      final pts = [p(a.$1, a.$2, base), p(b.$1, b.$2, base), p(b.$1, b.$2, top), p(a.$1, a.$2, top)];
+      if (pts.any((o) => o == null)) return;
+      final mid = w(((a.$1 + b.$1) / 2, (a.$2 + b.$2) / 2, top / 2));
+      faces.add((cam.depth(cam.alignY(mid.$1, mid.$2), mid.$3), [for (final o in pts) o!]));
+    }
+    faces.sort((x, y) => y.$1.compareTo(x.$1));
+    Path quad(List<Offset> pts) => Path()..addPolygon(pts, true);
+    const wood = Color(0xFF7A4A21), woodDark = Color(0xFF5C3616), gold = Color(0xFFE3B341);
+    final trim = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(1.4, lineW * 0.22)
+      ..strokeJoin = StrokeJoin.round
+      ..color = gold.withValues(alpha: alpha);
+    for (var i = 0; i < faces.length; i++) {
+      canvas.drawPath(quad(faces[i].$2), Paint()..color = (i.isEven ? woodDark : wood).withValues(alpha: alpha));
+      canvas.drawPath(quad(faces[i].$2), trim);
+    }
+    final lid = [for (final c in corners) p(c.$1, c.$2, top)];
+    if (lid.any((o) => o == null)) return;
+    final lidPts = [for (final o in lid) o!];
+    // The lid swings open at the end and the bits inside shine out.
+    final open = _ease((t - 0.84) / 0.08);
+    if (open > 0) {
+      final c = lidPts.reduce((a, b) => a + b) / 4;
+      canvas.drawCircle(
+          c,
+          lineW * (2.5 + 2.5 * open),
+          Paint()
+            ..color = gold.withValues(alpha: 0.55 * open * alpha)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, lineW * 2));
+      canvas.drawPath(quad(lidPts), Paint()..color = const Color(0xFFFFE9A8).withValues(alpha: alpha));
+      for (var k = 0; k < 5; k++) {
+        final u = ((t - 0.84) * 5 + k * 0.2) % 1.0;
+        canvas.drawCircle(c + Offset((k - 2) * lineW * 0.9, -u * lineW * 7), lineW * 0.32 * (1 - u), Paint()..color = gold.withValues(alpha: alpha * (1 - u)));
+      }
+    } else {
+      canvas.drawPath(quad(lidPts), Paint()..color = wood.withValues(alpha: alpha));
+    }
+    canvas.drawPath(quad(lidPts), trim);
   }
 
   @override
@@ -281,7 +583,19 @@ class Figure3DPainter extends CustomPainter {
       pose = _Pose(j);
     }
 
-    (double, double, double) w((double, double, double) p) => (cam.px + fx * p.$1 + rx * p.$2, cam.py + fy * p.$1 + ry * p.$2, p.$3);
+    final ox = x ?? cam.px, oy = y ?? cam.py;
+    // Off-screen or behind the camera: nothing to draw.
+    if (x != null) {
+      final ya = cam.alignY(ox, oy);
+      if (ya < cam.yNear + 20 || ya > cam.yFar * 0.6) return;
+      final zc = cam.depth(ya, 0);
+      if (zc <= 2) return;
+      final sx = cam.sx(cam.alignX(ox, oy), zc);
+      if (sx < -120 || sx > size.width + 120) return;
+    }
+    final act0 = action;
+    if (act0 != null) pose = _actionPose(pose, act0);
+    (double, double, double) w((double, double, double) p) => (ox + fx * p.$1 + rx * p.$2, oy + fy * p.$1 + ry * p.$2, p.$3);
     (double, double, double) wl(double f, double r, double z) => w((f, r, z));
     Offset? proj((double, double, double) p) => cam.project(p.$1, p.$2, p.$3);
     double depthOf((double, double, double) p) => cam.depth(cam.alignY(p.$1, p.$2), p.$3);
@@ -291,18 +605,20 @@ class Figure3DPainter extends CustomPainter {
     final shadow = Path(), disc = Path();
     for (var i = 0; i <= 32; i++) {
       final a = i * 2 * math.pi / 32;
-      final p = cam.project(cam.px + math.cos(a) * 2.8 * s, cam.py + math.sin(a) * 2.8 * s);
-      final q = cam.project(cam.px + math.cos(a) * 5.5 * s, cam.py + math.sin(a) * 5.5 * s);
+      final p = cam.project(ox + math.cos(a) * 2.8 * s, oy + math.sin(a) * 2.8 * s);
+      final q = cam.project(ox + math.cos(a) * 5.5 * s, oy + math.sin(a) * 5.5 * s);
       if (p != null) i == 0 ? shadow.moveTo(p.dx, p.dy) : shadow.lineTo(p.dx, p.dy);
       if (q != null) i == 0 ? disc.moveTo(q.dx, q.dy) : disc.lineTo(q.dx, q.dy);
     }
-    canvas.drawPath(disc, Paint()..color = accent.withValues(alpha: 0.10));
-    canvas.drawPath(
-        disc,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2
-          ..color = accent.withValues(alpha: 0.4));
+    if (this.disc) {
+      canvas.drawPath(disc, Paint()..color = accent.withValues(alpha: 0.10));
+      canvas.drawPath(
+          disc,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..color = accent.withValues(alpha: 0.4));
+    }
     canvas.drawPath(
         shadow,
         Paint()
@@ -557,6 +873,8 @@ class Figure3DPainter extends CustomPainter {
         }
       }
     }
+
+    if (act0 != null) _drawActionProps(canvas, cam, act0, pose, w, lineW);
 
     // Floating notes always sit on top.
     if (act == IdleActivity.headphones) _drawNotes(canvas, headP, headR, idle.activityTime, e);
