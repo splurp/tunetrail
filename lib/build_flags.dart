@@ -11,4 +11,4 @@ library;
 const bool kAdminBuild = bool.fromEnvironment('TUNETRAIL_ADMIN');
 
 /// The game's version (1.X: major features, 1.X.X: fixes and small tweaks).
-const String kAppVersion = 'Beta v1.0.3';
+const String kAppVersion = 'Beta v1.0.4';
