@@ -13,35 +13,63 @@ void main() {
     expect(pool.rarities.values.toSet().length, greaterThanOrEqualTo(4));
   });
 
-  test('spawns are deterministic and can be looked up by id', () {
+  List<WorldSpawn> around(WorldSpawner w, double lat, double lng, int d, {Set<int> favorites = const {}, CellGround? ground, Map<String, int> gens = const {}}) => [
+        for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng))
+          for (final (k, la, ln) in w.spots(cx, cy, d, ground ?? CellGround.allLand()))
+            ?w.spawnAt(cx, cy, d, k, gens[WorldSpawner.slotKey(cx, cy, d, k)] ?? 0, la, ln, expiresAt: 0, favorites: favorites),
+      ];
+
+  test('spawns are deterministic for a day and differ by seed', () {
     final w = WorldSpawner(pool, seed: 42);
-    final now = DateTime.utc(2026, 11, 9, 12).millisecondsSinceEpoch;
-    final a = w.around(40.758, -73.985, nowMs: now);
-    final b = w.around(40.758, -73.985, nowMs: now);
+    final a = around(w, 40.758, -73.985, 20000);
+    final b = around(w, 40.758, -73.985, 20000);
+    expect(a, isNotEmpty);
     expect(a.map((s) => s.id).toList(), b.map((s) => s.id).toList());
     expect(a.map((s) => s.song.id).toList(), b.map((s) => s.song.id).toList());
-    expect(a, isNotEmpty);
-    final one = a.first;
-    final again = w.byId(one.id)!;
-    expect(again.song.id, one.song.id);
-    expect(again.lat, one.lat);
-    expect(w.byId('1:2:3:9'), isNull);
-    // A different secret seed gives a different world.
-    final other = WorldSpawner(pool, seed: 43).around(40.758, -73.985, nowMs: now);
+    // The next day shuffles them.
+    expect(around(w, 40.758, -73.985, 20001).map((s) => s.lat).toList(), isNot(a.map((s) => s.lat).toList()));
+    final other = around(WorldSpawner(pool, seed: 43), 40.758, -73.985, 20000);
     expect(other.map((s) => s.song.id).toList(), isNot(a.map((s) => s.song.id).toList()));
+  });
+
+  test('a caught spot gets a new song in the same place', () {
+    final w = WorldSpawner(pool, seed: 5);
+    final (cx, cy) = WorldSpawner.cellOf(40.758, -73.985);
+    final spots = w.spots(cx, cy, 100, CellGround(List.filled(64, CellGround.built)));
+    expect(spots, isNotEmpty);
+    final (k, lat, lng) = spots.first;
+    final first = w.spawnAt(cx, cy, 100, k, 0, lat, lng, expiresAt: 0)!;
+    final next = w.spawnAt(cx, cy, 100, k, 1, lat, lng, expiresAt: 0)!;
+    expect(next.lat, first.lat);
+    expect(next.id, isNot(first.id));
+  });
+
+  test('never on water; more spots where it is built up', () {
+    final w = WorldSpawner(pool, seed: 9);
+    // West half water, east half land.
+    final half = CellGround([for (var i = 0; i < 64; i++) i % 8 < 4 ? CellGround.water : CellGround.land]);
+    expect(CellGround.parse(half.encode())!.squares, half.squares);
+    var rural = 0, urban = 0;
+    for (var c = 0; c < 400; c++) {
+      for (final (_, _, lng) in w.spots(c, 7, 3, half)) {
+        rural++;
+        final x = lng / WorldSpawner.lngDegForRow(7) - c;
+        expect(x, greaterThan(0.5)); // east (land) half only
+      }
+      urban += w.spots(c, 7, 3, CellGround(List.filled(64, CellGround.built))).length;
+      expect(w.spots(c, 7, 3, CellGround(List.filled(64, CellGround.water))), isEmpty);
+    }
+    expect(urban, greaterThan(rural * 4));
   });
 
   test('favourites turn up more often without moving other spawns', () {
     final w = WorldSpawner(pool, seed: 7);
-    final now = DateTime.utc(2026, 11, 9).millisecondsSinceEpoch;
     var plain = 0, boosted = 0;
-    for (var t = 0; t < 40; t++) {
-      final ms = now + t * WorldSpawner.window.inMilliseconds;
-      plain += w.around(10, 10, nowMs: ms).where((s) => s.song.artistId == 3).length;
-      final withFav = w.around(10, 10, nowMs: ms, favorites: {3});
+    for (var d = 0; d < 40; d++) {
+      plain += around(w, 10, 10, d).where((s) => s.song.artistId == 3).length;
+      final withFav = around(w, 10, 10, d, favorites: {3});
       boosted += withFav.where((s) => s.song.artistId == 3).length;
-      // Positions are the same either way.
-      expect(withFav.map((s) => s.id).toList(), w.around(10, 10, nowMs: ms).map((s) => s.id).toList());
+      expect(withFav.map((s) => s.id).toList(), around(w, 10, 10, d).map((s) => s.id).toList());
     }
     expect(boosted, greaterThan(plain * 3));
   });

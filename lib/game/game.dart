@@ -80,7 +80,7 @@ class Game extends ChangeNotifier {
   Timer? _tick;
   Timer? _inboxTimer;
 
-  static const catchRangeMeters = 70.0;
+  static const catchRangeMeters = kCatchRangeMeters;
 
   static Future<Game> create() async {
     final base = await getApplicationSupportDirectory();
@@ -891,6 +891,21 @@ class Game extends ChangeNotifier {
   /// shown, and caught, as a regular card).
   final Set<String> _noLive = {};
 
+  /// A spawn cell's ground map (water / land / built-up squares) from the
+  /// loaded map tiles, or null while they're still loading.
+  String? _groundOf(int cx, int cy) {
+    final squares = <int>[];
+    for (var row = 0; row < CellGround.n; row++) {
+      for (var col = 0; col < CellGround.n; col++) {
+        final (lat, lng) = WorldSpawner.squareCenter(cx, cy, row, col);
+        final v = zones.groundAt(lat, lng);
+        if (v == null) return null;
+        squares.add(v);
+      }
+    }
+    return CellGround(squares).encode();
+  }
+
   /// Asks the server what's spawned around the player. The game sends its
   /// genre zones per map cell (the server mixes them with the time of day).
   Future<void> _fetchServerSpawns() async {
@@ -903,6 +918,7 @@ class Game extends ChangeNotifier {
       final pos = location.position;
       final (_, cy) = WorldSpawner.cellOf(pos.latitude, pos.longitude);
       final cells = <String, Map<String, double>>{};
+      final grounds = <String, String>{};
       for (var dy = -2; dy <= 2; dy++) {
         final row = cy + dy;
         final cx = (pos.longitude / WorldSpawner.lngDegForRow(row)).floor();
@@ -910,6 +926,8 @@ class Game extends ChangeNotifier {
           final (lat, lng) = WorldSpawner.cellCenter(cx + dx, row);
           final bias = zones.sample(lat, lng).genreBias;
           if (bias.isNotEmpty) cells['${cx + dx}:$row'] = {for (final e in bias.entries) '${e.key}': e.value};
+          final g = _groundOf(cx + dx, row);
+          if (g != null) grounds['${cx + dx}:$row'] = g;
         }
       }
       final j = await econ.call('POST', '/spawns', body: {
@@ -917,6 +935,7 @@ class Game extends ChangeNotifier {
         'lng': pos.longitude,
         'tz': DateTime.now().timeZoneOffset.inMinutes,
         'zones': cells,
+        'grounds': grounds,
       });
       final now = DateTime.now();
       final list = <Spawn>[];

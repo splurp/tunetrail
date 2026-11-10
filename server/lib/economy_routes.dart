@@ -50,7 +50,19 @@ void addEconomyRoutes(
           }
           zones[z.key] = m;
         }
-        final list = e.spawnsAround(id, num0(b, 'lat'), num0(b, 'lng'), tz: tzOf(b['tz']), zones: zones);
+        final grounds = <String, String>{
+          for (final g in (b['grounds'] as Map<String, dynamic>? ?? const {}).entries.take(64))
+            if (g.value is String && (g.value as String).length == 32) g.key: g.value as String,
+        };
+        // Games before Beta v1.0.4 don't send ground maps: every cell counts
+        // as open land for them.
+        if (!b.containsKey('grounds') && num0(b, 'lat').isFinite && num0(b, 'lng').isFinite) {
+          final land = CellGround.allLand().encode();
+          for (final (cx, cy) in WorldSpawner.cellsAround(num0(b, 'lat'), num0(b, 'lng'))) {
+            grounds['$cx:$cy'] = land;
+          }
+        }
+        final list = e.spawnsAround(id, num0(b, 'lat'), num0(b, 'lng'), tz: tzOf(b['tz']), zones: zones, grounds: grounds);
         return withAcct(req, id, {'spawns': list, 'now': e.now()});
       }));
   r.post('/spawns/<sid>/buy', (Request req, String sid) => guard(() async {

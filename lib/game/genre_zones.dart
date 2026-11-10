@@ -71,6 +71,28 @@ class GenreZones {
   GenreZones(this.map);
   final MapData map;
 
+  /// What the ground is like at a point, for spawning: null while the map
+  /// there hasn't loaded, else water, open land, or built-up land (roads,
+  /// buildings, or residential/commercial/industrial ground).
+  int? groundAt(double lat, double lon) {
+    if (map.originLat.isNaN) return null;
+    final (wx, wy) = map.toWorld(lat, lon);
+    final t = map.tileAtWorld(wx, wy);
+    if (t == null) return null;
+    final col = ((wx - t.minX) / (t.maxX - t.minX) * kZoneGrid).floor().clamp(0, kZoneGrid - 1);
+    final row = ((t.maxY - wy) / (t.maxY - t.minY) * kZoneGrid).floor().clamp(0, kZoneGrid - 1);
+    final i = row * kZoneGrid + col;
+    final f = t.flags[i];
+    if (f & ZoneFlag.water != 0) return 1;
+    const builtFlags = ZoneFlag.residential | ZoneFlag.commercial | ZoneFlag.retail | ZoneFlag.industrial | ZoneFlag.plaza |
+        ZoneFlag.parking | ZoneFlag.campus | ZoneFlag.megaBuilding | ZoneFlag.sports;
+    final built = f & builtFlags != 0 ||
+        t.counts[ZoneCount.buildings]![i] > 0 ||
+        t.counts[ZoneCount.roadMeters]![i] > 0 ||
+        t.counts[ZoneCount.highwayMeters]![i] > 0;
+    return built ? 3 : 2;
+  }
+
   static const radius = 160.0;
   static const step = 32.0;
 

@@ -317,9 +317,52 @@ class WorldSpawn {
       );
 }
 
-/// The world's spawns: ~200 m cells and 15-minute windows, each hashed with
-/// a secret seed into its songs. Everyone at the same place and time gets
-/// the same spawns (favourite artists aside).
+/// What the ground is like in one spawn cell: an 8×8 grid of squares
+/// (~25 m), each water, open land, or land with roads/buildings. The game
+/// reads it from its map data; songs never spawn on water and favour
+/// built-up squares.
+class CellGround {
+  CellGround(this.squares) : assert(squares.length == n * n);
+
+  static const n = 8;
+  static const unknown = 0, water = 1, land = 2, built = 3;
+
+  /// Row-major from the cell's south-west corner (row = north, col = east).
+  final List<int> squares;
+
+  factory CellGround.allLand() => CellGround(List.filled(n * n, land));
+
+  /// 32 hex digits, 2 bits per square.
+  String encode() {
+    final b = StringBuffer();
+    for (var i = 0; i < n * n; i += 2) {
+      b.write(((squares[i] << 2) | squares[i + 1]).toRadixString(16));
+    }
+    return b.toString();
+  }
+
+  static CellGround? parse(String hex) {
+    if (hex.length != n * n ~/ 2 || !RegExp(r'^[0-9a-f]+$').hasMatch(hex)) return null;
+    final out = <int>[];
+    for (final ch in hex.split('')) {
+      final v = int.parse(ch, radix: 16);
+      out
+        ..add(v >> 2)
+        ..add(v & 3);
+    }
+    return CellGround(out);
+  }
+
+  int get _landCount => squares.where((v) => v == land || v == built).length;
+  double get landShare => _landCount / (n * n);
+  double get builtShare => squares.where((v) => v == built).length / (n * n);
+}
+
+/// The world's spawns. The world is cut into ~200 m cells; each cell gets a
+/// day's spawn spots (more where there are roads and buildings, none on
+/// water), hashed with a secret seed. Spots stay all day; a caught spot
+/// gets a new song an hour later. Everyone at the same place on the same
+/// day sees the same spots (favourite artists aside).
 class WorldSpawner {
   WorldSpawner(this.pool, {required this.seed, this.sampleSongs = const []});
   final SongPool pool;
@@ -329,44 +372,23 @@ class WorldSpawner {
   final List<SongInfo> sampleSongs;
 
   static const cellDeg = 0.0018;
-  static const window = Duration(minutes: 15);
+  static const day = Duration(days: 1);
 
-  static int windowAt(int ms) => ms ~/ window.inMilliseconds;
+  /// How long a caught (or fled) spot stays empty.
+  static const respawn = Duration(hours: 1);
+
+  /// The day number at [ms] for a time-zone offset (days start at local
+  /// midnight).
+  static int dayAt(int ms, int tzMinutes) => (ms + tzMinutes * 60000) ~/ day.inMilliseconds;
+
+  /// When [d] ends, in real time.
+  static int dayEndMs(int d, int tzMinutes) => (d + 1) * day.inMilliseconds - tzMinutes * 60000;
 
   static double lngDegForRow(int cy) {
     final bandLat = ((cy + 0.5) * cellDeg).floorToDouble() + 0.5;
     return cellDeg / math.max(0.2, math.cos(bandLat * math.pi / 180));
   }
 
-  /// Spawns within [radiusCells] cells of a position.
-  List<WorldSpawn> around(double lat, double lng,
-      {int radiusCells = 2, required int nowMs, Set<int> favorites = const {}, Map<int, double> Function(int cx, int cy)? bias}) {
-    final w = windowAt(nowMs);
-    final cy = (lat / cellDeg).floor();
-    final out = <WorldSpawn>[];
-    for (var dy = -radiusCells; dy <= radiusCells; dy++) {
-      final lngDeg = lngDegForRow(cy + dy);
-      final cx = (lng / lngDeg).floor();
-      for (var dx = -radiusCells; dx <= radiusCells; dx++) {
-        out.addAll(cell(cx + dx, cy + dy, w, favorites: favorites, bias: bias?.call(cx + dx, cy + dy) ?? const {}));
-      }
-    }
-    return out;
-  }
-
-  /// A spawn by id ("cx:cy:window:i"), or null if there's no such spawn.
-  WorldSpawn? byId(String id, {Set<int> favorites = const {}, Map<int, double> bias = const {}}) {
-    final p = id.split(':');
-    if (p.length != 4) return null;
-    final cx = int.tryParse(p[0]), cy = int.tryParse(p[1]), w = int.tryParse(p[2]);
-    if (cx == null || cy == null || w == null) return null;
-    for (final s in cell(cx, cy, w, favorites: favorites, bias: bias)) {
-      if (s.id == id) return s;
-    }
-    return null;
-  }
-
-  /// The spawns of one cell in one window.
   /// The cell a position is in.
   static (int, int) cellOf(double lat, double lng) {
     final cy = (lat / cellDeg).floor();
@@ -376,50 +398,93 @@ class WorldSpawner {
   /// The centre of a cell.
   static (double, double) cellCenter(int cx, int cy) => ((cy + 0.5) * cellDeg, (cx + 0.5) * lngDegForRow(cy));
 
-  /// The spawns of one cell in one window. [bias] nudges genres (genre
-  /// zones, time of day); rarity, shininess and editions never depend on it.
-  List<WorldSpawn> cell(int cx, int cy, int w, {Set<int> favorites = const {}, Map<int, double> bias = const {}}) {
-    final out = <WorldSpawn>[];
-    final rng = Rng(hashInts([seed, cx, cy, w]));
-    final roll = rng.nextInt(100);
-    final count = roll < 20 ? 0 : roll < 55 ? 1 : roll < 85 ? 2 : 3;
+  /// The centre of square ([row], [col]) of a cell's ground grid.
+  static (double, double) squareCenter(int cx, int cy, int row, int col) =>
+      ((cy + (row + 0.5) / CellGround.n) * cellDeg, (cx + (col + 0.5) / CellGround.n) * lngDegForRow(cy));
+
+  /// The cells within [radius] cells of a position (5×5 by default).
+  static List<(int, int)> cellsAround(double lat, double lng, {int radius = 2}) {
+    final cy = (lat / cellDeg).floor();
+    return [
+      for (var dy = -radius; dy <= radius; dy++)
+        for (var dx = -radius; dx <= radius; dx++) ((lng / lngDegForRow(cy + dy)).floor() + dx, cy + dy),
+    ];
+  }
+
+  /// A spot's key ("cx:cy:day:slot"); a spawn's id adds its generation.
+  static String slotKey(int cx, int cy, int d, int slot) => '$cx:$cy:$d:$slot';
+
+  /// The spawn spots of a cell on day [d]: (slot, lat, lng).
+  List<(int, double, double)> spots(int cx, int cy, int d, CellGround ground) {
+    final rng = Rng(hashInts([seed, cx, cy, d]));
+    final land = ground.landShare;
+    if (land <= 0) return const [];
+    // ~0.5 spots in empty countryside up to ~3 in built-up blocks.
+    final expected = land * (0.5 + 2.5 * ground.builtShare / land);
+    final count = (expected.floor() + (rng.nextDouble() < expected - expected.floor() ? 1 : 0)).clamp(0, 4);
+    final weights = [
+      for (final v in ground.squares)
+        switch (v) {
+          CellGround.built => 4,
+          CellGround.land => 1,
+          _ => 0,
+        }
+    ];
+    final total = weights.fold<int>(0, (a, b) => a + b);
+    if (total == 0) return const [];
     final lngDeg = lngDegForRow(cy);
-    final expires = (w + 1) * window.inMilliseconds;
-    for (var i = 0; i < count; i++) {
-      // Each spawn gets its own generator so favourites (per player) never
-      // shift the other spawns.
-      final r = Rng(hashInts([seed, cx, cy, w, i]));
-      final lat = (cy + r.nextDouble()) * cellDeg;
-      final lng = (cx + r.nextDouble()) * lngDeg;
-      final rolled = r.rollRarity();
-      final shiny = r.chance(kShinyOdds);
-      final er = r.nextInt(kSampleOdds * kCanvasOdds);
-      final genre = pool.pickGenre(r, bias: bias);
-      final base = pool.pickSong(r, genreId: genre, rarity: rolled);
-      final fav = pool.maybeFavorite(Rng(hashInts([seed, cx, cy, w, i, 77])), rolled, favorites);
-      var song = fav ?? base;
-      if (song == null) continue;
-      var edition = Edition.standard;
-      if (er % kSampleOdds == 0 && sampleSongs.isNotEmpty) {
-        song = sampleSongs[(er ~/ kSampleOdds) % sampleSongs.length];
-        edition = Edition.sample;
-      } else if (er % kCanvasOdds == 1) {
-        edition = Edition.canvas;
-      } else if (er % kLiveOdds == 2) {
-        edition = Edition.live;
+    final out = <(int, double, double)>[];
+    for (var k = 0; k < count; k++) {
+      final r = Rng(hashInts([seed, cx, cy, d, k, 11]));
+      var roll = r.nextInt(total);
+      var sq = 0;
+      while (roll >= weights[sq]) {
+        roll -= weights[sq];
+        sq++;
       }
-      out.add(WorldSpawn(
-        id: '$cx:$cy:$w:$i',
-        lat: lat,
-        lng: lng,
-        song: song,
-        rarity: pool.rarities[song.id] ?? rolled,
-        shiny: shiny && edition == Edition.standard,
-        edition: edition,
-        expiresAt: expires,
-      ));
+      final row = sq ~/ CellGround.n, col = sq % CellGround.n;
+      // Near the middle of the square (its middle is what the map data
+      // says is land), so spots don't spill onto a shoreline.
+      final fy = (row + 0.5 + (r.nextDouble() - 0.5) * 0.6) / CellGround.n;
+      final fx = (col + 0.5 + (r.nextDouble() - 0.5) * 0.6) / CellGround.n;
+      out.add((k, (cy + fy) * cellDeg, (cx + fx) * lngDeg));
     }
     return out;
+  }
+
+  /// The song at a spot: generation [gen] (0 = the day's first song; each
+  /// catch moves the spot to the next).
+  WorldSpawn? spawnAt(int cx, int cy, int d, int slot, int gen, double lat, double lng,
+      {required int expiresAt, Set<int> favorites = const {}, Map<int, double> bias = const {}}) {
+    final r = Rng(hashInts([seed, cx, cy, d, slot, gen]));
+    final rolled = r.rollRarity();
+    final shiny = r.chance(kShinyOdds);
+    final er = r.nextInt(kSampleOdds * kCanvasOdds);
+    final genre = pool.pickGenre(r, bias: bias);
+    final base = pool.pickSong(r, genreId: genre, rarity: rolled);
+    // Favourites roll on their own generator, so they never shift the rest.
+    final fav = pool.maybeFavorite(Rng(hashInts([seed, cx, cy, d, slot, gen, 77])), rolled, favorites);
+    var song = fav ?? base;
+    if (song == null) return null;
+    var edition = Edition.standard;
+    if (er % kSampleOdds == 0 && sampleSongs.isNotEmpty) {
+      song = sampleSongs[(er ~/ kSampleOdds) % sampleSongs.length];
+      edition = Edition.sample;
+    } else if (er % kCanvasOdds == 1) {
+      edition = Edition.canvas;
+    } else if (er % kLiveOdds == 2) {
+      edition = Edition.live;
+    }
+    return WorldSpawn(
+      id: '${slotKey(cx, cy, d, slot)}:$gen',
+      lat: lat,
+      lng: lng,
+      song: song,
+      rarity: pool.rarities[song.id] ?? rolled,
+      shiny: shiny && edition == Edition.standard,
+      edition: edition,
+      expiresAt: expiresAt,
+    );
   }
 }
 

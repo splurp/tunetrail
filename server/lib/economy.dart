@@ -55,6 +55,13 @@ class Account {
   final Map<String, int> purchased = {}; // spawn id → expiry
   final Map<String, int> throws = {}; // spawn id → throws so far
   final Map<String, WorldSpawn> memo = {}; // spawns as first shown
+
+  /// Spawn spots caught today: "cx:cy:day:slot" → (next song's generation,
+  /// when it appears).
+  final Map<String, (int, int)> slots = {};
+
+  /// The ground of each cell for the day ("cx:cy:day"), as first reported.
+  final Map<String, CellGround> grounds = {};
   double? lat, lng;
   int locAt = 0;
 
@@ -153,6 +160,7 @@ class Account {
         'stats': stats,
         'spent': spent,
         'purchased': purchased,
+        'slots': {for (final e in slots.entries) e.key: [e.value.$1, e.value.$2]},
         if (lat != null) 'lat': lat,
         if (lng != null) 'lng': lng,
         'locAt': locAt,
@@ -191,6 +199,10 @@ class Account {
     (j['stats'] as Map<String, dynamic>? ?? const {}).forEach((k, v) => a.stats[k] = v as num);
     (j['spent'] as Map<String, dynamic>? ?? const {}).forEach((k, v) => a.spent[k] = (v as num).toInt());
     (j['purchased'] as Map<String, dynamic>? ?? const {}).forEach((k, v) => a.purchased[k] = (v as num).toInt());
+    (j['slots'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {
+      final l = v as List;
+      a.slots[k] = ((l[0] as num).toInt(), (l[1] as num).toInt());
+    });
     (j['qp'] as Map<String, dynamic>? ?? const {}).forEach((k, v) => a.questProgress[k] = (v as num).toInt());
     a.questsClaimed.addAll([for (final x in (j['qc'] as List? ?? const [])) '$x']);
     (j['plays'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {
@@ -477,35 +489,76 @@ class Economy {
 
   Set<int> _favorites(String id) => {for (final f in engine.players[id]?.favoriteArtists ?? const <FavoriteArtist>[]) f.id};
 
-  /// Spawns around a position. [zones] are genre multipliers per cell
-  /// ("cx:cy" → genre → multiplier) from the game's map data.
-  List<Map<String, dynamic>> spawnsAround(String id, double lat, double lng, {int? tz, Map<String, Map<int, double>> zones = const {}}) {
+  /// Spawns around a position. [grounds] are the cells' ground maps
+  /// ("cx:cy" → [CellGround] code) and [zones] their genre multipliers
+  /// ("cx:cy" → genre → multiplier), both from the game's map data. A cell
+  /// keeps the first ground map it got for the day (so it can't be
+  /// re-rolled); cells without one have no spawns yet.
+  List<Map<String, dynamic>> spawnsAround(String id, double lat, double lng,
+      {int? tz, Map<String, Map<int, double>> zones = const {}, Map<String, String> grounds = const {}}) {
     final a = account(id);
     _moveTo(a, lat, lng);
     today(a, tz);
     final t = now();
+    final offset = a.tz ?? tz ?? 0;
+    final d = WorldSpawner.dayAt(t, offset);
+    final dayEnd = WorldSpawner.dayEndMs(d, offset);
     a.spent.removeWhere((_, exp) => exp < t);
     a.purchased.removeWhere((_, exp) => exp < t);
-    a.throws.removeWhere((k, _) => !a.memo.containsKey(k));
     a.memo.removeWhere((_, s) => s.expiresAt < t);
+    a.throws.removeWhere((k, _) => !a.memo.containsKey(k));
+    a.grounds.removeWhere((k, _) => !k.endsWith(':$d'));
+    a.slots.removeWhere((k, _) => k.split(':')[2] != '$d');
     if (catalog.songs.isEmpty) return const [];
-    final hour = DateTime.fromMillisecondsSinceEpoch(t + (tz ?? a.tz ?? 0) * 60000, isUtc: true).hour;
+    final hour = DateTime.fromMillisecondsSinceEpoch(t + offset * 60000, isUtc: true).hour;
     final timeBias = timeOfDayBias(hour);
     final favs = _favorites(id);
+    final spawner = _spawner;
     final out = <Map<String, dynamic>>[];
-    for (final s in _spawner.around(lat, lng, nowMs: t, favorites: favs, bias: (cx, cy) => combineBias(timeBias, zones['$cx:$cy'] ?? const {}))) {
-      if (a.spent.containsKey(s.id)) continue;
-      // A spawn keeps what it first showed until it expires.
-      var spawn = a.memo.putIfAbsent(s.id, () => s);
-      if (spawn.edition != Edition.standard && engine.serialsLeft(spawn.song.id, spawn.edition) <= 0) {
-        spawn = a.memo[s.id] = _downgrade(spawn);
+    for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng)) {
+      final gk = '$cx:$cy:$d';
+      var ground = a.grounds[gk];
+      if (ground == null) {
+        final code = grounds['$cx:$cy'];
+        ground = code == null ? null : CellGround.parse(code);
+        if (ground == null) continue;
+        a.grounds[gk] = ground;
       }
-      out.add({...spawn.toJson(), if (a.purchased.containsKey(s.id)) 'paid': true});
+      for (final (slot, sLat, sLng) in spawner.spots(cx, cy, d, ground)) {
+        final key = WorldSpawner.slotKey(cx, cy, d, slot);
+        final st = a.slots[key];
+        if (st != null && st.$2 > t) continue; // a new song appears an hour after a catch
+        final sid = '$key:${st?.$1 ?? 0}';
+        if (a.spent.containsKey(sid)) continue;
+        var spawn = a.memo[sid];
+        if (spawn == null) {
+          final made = spawner.spawnAt(cx, cy, d, slot, st?.$1 ?? 0, sLat, sLng,
+              expiresAt: dayEnd, favorites: favs, bias: combineBias(timeBias, zones['$cx:$cy'] ?? const {}));
+          if (made == null) continue;
+          // A spawn keeps what it first showed until the day ends.
+          spawn = a.memo[sid] = made;
+        }
+        if (spawn.edition != Edition.standard && engine.serialsLeft(spawn.song.id, spawn.edition) <= 0) {
+          spawn = a.memo[sid] = _downgrade(spawn);
+        }
+        out.add({...spawn.toJson(), if (a.purchased.containsKey(sid)) 'paid': true});
+      }
     }
     for (final s in a.memo.values.where((s) => s.id.startsWith('debug:'))) {
       if (!a.spent.containsKey(s.id)) out.add({...s.toJson(), if (a.purchased.containsKey(s.id)) 'paid': true});
     }
     return out;
+  }
+
+  /// A spawn was caught or got away: its spot gets a new song in an hour.
+  void _retire(Account a, WorldSpawn s) {
+    a.spent[s.id] = s.expiresAt + 60000;
+    a.purchased.remove(s.id);
+    final p = s.id.split(':');
+    if (p.length == 5 && !s.id.startsWith('debug:')) {
+      final gen = int.tryParse(p[4]) ?? 0;
+      a.slots[p.take(4).join(':')] = (gen + 1, now() + WorldSpawner.respawn.inMilliseconds);
+    }
   }
 
   static WorldSpawn _downgrade(WorldSpawn s) => WorldSpawn(
@@ -574,8 +627,7 @@ class Economy {
     final success = acc == 100 || paid || rng.nextDouble() < catchChance(r, acc);
     if (!success) {
       if (n >= kMaxThrows || rng.nextDouble() < kFleeChance[r.index]) {
-        a.spent[spawnId] = s.expiresAt + 60000;
-        a.purchased.remove(spawnId);
+        _retire(a, s);
         touch(a);
         return ThrowResult('fled');
       }
@@ -608,8 +660,7 @@ class Economy {
     _questEvent(a, QuestKind.catchAny);
     _questEvent(a, QuestKind.catchGenre, genreId: s.song.genreId);
     if (r.index >= Rarity.rare.index) _questEvent(a, QuestKind.catchRarePlus);
-    a.spent[spawnId] = s.expiresAt + 60000;
-    a.purchased.remove(spawnId);
+    _retire(a, s);
     final (got, dup) = _give(a, card);
     touch(a);
     return ThrowResult('caught', card: got ?? card, dupCoins: dup, note: note, coins: coins, xp: xp);
@@ -1029,6 +1080,7 @@ class Economy {
   void adminRespawn(String id) {
     final a = account(id);
     a.spent.clear();
+    a.slots.clear();
     touch(a);
   }
 }

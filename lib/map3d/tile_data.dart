@@ -249,7 +249,7 @@ WorldTile processTile(TileJob j) {
     a[i] = math.min(65535, a[i] + amount);
   }
 
-  void rasterLine(Float32List line, ZoneCount k, {int flag = 0}) {
+  void rasterLine(Float32List line, ZoneCount? k, {int flag = 0}) {
     final step = cell() / 2;
     final mPerUnit = mPerUnitX.abs();
     for (var i = 0; i + 3 < line.length; i += 2) {
@@ -259,7 +259,7 @@ WorldTile processTile(TileJob j) {
       for (var s = 0; s < steps; s++) {
         final t = (s + 0.5) / steps;
         final px = ax + (bx - ax) * t, py = ay + (by - ay) * t;
-        bump(k, px, py, math.max(1, (len / steps * mPerUnit).round()));
+        if (k != null) bump(k, px, py, math.max(1, (len / steps * mPerUnit).round()));
         if (flag != 0) {
           final ci = cellAt(px, py);
           if (ci != null) flags[ci] |= flag;
@@ -311,7 +311,7 @@ WorldTile processTile(TileJob j) {
           for (final part in f.geometry) {
             if (part.length < 4) continue;
             addRoad(GroundLayer.water, part, w);
-            rasterLine(part, ZoneCount.roadMeters, flag: ZoneFlag.water);
+            rasterLine(part, null, flag: ZoneFlag.water);
           }
         }
       case 'land':

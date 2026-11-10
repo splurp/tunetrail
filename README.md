@@ -19,8 +19,10 @@ play, showcase, list on the market or trade.
 ## How it plays
 
 - **Explore.** Your real location, drawn as a 3D city with real building heights.
-  Songs spawn every few minutes; what's around depends on where you are (genre
-  zones), the time of day, and your favourite artists (10× more likely).
+  Songs gather around roads and buildings (never on water), stay put all day, and a
+  new one appears an hour after a spot is caught. What's around depends on where
+  you are (genre zones), the time of day, and your favourite artists (10× more
+  likely). Catch anything within 100 m.
 - **Catch.** Tap as the ring lands on the beat of the song. A flawless 100% hit turns
   the card into an ultra-rare **Shiny**. Out of range? Buy the song with coins and
   catch it from where you stand.

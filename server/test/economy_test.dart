@@ -24,6 +24,11 @@ ServerCatalog fakeCatalog(Directory dir, {int n = 600}) {
   return c;
 }
 
+/// Ground maps of the cells around a point: all built up.
+Map<String, String> built(double lat, double lng) => {
+      for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng)) '$cx:$cy': CellGround(List.filled(64, CellGround.built)).encode(),
+    };
+
 void main() {
   late Directory dir;
   late MarketEngine engine;
@@ -69,7 +74,7 @@ void main() {
     setUp(() => econ.import('p1', {'coins': 5000}));
 
     test('the server issues spawns, and only nearby ones can be caught', () async {
-      final list = econ.spawnsAround('p1', 40.7812, -73.9665);
+      final list = econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
       expect(list, isNotEmpty);
       final s = WorldSpawn.fromJson(list.first);
       // From 2 km away: refused (and flagged).
@@ -81,11 +86,11 @@ void main() {
       expect(r.card!.shiny || r.card!.edition != Edition.standard, true);
       // It's gone now.
       await expectLater(econ.throwAt('p1', s.id, s.lat, s.lng, 100), throwsA(isA<MarketException>()));
-      expect(econ.spawnsAround('p1', s.lat, s.lng).any((x) => x['id'] == s.id), false);
+      expect(econ.spawnsAround('p1', s.lat, s.lng, grounds: built(s.lat, s.lng)).any((x) => x['id'] == s.id), false);
     });
 
     test('a bought spawn always gets caught, from where you stand', () async {
-      final list = econ.spawnsAround('p1', 40.7812, -73.9665);
+      final list = econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
       final here = (40.7812, -73.9665);
       final far = list.map(WorldSpawn.fromJson).firstWhere((s) {
         final d = distanceMeters(here.$1, here.$2, s.lat, s.lng);
@@ -100,7 +105,7 @@ void main() {
     });
 
     test('a spawn gets away after five misses at most', () async {
-      final s = WorldSpawn.fromJson(econ.spawnsAround('p1', 40.7812, -73.9665).first);
+      final s = WorldSpawn.fromJson(econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665)).first);
       var result = '';
       for (var i = 0; i < 5 && result != 'fled' && result != 'caught'; i++) {
         result = (await econ.throwAt('p1', s.id, s.lat, s.lng, 0)).result;
@@ -108,10 +113,36 @@ void main() {
       expect(['fled', 'caught'], contains(result));
     });
 
+    test('no spawns until the game sends the ground; never on water', () {
+      expect(econ.spawnsAround('p1', 40.7812, -73.9665), isEmpty);
+      final water = {for (final k in built(40.7812, -73.9665).keys) k: CellGround(List.filled(64, CellGround.water)).encode()};
+      expect(econ.spawnsAround('p1', 40.7812, -73.9665, grounds: water), isEmpty);
+      // The day's first ground map sticks: sending land later changes nothing.
+      expect(econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665)), isEmpty);
+    });
+
+    test('spawns stay all day; a caught spot gets a new song an hour later', () async {
+      final first = econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
+      clock += 2 * 3600000;
+      final later = econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
+      expect(later.map((x) => x['id']).toSet(), first.map((x) => x['id']).toSet());
+      final s = WorldSpawn.fromJson(first.first);
+      expect((await econ.throwAt('p1', s.id, s.lat, s.lng, 100)).result, 'caught');
+      final gone = econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
+      expect(gone.any((x) => x['lat'] == s.lat && x['lng'] == s.lng), false);
+      clock += 3600000 + 1000;
+      final back = econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
+      final again = back.map(WorldSpawn.fromJson).where((x) => x.lat == s.lat && x.lng == s.lng).single;
+      expect(again.id, isNot(s.id));
+      // Catchable from 100 m.
+      final away = again.lat + 95 / 111132.0;
+      expect((await econ.throwAt('p1', again.id, away, again.lng, 100)).result, 'caught');
+    });
+
     test('teleporting across the city is flagged', () {
-      econ.spawnsAround('p1', 40.7812, -73.9665);
+      econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
       clock += 10000;
-      econ.spawnsAround('p1', 51.5, -0.12);
+      econ.spawnsAround('p1', 51.5, -0.12, grounds: built(51.5, -0.12));
       expect(econ.account('p1').flags.map((f) => f.kind), contains('impossible_travel'));
       expect(econ.flagged().single['id'], 'p1');
       econ.clearFlags('p1');
@@ -119,9 +150,9 @@ void main() {
     });
 
     test('walking counts towards distance', () {
-      econ.spawnsAround('p1', 40.7812, -73.9665);
+      econ.spawnsAround('p1', 40.7812, -73.9665, grounds: built(40.7812, -73.9665));
       clock += 60000;
-      econ.spawnsAround('p1', 40.7832, -73.9665); // ~220 m in a minute
+      econ.spawnsAround('p1', 40.7832, -73.9665, grounds: built(40.7832, -73.9665)); // ~220 m in a minute
       expect(econ.account('p1').stats['meters'], closeTo(222, 5));
     });
   });
@@ -255,7 +286,7 @@ void main() {
     });
 
     test('spawns and throws over HTTP carry the account', () async {
-      final (st, j) = await call('POST', '/spawns', 'p2', {'lat': 40.7812, 'lng': -73.9665, 'tz': -300});
+      final (st, j) = await call('POST', '/spawns', 'p2', {'lat': 40.7812, 'lng': -73.9665, 'tz': -300, 'grounds': built(40.7812, -73.9665)});
       expect(st, 200);
       expect((j['spawns'] as List), isNotEmpty);
       expect(j['acct']['coins'], 1000);

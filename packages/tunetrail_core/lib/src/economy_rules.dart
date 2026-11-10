@@ -6,7 +6,7 @@ import 'song_catalog.dart';
 
 // ===================================================================== catching
 /// How close a player must be to catch a spawn.
-const double kCatchRangeMeters = 70.0;
+const double kCatchRangeMeters = 100.0;
 
 /// Extra distance the server allows for GPS jitter between the game's view
 /// and the position it reports.
