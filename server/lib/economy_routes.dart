@@ -96,7 +96,7 @@ void addEconomyRoutes(
   r.post('/features/<fid>/claim', (Request req, String fid) => guard(() async {
         final id = pid(req);
         final b = await body(req);
-        return withAcct(req, id, e.claimFeature(id, Uri.decodeComponent(fid), num0(b, 'lat'), num0(b, 'lng')));
+        return withAcct(req, id, e.claimFeature(id, Uri.decodeComponent(fid), num0(b, 'lat'), num0(b, 'lng'), unlimitedRange: b['unlimited'] == true));
       }));
   r.post('/treasure/dig', (Request req) => guard(() async {
         final id = pid(req);
@@ -106,7 +106,7 @@ void addEconomyRoutes(
   r.post('/djs/<dj>/challenge', (Request req, String dj) => guard(() async {
         final id = named(req);
         final b = await body(req);
-        return withAcct(req, id, {'battle': e.challengeDj(id, Uri.decodeComponent(dj), num0(b, 'lat'), num0(b, 'lng'))});
+        return withAcct(req, id, {'battle': e.challengeDj(id, Uri.decodeComponent(dj), num0(b, 'lat'), num0(b, 'lng'), unlimitedRange: b['unlimited'] == true)});
       }));
   r.post('/battles/<bid>/join', (Request req, String bid) => guard(() async {
         final id = named(req);

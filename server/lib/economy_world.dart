@@ -123,7 +123,7 @@ extension EconomyWorld on Economy {
   /// Uses a glowing feature the player is standing by: coins from a sewer
   /// grate, a treasure map from a sand castle, an Epic or Legendary song
   /// from a lily pad (fishing) or rock pile (mining). Once a day each.
-  Map<String, dynamic> claimFeature(String id, String featureId, double lat, double lng) {
+  Map<String, dynamic> claimFeature(String id, String featureId, double lat, double lng, {bool unlimitedRange = false}) {
     final a = account(id);
     _moveTo(a, lat, lng);
     final (d, _) = _day(a);
@@ -132,7 +132,7 @@ extension EconomyWorld on Economy {
     if (a.claimedFeatures.contains(key)) throw MarketException('Nothing left here today');
     if (f.kind.nest) throw MarketException('Songs gather around this one');
     final dist = distanceMeters(lat, lng, f.lat, f.lng);
-    if (dist > kCatchRangeMeters + kCatchRangeSlackMeters + 30) {
+    if (dist > kCatchRangeMeters + kCatchRangeSlackMeters + 30 && !(unlimitedRange && admins.contains(id))) {
       _flag(a, 'feature_out_of_range', '${dist.round()} m from a ${f.kind.label}');
       throw MarketException('You\'re too far away — walk closer');
     }
@@ -246,7 +246,9 @@ extension EconomyWorld on Economy {
       if (distanceMeters(lat, lng, b.dj.lat, b.dj.lng) > kBattleJoinMeters) continue;
       near.add({'id': b.id, 'dj': b.dj.toJson(), 'endAt': b.endAt, 'players': b.players.length, 'joined': b.players.containsKey(id)});
     }
-    return {'players': players, 'battles': near, 'now': t};
+    // DJs an admin summoned since the game last asked what's around.
+    final summoned = [for (final d in a.summonedDjs) if (d.expiresAt >= t && !a.djDone.containsKey(d.id)) d.id];
+    return {'players': players, 'battles': near, 'now': t, if (summoned.isNotEmpty) 'summoned': summoned};
   }
 
   void setShowOnMap(String id, bool show) {
@@ -308,7 +310,7 @@ extension EconomyWorld on Economy {
 
   /// Challenges a DJ the player is standing by (or joins the battle if
   /// someone else already started one with it).
-  Map<String, dynamic> challengeDj(String id, String djId, double lat, double lng) {
+  Map<String, dynamic> challengeDj(String id, String djId, double lat, double lng, {bool unlimitedRange = false}) {
     final a = account(id);
     _moveTo(a, lat, lng);
     _sweepBattles();
@@ -319,7 +321,9 @@ extension EconomyWorld on Economy {
     if ((a.djDone[djId] ?? 0) > t) throw MarketException('This DJ needs a break — come back later');
     final dj = _dj(a, djId);
     final dist = distanceMeters(lat, lng, dj.lat, dj.lng);
-    if (dist > kCatchRangeMeters + kCatchRangeSlackMeters + 30) throw MarketException('You\'re too far away — walk closer');
+    if (dist > kCatchRangeMeters + kCatchRangeSlackMeters + 30 && !(unlimitedRange && admins.contains(id))) {
+      throw MarketException('You\'re too far away — walk closer');
+    }
     // A few seconds for the song to load before the first beat.
     final b = Battle(id: 'b${++_battleCounter}-$t', dj: dj, startAt: t + 4000, endAt: t + 4000 + kBattleSeconds * 1000);
     b.players[id] = null;
@@ -465,7 +469,7 @@ extension EconomyWorld on Economy {
     return a.bonuses.toJson();
   }
 
-  /// Admin: a DJ turns up next to a player (for half an hour).
+  /// Admin: a DJ turns up near a player (for half an hour).
   Map<String, dynamic> adminSummonDj(String adminId, String targetId) {
     final a = _adminTarget(adminId, targetId);
     final lat = a.lat, lng = a.lng;
@@ -479,8 +483,8 @@ extension EconomyWorld on Economy {
     final dj = DjNpc(
       id: 'dj:summon:$t',
       name: name,
-      lat: lat + math.sin(ang) * 30 / 111132.95,
-      lng: lng + math.cos(ang) * 30 / (111319.49 * math.max(0.2, math.cos(lat * math.pi / 180))),
+      lat: lat + math.sin(ang) * 60 / 111132.95,
+      lng: lng + math.cos(ang) * 60 / (111319.49 * math.max(0.2, math.cos(lat * math.pi / 180))),
       look: look,
       song: song,
       accuracy: djAccuracy(song.rank),

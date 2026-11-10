@@ -54,6 +54,7 @@ class WorldState extends ChangeNotifier {
   List<NearbyBattle> battles = const [];
 
   final Set<String> _glow = {};
+  final Set<String> _summonSeen = {};
   final Map<String, String> _terrainCache = {};
   int _builtFor = -1;
   String _builtCell = '';
@@ -201,13 +202,17 @@ class WorldState extends ChangeNotifier {
     return (road.$1, road.$2);
   }
 
-  bool inRange(LatLng p) => (kAdminBuild && g.profile.debugEnabled && g.profile.unlimitedRange) || metersBetween(g.location.position, p) <= Game.catchRangeMeters;
+  /// Admin builds with "unlimited range" on reach everything on the map.
+  bool get _unlimited => kAdminBuild && g.profile.debugEnabled && g.profile.unlimitedRange;
+
+  bool inRange(LatLng p) => _unlimited || metersBetween(g.location.position, p) <= Game.catchRangeMeters;
 
   /// Uses a glowing feature. Returns the server's answer ({kind, coins |
   /// card (+dup) | treasure}).
   Future<Map<String, dynamic>> claim(MapFeature f) async {
     final p = g.location.position;
-    final j = await g.econ.call('POST', '/features/${Uri.encodeComponent(f.id)}/claim', body: {'lat': p.latitude, 'lng': p.longitude}, source: CardSource.wild);
+    final j = await g.econ.call('POST', '/features/${Uri.encodeComponent(f.id)}/claim',
+        body: {'lat': p.latitude, 'lng': p.longitude, if (_unlimited) 'unlimited': true}, source: CardSource.wild);
     f.glow = false;
     _glow.remove(f.id);
     notifyListeners();
@@ -285,6 +290,9 @@ class WorldState extends ChangeNotifier {
           ..seenAt = now;
       }
       players.removeWhere((id, _) => !seen.contains(id));
+      // A DJ an admin just summoned: fetch the world again to show it.
+      final summoned = [for (final x in (j['summoned'] as List? ?? const [])) '$x'];
+      if (summoned.any((id) => !djs.any((d) => d.id == id) && _summonSeen.add(id))) g._refreshSpawns(force: true);
       battles = [
         for (final x in (j['battles'] as List? ?? const []))
           NearbyBattle((x as Map)['id'] as String, DjNpc.fromJson(x['dj'] as Map<String, dynamic>), (x['endAt'] as num).toInt(), (x['players'] as num).toInt(), x['joined'] == true),
@@ -329,7 +337,8 @@ class WorldState extends ChangeNotifier {
   // ------------------------------------------------------------ DJ battles
   Future<Map<String, dynamic>> challenge(DjNpc dj) async {
     final p = g.location.position;
-    final j = await g.econ.call('POST', '/djs/${Uri.encodeComponent(dj.id)}/challenge', body: {'lat': p.latitude, 'lng': p.longitude});
+    final j = await g.econ.call('POST', '/djs/${Uri.encodeComponent(dj.id)}/challenge',
+        body: {'lat': p.latitude, 'lng': p.longitude, if (_unlimited) 'unlimited': true});
     return j['battle'] as Map<String, dynamic>;
   }
 

@@ -93,11 +93,11 @@ abstract final class FeatureMeshes {
         m.ellipsoid(0.6, -2.9, 0.8, 1.8, 1.6, 1.2, c, lat: 3, lon: 5, jitter: 0.5, seed: 42 + v);
         if (v == 2) m.ellipsoid(-0.4, 0.3, 4.2, 1.6, 1.5, 1.4, dark, lat: 3, lon: 5, jitter: 0.5, seed: 52);
       case FeatureKind.lilypad:
-        _pad(m, 0, 0, 4.6, 0.35 + v * 0.7, c, dark);
-        _pad(m, 5.4, -2.6, 2.6, 2.4 + v, lightC, c);
-        if (v != 1) _pad(m, -3.6, 4.4, 2.0, 4.1, c, dark);
-        // A flower bud on the big pad.
-        m.prism(1.2, 0.9, 0.4, 1.9, 1.1, 0, 5, lightC);
+        // One big round pad with a notch, a small one floating beside it,
+        // and a flower bud.
+        _pad(m, 0, 0, 5.2, 0.35 + v * 0.7, c, dark);
+        _pad(m, 7.6, -2.2 + v, 2.3, 2.4 + v, c, dark);
+        m.prism(-1.4, 0.8, 0.4, 2.3, 1.2, 0, 5, lightC);
       case FeatureKind.sapling:
         final lean = (v - 1) * 0.5;
         m.tube([0, 0, 0], [lean, 0, 7.4], 0.5, 0.28, 5, dark);
@@ -132,8 +132,8 @@ abstract final class FeatureMeshes {
 
   /// A flat lily pad: a disc with a wedge cut out of it.
   static void _pad(LowPolyMesh m, double x, double y, double r, double rot, Color top, Color side) {
-    const segs = 9;
-    const span = 2 * math.pi * 0.88;
+    const segs = 11;
+    const span = 2 * math.pi * 0.9;
     const z0 = 0.08, z1 = 0.4;
     final centre = [x, y, (z0 + z1) / 2];
     List<double> p(int i, double z) => [x + math.cos(rot + i * span / segs) * r, y + math.sin(rot + i * span / segs) * r, z];
@@ -289,14 +289,14 @@ class FeatureGlowPainter extends CustomPainter {
       if (dx * dx + dy * dy > FeaturesPainter.maxDistance * FeaturesPainter.maxDistance) continue;
       final p = cam.project(f.x, f.y);
       if (p == null || p.dx < -80 || p.dx > size.width + 80 || p.dy < -80 || p.dy > size.height + 80) continue;
-      final r = 15.0 * cam.scaleAt(f.x, f.y);
+      final r = 17.0 * cam.scaleAt(f.x, f.y);
       if (r < 2) continue;
       final pulse = 0.5 + 0.5 * math.sin(time * 1.7 + (f.feature.variant % 100) * 0.3);
       final rect = Rect.fromCenter(center: p.translate(0, -r * 0.18), width: r * 2, height: r * 2 * squash);
       canvas.drawOval(
         rect,
         Paint()
-          ..shader = RadialGradient(colors: [color.withValues(alpha: 0.26 + 0.1 * pulse), color.withValues(alpha: 0.08), color.withValues(alpha: 0)], stops: const [0, 0.55, 1])
+          ..shader = RadialGradient(colors: [color.withValues(alpha: 0.34 + 0.12 * pulse), color.withValues(alpha: 0.13), color.withValues(alpha: 0)], stops: const [0, 0.55, 1])
               .createShader(rect),
       );
     }

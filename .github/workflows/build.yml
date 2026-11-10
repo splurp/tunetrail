@@ -125,7 +125,7 @@ jobs:
         with:
           name: tunetrail-android
           path: dist/*.apk
-          retention-days: 1
+          retention-days: 7
 
   windows:
     # Full builds only for releases (manual runs and version tags): pushes just
@@ -161,7 +161,7 @@ jobs:
         with:
           name: tunetrail-windows
           path: dist/*
-          retention-days: 1
+          retention-days: 7
 
   linux:
     # Full builds only for releases (manual runs and version tags): pushes just
@@ -189,7 +189,7 @@ jobs:
         with:
           name: tunetrail-linux
           path: dist/*
-          retention-days: 1
+          retention-days: 7
 
   server:
     # Full builds only for releases (manual runs and version tags): pushes just

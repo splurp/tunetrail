@@ -91,7 +91,15 @@ class _DjBattleScreenState extends State<DjBattleScreen> with SingleTickerProvid
   Future<void> _start(Game g) async {
     _g = g;
     g.catalog.addSongs([song]);
+    // The preview is fetched (and its beat grid worked out) while the deck
+    // rises; it starts playing as the battle does, so the song lasts the
+    // whole battle.
     final beatsF = g.audio.beatInfo(song.id).catchError((Object _) => null);
+    final wait = startAt - 250 - _now;
+    if (wait > 0) await Future.any([beatsF, Future<void>.delayed(Duration(milliseconds: wait))]);
+    final rest = startAt - 250 - _now;
+    if (rest > 0) await Future<void>.delayed(Duration(milliseconds: rest));
+    if (!mounted) return;
     unawaited(g.audio.playOne(song.id));
     // No beat grid within a few seconds: a steady ring instead.
     Future<void>.delayed(const Duration(seconds: 6), () {
@@ -146,7 +154,9 @@ class _DjBattleScreenState extends State<DjBattleScreen> with SingleTickerProvid
       _ticking = false;
       if (raw != null) {
         final err = raw - _latency - _songTime;
-        _clockOffset += err.abs() > 0.08 ? err : err * 0.04;
+        // Small drift is smoothed, a stall snapped to; a jump of seconds
+        // means the preview ended or restarted — the ring carries on.
+        if (err.abs() < 1.5) _clockOffset += err.abs() > 0.08 ? err : err * 0.04;
       }
     }
     final now = _now;
@@ -509,7 +519,7 @@ class _ScenePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cam = Camera3D()
       ..distance = 150
-      ..pitch = 18
+      ..pitch = 34
       ..bearing = 0
       ..size = size
       ..update();
@@ -562,7 +572,7 @@ class _ScenePainter extends CustomPainter {
       final alpha = (1 - ((age - 0.9) / 1.0).clamp(0.0, 1.0)) * (age / 0.08).clamp(0.0, 1.0);
       final at = p.fromDj
           ? Offset(hx + p.side * (26 + 64 * out) * (size.width / 420).clamp(0.8, 1.6), hy - 6 - rise * 70)
-          : Offset(size.width / 2, ringTop + 6 - rise * 46);
+          : Offset(size.width / 2, ringTop + 56 - rise * 26);
       final tp = TextPainter(
         text: TextSpan(
           text: p.text,

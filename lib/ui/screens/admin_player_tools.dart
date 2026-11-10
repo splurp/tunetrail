@@ -292,7 +292,7 @@ class _AdminToolsState extends State<_AdminTools> {
           ]),
         const Divider(height: 32),
         const SectionLabel('DJ battle'),
-        const Text('A DJ turns up about 30 m from where this player last was, for half an hour. Only they see it; players nearby can join the battle.',
+        const Text('A DJ turns up about 60 m from where this player last was, for half an hour. Only they see it; players nearby can join the battle.',
             style: TextStyle(fontSize: 12, color: kTextSecondary)),
         const SizedBox(height: 8),
         Align(

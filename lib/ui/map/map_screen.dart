@@ -462,8 +462,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     try {
       final req = g.world.dig();
       unawaited(req.then<void>((_) {}, onError: (_) {}));
-      // Dig a few steps ahead, facing the way the character already is.
-      final fr = _facing * math.pi / 180;
+      // Side-on to the camera, so the digging (and the chest) can be seen.
+      final fr = (_cam.bearing + 90) * math.pi / 180;
       await _play(FigureActionKind.dig, _cam.px + math.sin(fr) * 12, _cam.py + math.cos(fr) * 12, const Duration(milliseconds: 4200));
       final bits = await req;
       if (mounted) await showRewardDialog(context, icon: kBitsIcon, color: kBitsColor, amount: '+$bits bits', text: 'The treasure chest was full of bits!');
