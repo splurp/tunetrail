@@ -11,6 +11,7 @@ import '../widgets/ui_kit.dart';
 import '../../game/google_auth.dart';
 import 'copyright_screen.dart';
 import 'onboarding_screen.dart' show showChangeUsername;
+import 'admin_flags_screen.dart';
 import 'admin_reports_screen.dart';
 import 'debug_screen.dart';
 import 'listing_composer.dart';
@@ -205,6 +206,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('Player reports'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AdminReportsScreen())),
+            ),
+          if (p.isAdmin)
+            ListTile(
+              leading: const Icon(Icons.policy_outlined, color: kAccent),
+              title: const Text('Cheat flags'),
+              subtitle: const Text('Accounts the server flagged for review'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AdminFlagsScreen())),
             ),
           if (p.debugEnabled)
             ListTile(

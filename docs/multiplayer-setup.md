@@ -243,7 +243,7 @@ market trades, which hold the cards and coins involved until they complete.
 A player's existing progress is copied to the server once, the first time an
 updated game connects.
 
-Cheat flags for admins to review (admin build → Debug menu → Cheat flags):
+Cheat flags for admins to review (admin build → Profile → Settings → Cheat flags):
 jumps no one could travel, throws from too far away, inhumanly fast throws, a
 very high rate of perfect beats, oversized imports and many store grants.
 
