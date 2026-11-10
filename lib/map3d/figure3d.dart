@@ -546,7 +546,8 @@ class Figure3DPainter extends CustomPainter {
         final linePaint = Paint()
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round
-          ..strokeWidth = math.max(0.8, lineW * 0.16)
+          // A quarter of the arm's thickness.
+          ..strokeWidth = lineW * 0.25
           ..color = contrast.withValues(alpha: 0.75 * ((waveAmt - 0.15) / 0.85).clamp(0.0, 1.0) * (0.45 + 0.55 * waveSpeed.abs()));
         for (var k = 0; k < 3; k++) {
           final rr = r * (0.82 + k * 0.2);

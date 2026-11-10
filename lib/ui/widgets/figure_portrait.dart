@@ -117,7 +117,13 @@ class _PortraitPainter extends CustomPainter {
     // the head and the waving arm come out over the rim; the body stays
     // cut off by the bottom of the circle.
     final clip = Path()..addOval(circle);
-    if (env > 0) clip.addRect(Rect.fromLTRB(0, 0, size.width, circle.center.dy));
+    if (env > 0) {
+      clip.addRect(Rect.fromLTRB(0, 0, size.width, circle.center.dy));
+      // The waving arm (on the left) crosses the rim a little below the
+      // middle: nothing else is out there, so let that side through lower
+      // down too, or the namecard cuts a sliver out of the arm.
+      clip.addRect(Rect.fromLTRB(0, circle.center.dy - 1, circle.center.dx - 0.18 * d, circle.bottom - 0.12 * d));
+    }
     canvas.save();
     canvas.clipPath(clip);
 
