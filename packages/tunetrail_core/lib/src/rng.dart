@@ -49,6 +49,19 @@ class Rng {
 
   T pick<T>(List<T> items) => items[nextInt(items.length)];
 
+  /// Rolls a rarity with each rarity's spawn weight multiplied by
+  /// [boost] (common first). Uses one number, like [rollRarity].
+  Rarity rollRarityBoosted(List<double> boost) {
+    final weights = [for (final r in Rarity.values) (r.spawnWeight * boost[r.index] * 100).round()];
+    final total = weights.fold<int>(0, (a, b) => a + b);
+    var roll = nextInt(total);
+    for (var i = 0; i < weights.length; i++) {
+      roll -= weights[i];
+      if (roll < 0) return Rarity.values[i];
+    }
+    return Rarity.legendary;
+  }
+
   /// Rolls a rarity using the default spawn weights, optionally shifted.
   Rarity rollRarity({int minIndex = 0, double luck = 1.0}) {
     final candidates =

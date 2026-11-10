@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:tunetrail_core/tunetrail_core.dart' show Terrain;
 
 import '../map3d/map_data.dart';
 import '../map3d/tile_data.dart';
@@ -91,6 +92,27 @@ class GenreZones {
         t.counts[ZoneCount.roadMeters]![i] > 0 ||
         t.counts[ZoneCount.highwayMeters]![i] > 0;
     return built ? 3 : 2;
+  }
+
+  /// What kind of ground a point is, for the small features standing on
+  /// it (null while the map there hasn't loaded).
+  Terrain? terrainAt(double lat, double lon) {
+    if (map.originLat.isNaN) return null;
+    final (wx, wy) = map.toWorld(lat, lon);
+    final t = map.tileAtWorld(wx, wy);
+    if (t == null) return null;
+    final col = ((wx - t.minX) / (t.maxX - t.minX) * kZoneGrid).floor().clamp(0, kZoneGrid - 1);
+    final row = ((t.maxY - wy) / (t.maxY - t.minY) * kZoneGrid).floor().clamp(0, kZoneGrid - 1);
+    final i = row * kZoneGrid + col;
+    final f = t.flags[i];
+    if (f & ZoneFlag.water != 0) return Terrain.water;
+    if (f & ZoneFlag.beach != 0) return Terrain.sand;
+    if (f & ZoneFlag.rock != 0) return Terrain.rock;
+    if (f & ZoneFlag.forest != 0) return Terrain.wood;
+    const builtFlags = ZoneFlag.residential | ZoneFlag.commercial | ZoneFlag.retail | ZoneFlag.industrial | ZoneFlag.plaza |
+        ZoneFlag.parking | ZoneFlag.campus | ZoneFlag.megaBuilding;
+    final built = f & builtFlags != 0 || t.counts[ZoneCount.buildings]![i] > 0 || t.counts[ZoneCount.roadMeters]![i] > 20;
+    return built ? Terrain.urban : Terrain.grass;
   }
 
   static const radius = 160.0;

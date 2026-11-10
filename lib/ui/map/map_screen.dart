@@ -4,14 +4,13 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:tunetrail_core/tunetrail_core.dart' show Edition;
+import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../build_flags.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/models.dart';
-import '../../data/profile.dart';
 import '../../game/game.dart';
 import '../../game/genre_zones.dart';
 import '../../game/spawns.dart';
@@ -729,8 +728,8 @@ class _Hud extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = g.profile;
     final lvl = p.level;
-    final from = PlayerProfile.xpForLevel(lvl), to = PlayerProfile.xpForLevel(lvl + 1);
-    final frac = ((p.xp - from) / (to - from)).clamp(0.0, 1.0);
+    final from = xpForLevel(lvl), need = xpToNextLevel(lvl);
+    final frac = need == 0 ? 1.0 : ((p.xp - from) / need).clamp(0.0, 1.0);
     final zone = g.zoneHere.active;
     final status = g.findingSongs
         ? 'Finding songs nearby…'

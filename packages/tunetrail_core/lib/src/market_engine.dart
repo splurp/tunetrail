@@ -440,6 +440,9 @@ class MarketEngine {
       .toList()
     ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
+  /// Called when a trade between two players completes (both earn XP).
+  void Function(String a, String b)? onTradeCompleted;
+
   void acceptOffer(String playerId, String offerId) {
     final o = offers[offerId];
     if (o == null || o.status != TradeStatus.pending) {
@@ -459,6 +462,7 @@ class MarketEngine {
     _notify(o.fromId, 'Offer accepted', '${nameOf(o.toId)} accepted your trade for ${o.requestedLabel}');
     offers.remove(offerId);
     _declineOffersFor(o.listingId, 'The listing was traded to another player');
+    onTradeCompleted?.call(o.fromId, o.toId);
     _changed();
   }
 
@@ -740,6 +744,7 @@ class MarketEngine {
     _deliver(o.toId, 'Trade with ${o.fromName} complete', coins: o.offeredCoins, cards: o.offeredCards);
     _deliver(o.fromId, '${nameOf(o.toId)} accepted your trade for ${o.requestedLabel}', cards: o.requestedCards);
     _notify(o.fromId, 'Offer accepted', '${nameOf(o.toId)} accepted your trade for ${o.requestedLabel}');
+    onTradeCompleted?.call(o.fromId, o.toId);
     final gone = {for (final c in o.requestedCards) c.uid};
     collections[o.toId]?.removeWhere((c) => gone.contains(c.uid));
     // Other offers for the same songs can't be completed any more.

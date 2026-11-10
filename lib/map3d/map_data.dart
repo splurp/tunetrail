@@ -186,6 +186,82 @@ class MapData extends ChangeNotifier {
 
   bool get isLoading => _loading.isNotEmpty;
 
+  static bool _inRing(Float32List ring, double x, double y) {
+    var inside = false;
+    final n = ring.length ~/ 2;
+    for (var i = 0, j = n - 1; i < n; j = i++) {
+      final xi = ring[i * 2], yi = ring[i * 2 + 1], xj = ring[j * 2], yj = ring[j * 2 + 1];
+      if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  static bool _tileHas(CityBuildingTile t, double x, double y, double margin) {
+    if (t.cols == 0) return false;
+    const cs = CityBuildingTile.cell;
+    final c = ((x - t.minX) / cs).floor(), r = ((y - t.minY) / cs).floor();
+    for (var rr = r - 1; rr <= r + 1; rr++) {
+      if (rr < 0 || rr >= t.rows) continue;
+      for (var cc = c - 1; cc <= c + 1; cc++) {
+        if (cc < 0 || cc >= t.cols) continue;
+        for (final b in t.grid[rr * t.cols + cc]) {
+          final dx = x - b.cx, dy = y - b.cy;
+          final reach = b.radius + margin;
+          if (dx * dx + dy * dy > reach * reach) continue;
+          if (_inRing(b.ring, x, y)) return true;
+          if (margin > 0) {
+            for (final (ox, oy) in const [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)]) {
+              if (_inRing(b.ring, x + ox * margin, y + oy * margin)) return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /// Whether a world point (or anything within [margin] metres of it) is
+  /// inside a building that's drawn on the map.
+  bool insideBuilding(double x, double y, {double margin = 0}) {
+    for (final t in buildingTiles.values) {
+      if (_tileHas(t, x, y, margin)) return true;
+    }
+    for (final t in tiles.values) {
+      if (x < t.minX - 60 || x > t.maxX + 60 || y < t.minY - 60 || y > t.maxY + 60) continue;
+      if (_tileHas(t.buildingTile, x, y, margin)) return true;
+    }
+    return false;
+  }
+
+  /// The nearest point on a road to a world point, with the road's
+  /// direction there (unit vector), within [within] metres.
+  (double, double, double, double)? nearestRoad(double x, double y, {double within = 45}) {
+    final t = tileAtWorld(x, y);
+    if (t == null) return null;
+    var best = within * within;
+    (double, double, double, double)? out;
+    for (final line in t.roads) {
+      for (var i = 0; i + 3 < line.length; i += 2) {
+        final ax = line[i], ay = line[i + 1], bx = line[i + 2], by = line[i + 3];
+        if ((ax < x - within && bx < x - within) || (ax > x + within && bx > x + within) || (ay < y - within && by < y - within) || (ay > y + within && by > y + within)) {
+          continue;
+        }
+        final dx = bx - ax, dy = by - ay;
+        final l2 = dx * dx + dy * dy;
+        if (l2 < 1e-6) continue;
+        final u = (((x - ax) * dx + (y - ay) * dy) / l2).clamp(0.0, 1.0);
+        final qx = ax + dx * u, qy = ay + dy * u;
+        final d2 = (qx - x) * (qx - x) + (qy - y) * (qy - y);
+        if (d2 < best) {
+          best = d2;
+          final l = math.sqrt(l2);
+          out = (qx, qy, dx / l, dy / l);
+        }
+      }
+    }
+    return out;
+  }
+
   /// Tile containing a world point, if loaded.
   WorldTile? tileAtWorld(double wx, double wy) {
     for (final t in tiles.values) {

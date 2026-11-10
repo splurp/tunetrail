@@ -39,6 +39,9 @@ class EconomyClient {
       ..bits = (a['bits'] as num?)?.toInt() ?? _p.bits
       ..xp = (a['xp'] as num?)?.toInt() ?? _p.xp
       ..usernameChanges = (a['unc'] as num?)?.toInt() ?? _p.usernameChanges;
+    if (a['bonuses'] is Map<String, dynamic>) _p.bonuses = Bonuses.fromJson(a['bonuses'] as Map<String, dynamic>);
+    if (a.containsKey('treasure')) _p.treasure = a['treasure'] as Map<String, dynamic>?;
+    if (a['onMap'] is bool) _p.showOnMap = a['onMap'] as bool;
     final owned = a['owned'];
     if (owned is List) {
       _p.owned
@@ -174,7 +177,10 @@ class EconomyClient {
 
 /// The result of one throw in the catch minigame.
 class ThrowOutcome {
-  const ThrowOutcome(this.result, {this.card, this.duplicateCoins = 0, this.note});
+  const ThrowOutcome(this.result, {this.card, this.duplicateCoins = 0, this.note, this.xp = 0});
+
+  /// XP gained by the catch.
+  final int xp;
 
   /// caught, slipped or fled.
   final String result;

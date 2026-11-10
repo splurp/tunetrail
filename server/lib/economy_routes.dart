@@ -73,8 +73,86 @@ void addEconomyRoutes(
             grounds['$cx:$cy'] = land;
           }
         }
-        final list = e.spawnsAround(id, num0(b, 'lat'), num0(b, 'lng'), tz: tzOf(b['tz']), zones: zones, grounds: grounds);
-        return withAcct(req, id, {'spawns': list, 'now': e.now()});
+        final terrains = <String, String>{
+          for (final g in (b['terrain'] as Map<String, dynamic>? ?? const {}).entries.take(64))
+            if (g.value is String && (g.value as String).length == 64) g.key: g.value as String,
+        };
+        final list = e.spawnsAround(id, num0(b, 'lat'), num0(b, 'lng'), tz: tzOf(b['tz']), zones: zones, grounds: grounds, terrains: terrains);
+        return withAcct(req, id, {'spawns': list, 'now': e.now(), ...e.worldAround(id)});
+      }));
+
+  // ------------------------------------------------------------------ world
+  r.post('/presence', (Request req) => guard(() async {
+        final id = pid(req);
+        final b = await body(req);
+        return withAcct(req, id, e.presence(id, num0(b, 'lat'), num0(b, 'lng'), heading: (b['hdg'] as num?)?.toDouble() ?? 0));
+      }));
+  r.post('/me/visibility', (Request req) => guard(() async {
+        final id = pid(req);
+        final b = await body(req);
+        e.setShowOnMap(id, b['show'] != false);
+        return withAcct(req, id, const {});
+      }));
+  r.post('/features/<fid>/claim', (Request req, String fid) => guard(() async {
+        final id = pid(req);
+        final b = await body(req);
+        return withAcct(req, id, e.claimFeature(id, Uri.decodeComponent(fid), num0(b, 'lat'), num0(b, 'lng')));
+      }));
+  r.post('/treasure/dig', (Request req) => guard(() async {
+        final id = pid(req);
+        final b = await body(req);
+        return withAcct(req, id, {'bits': e.digTreasure(id, num0(b, 'lat'), num0(b, 'lng'))});
+      }));
+  r.post('/djs/<dj>/challenge', (Request req, String dj) => guard(() async {
+        final id = named(req);
+        final b = await body(req);
+        return withAcct(req, id, {'battle': e.challengeDj(id, Uri.decodeComponent(dj), num0(b, 'lat'), num0(b, 'lng'))});
+      }));
+  r.post('/battles/<bid>/join', (Request req, String bid) => guard(() async {
+        final id = named(req);
+        final b = await body(req);
+        return withAcct(req, id, {'battle': e.joinBattle(id, Uri.decodeComponent(bid), num0(b, 'lat'), num0(b, 'lng'))});
+      }));
+  r.post('/battles/<bid>/score', (Request req, String bid) => guard(() async {
+        final id = pid(req);
+        final b = await body(req);
+        return withAcct(req, id, {'battle': e.scoreBattle(id, Uri.decodeComponent(bid), (b['acc'] as num?)?.toDouble() ?? 0, (b['beats'] as num?)?.toInt() ?? 0)});
+      }));
+  r.get('/battles/<bid>', (Request req, String bid) => guard(() async {
+        final id = pid(req);
+        return withAcct(req, id, {'battle': e.battleState(id, Uri.decodeComponent(bid))});
+      }));
+
+  // ----------------------------------------------------------------- levels
+  r.post('/me/bonuses/<bonus>', (Request req, String bonus) => guard(() async {
+        final id = pid(req);
+        e.chooseBonus(id, bonus);
+        return withAcct(req, id, const {});
+      }));
+  r.post('/me/respec', (Request req) => guard(() async {
+        final id = pid(req);
+        e.respecBonuses(id);
+        return withAcct(req, id, const {});
+      }));
+  r.post('/admin/players/<player>/xp', (Request req, String player) => guard(() async {
+        final id = admin(req);
+        final b = await body(req);
+        return ok({'xp': e.adminXp(id, Uri.decodeComponent(player), (b['delta'] as num?)?.toInt() ?? 0)});
+      }));
+  r.post('/admin/players/<player>/bonus', (Request req, String player) => guard(() async {
+        final id = admin(req);
+        final b = await body(req);
+        return ok({'bonuses': e.adminBonus(id, Uri.decodeComponent(player), '${b['bonus']}', (b['delta'] as num?)?.toInt() ?? 0)});
+      }));
+  r.post('/admin/players/<player>/dj', (Request req, String player) => guard(() async {
+        final id = admin(req);
+        return ok({'dj': e.adminSummonDj(id, Uri.decodeComponent(player))});
+      }));
+  r.get('/admin/players/<player>/progress', (Request req, String player) => guard(() async {
+        admin(req);
+        final a = e.accounts[Uri.decodeComponent(player)];
+        if (a == null) return ok(const {});
+        return ok({'xp': a.xp, 'level': a.level, 'bonuses': a.bonuses.toJson()});
       }));
   r.post('/spawns/<sid>/buy', (Request req, String sid) => guard(() async {
         final id = pid(req);

@@ -4,6 +4,8 @@ import 'package:tunetrail_core/tunetrail_core.dart';
 
 import 'catalog.dart';
 
+part 'economy_world.dart';
+
 /// One change to a player's cards (for syncing games).
 class _CardChange {
   _CardChange(this.rev, {this.added, this.removed});
@@ -62,8 +64,31 @@ class Account {
 
   /// The ground of each cell for the day ("cx:cy:day"), as first reported.
   final Map<String, CellGround> grounds = {};
+
+  /// The terrain of each cell for the day ("cx:cy:day"), as first reported.
+  final Map<String, CellTerrain> terrains = {};
+
+  /// Glowing features used up today ("cx:cy:square:day").
+  final Set<String> claimedFeatures = {};
+
+  /// The treasure map the player holds.
+  Treasure? treasure;
+
+  /// DJs that won't battle this player again until a time (DJ id → ms).
+  final Map<String, int> djDone = {};
+
+  /// DJs an admin summoned for this player.
+  final List<DjNpc> summonedDjs = [];
   double? lat, lng;
   int locAt = 0;
+  double heading = 0;
+
+  /// Whether nearby players see this player on their map.
+  bool showOnMap = true;
+
+  /// Level bonuses (chosen and admin-given).
+  Bonuses bonuses = Bonuses();
+  int get level => levelForXp(xp);
 
   // Days (pinned time-zone offset).
   int? tz;
@@ -177,6 +202,11 @@ class Account {
         'flags': [for (final f in flags) f.toJson()],
         'adminLog': adminLog,
         'flagsSeen': flagsSeen,
+        'bonuses': bonuses.toJson(),
+        'claimedF': claimedFeatures.toList(),
+        if (treasure != null) 'treasure': treasure!.toJson(),
+        'djDone': djDone,
+        if (!showOnMap) 'hidden': true,
       };
 
   factory Account.fromJson(Map<String, dynamic> j, List<CardPayload> cards) {
@@ -216,6 +246,11 @@ class Account {
     (j['round'] as Map<String, dynamic>? ?? const {}).forEach((k, v) => a.roundBits[k] = (v as num).toInt());
     a.flags.addAll([for (final f in (j['flags'] as List? ?? const [])) CheatFlag.fromJson(f as Map<String, dynamic>)]);
     a.adminLog.addAll([for (final x in (j['adminLog'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)]);
+    a.bonuses = Bonuses.fromJson(j['bonuses'] as Map<String, dynamic>?);
+    a.claimedFeatures.addAll([for (final x in (j['claimedF'] as List? ?? const [])) '$x']);
+    if (j['treasure'] is Map<String, dynamic>) a.treasure = Treasure.fromJson(j['treasure'] as Map<String, dynamic>);
+    (j['djDone'] as Map<String, dynamic>? ?? const {}).forEach((k, v) => a.djDone[k] = (v as num).toInt());
+    a.showOnMap = j['hidden'] != true;
     return a;
   }
 }
@@ -269,7 +304,25 @@ class Economy {
   final Map<String, Map<int, CardPayload?>> pendingCards = {};
   final Set<String> rewriteCards = {};
 
+  /// DJ battles going on (and just finished), by id.
+  final Map<String, Battle> battles = {};
+  int _battleCounter = 0;
+
+  /// Players whose position was updated lately (id → ms), for showing
+  /// players to each other.
+  final Map<String, int> _active = {};
+  List<SongInfo>? _djSongs;
+  SongPool? _djSongsPool;
+
   int now() => _clock();
+
+  /// Adds XP (with the player's XP bonus). Returns what was added.
+  int _xp(Account a, int base) {
+    if (base <= 0) return 0;
+    final xp = a.bonuses.scaleXp(base);
+    a.xp += xp;
+    return xp;
+  }
 
   /// Hooks the market up: sale proceeds, returned cards and trades go
   /// straight into accounts.
@@ -287,6 +340,15 @@ class Economy {
     engine.cardOf = (id, uid) {
       final a = accounts[id];
       return a == null || !a.imported ? null : a.cards[uid];
+    };
+    engine.onTradeCompleted = (x, y) {
+      for (final id in {x, y}) {
+        final a = accounts[id];
+        if (a == null || !a.imported) continue;
+        _xp(a, kTradeXp);
+        a.stat('trades', 1);
+        touch(a);
+      }
     };
     engine.onTake = (id, cards) {
       final a = accounts[id];
@@ -345,6 +407,9 @@ class Economy {
       'owned': a.owned.toList(),
       'stats': a.stats,
       'unc': a.usernameChanges,
+      'bonuses': a.bonuses.toJson(),
+      'treasure': a.treasure?.toJson(),
+      'onMap': a.showOnMap,
       if (ch == null) 'full': true else ...{
         if (ch.added.isNotEmpty) 'add': [for (final c in ch.added) c.toJson()],
         if (ch.removed.isNotEmpty) 'del': ch.removed,
@@ -496,6 +561,10 @@ class Economy {
       ..lat = lat
       ..lng = lng
       ..locAt = t;
+    _active[a.id] = t;
+    // A treasure map is lost by straying too far from where it was found.
+    final tr = a.treasure;
+    if (tr != null && distanceMeters(lat, lng, tr.fromLat, tr.fromLng) > kTreasureMaxMeters) a.treasure = null;
     dirty.add(a.id);
   }
 
@@ -510,7 +579,7 @@ class Economy {
   /// keeps the first ground map it got for the day (so it can't be
   /// re-rolled); cells without one have no spawns yet.
   List<Map<String, dynamic>> spawnsAround(String id, double lat, double lng,
-      {int? tz, Map<String, Map<int, double>> zones = const {}, Map<String, String> grounds = const {}}) {
+      {int? tz, Map<String, Map<int, double>> zones = const {}, Map<String, String> grounds = const {}, Map<String, String> terrains = const {}}) {
     final a = account(id);
     _moveTo(a, lat, lng);
     today(a, tz);
@@ -523,13 +592,24 @@ class Economy {
     a.memo.removeWhere((_, s) => s.expiresAt < t);
     a.throws.removeWhere((k, _) => !a.memo.containsKey(k));
     a.grounds.removeWhere((k, _) => !k.endsWith(':$d'));
+    a.terrains.removeWhere((k, _) => !k.endsWith(':$d'));
+    a.claimedFeatures.removeWhere((k) => !k.endsWith(':$d'));
     a.slots.removeWhere((k, _) => k.split(':')[2] != '$d');
+    for (final e in terrains.entries) {
+      final k = '${e.key}:$d';
+      if (a.terrains.containsKey(k) || a.terrains.length > 400) continue;
+      final t = CellTerrain.parse(e.value);
+      if (t != null) a.terrains[k] = t;
+    }
     if (catalog.songs.isEmpty) return const [];
     final hour = DateTime.fromMillisecondsSinceEpoch(t + offset * 60000, isUtc: true).hour;
     final timeBias = timeOfDayBias(hour);
     final favs = _favorites(id);
     final spawner = _spawner;
     final out = <Map<String, dynamic>>[];
+    final rate = a.bonuses.spawnMultiplier;
+    final rarityBoost = a.bonuses.rarityWeights;
+    final shinyBoost = a.bonuses.shinyMultiplier;
     for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng)) {
       final gk = '$cx:$cy:$d';
       var ground = a.grounds[gk];
@@ -539,7 +619,12 @@ class Economy {
         if (ground == null) continue;
         a.grounds[gk] = ground;
       }
-      for (final (slot, sLat, sLng) in spawner.spots(cx, cy, d, ground)) {
+      final spots = [
+        ...spawner.spots(cx, cy, d, ground, rate: rate),
+        // Glowing bushes and saplings are nests: more songs around them.
+        ..._nestSpots(a, cx, cy, d, ground),
+      ];
+      for (final (slot, sLat, sLng) in spots) {
         final key = WorldSpawner.slotKey(cx, cy, d, slot);
         final st = a.slots[key];
         if (st != null && st.$2 > t) continue; // a new song appears an hour after a catch
@@ -548,7 +633,11 @@ class Economy {
         var spawn = a.memo[sid];
         if (spawn == null) {
           final made = spawner.spawnAt(cx, cy, d, slot, st?.$1 ?? 0, sLat, sLng,
-              expiresAt: dayEnd, favorites: favs, bias: combineBias(timeBias, zones['$cx:$cy'] ?? const {}));
+              expiresAt: dayEnd,
+              favorites: favs,
+              bias: combineBias(timeBias, zones['$cx:$cy'] ?? const {}),
+              rarityBoost: rarityBoost,
+              shinyBoost: shinyBoost);
           if (made == null) continue;
           // A spawn keeps what it first showed until the day ends.
           spawn = a.memo[sid] = made;
@@ -667,9 +756,8 @@ class Economy {
     final shiny = edition == Edition.standard && (s.shiny || acc == 100);
     final card = s.song.toPayload(uid: 0, rarity: r, shiny: shiny, edition: edition, serial: serial, acquiredAt: t);
     final coins = r.catchCoins * (shiny ? 3 : 1);
-    final xp = r.catchXp * (shiny ? 3 : 1);
     a.coins += coins;
-    a.xp += xp;
+    final xp = _xp(a, catchXp(r, shiny: shiny, edition: edition));
     a.stat('caught', 1);
     if (shiny) a.stat('shinies', 1);
     _questEvent(a, QuestKind.catchAny);
@@ -685,7 +773,7 @@ class Economy {
   /// scrapped for coins instead. Returns (the new card or null, coins).
   (CardPayload?, int) _give(Account a, CardPayload c) {
     if (c.edition == Edition.standard && a.ownsVariant(c)) {
-      final coins = scrapValue(c.rarity, c.shiny, c.rank);
+      final coins = a.bonuses.scaleScrap(scrapValue(c.rarity, c.shiny, c.rank));
       a.coins += coins;
       a.stat('scrapped', 1);
       return (null, coins);
@@ -1062,7 +1150,7 @@ class Economy {
     for (final uid in uids.toSet()) {
       final c = a.cards[uid];
       if (c == null || !canScrap(c.edition)) continue;
-      total += scrapValue(c.rarity, c.shiny, c.rank);
+      total += a.bonuses.scaleScrap(scrapValue(c.rarity, c.shiny, c.rank));
       _remove(a, uid);
       a.stat('scrapped', 1);
     }
@@ -1189,7 +1277,7 @@ class Economy {
     a.questsClaimed.add(questId);
     a.coins += q.reward.coins;
     a.bits += q.reward.bits;
-    a.xp += q.reward.xp;
+    _xp(a, q.reward.xp);
     CardPayload? card;
     var dup = 0;
     final songId = q.reward.songId;
@@ -1248,6 +1336,7 @@ class Economy {
     if (bits > minigameMaxBits(game)) _flag(a, 'minigame_bits', 'asked for $bits bits in $game');
     a.roundBits[game] = paid + pay;
     a.bits += pay;
+    _xp(a, minigameXp(pay));
     a.stat('minigameBits', pay);
     touch(a);
     return pay;

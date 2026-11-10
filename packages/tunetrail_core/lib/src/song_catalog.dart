@@ -414,14 +414,22 @@ class WorldSpawner {
   /// A spot's key ("cx:cy:day:slot"); a spawn's id adds its generation.
   static String slotKey(int cx, int cy, int d, int slot) => '$cx:$cy:$d:$slot';
 
-  /// The spawn spots of a cell on day [d]: (slot, lat, lng).
-  List<(int, double, double)> spots(int cx, int cy, int d, CellGround ground) {
+  /// How many spawn spots a cell with this ground has on average:
+  /// ~0.5 in empty countryside up to ~3 in built-up blocks.
+  static double expectedSpots(CellGround ground) {
+    final land = ground.landShare;
+    return land <= 0 ? 0 : land * (0.5 + 2.5 * ground.builtShare / land);
+  }
+
+  /// The spawn spots of a cell on day [d]: (slot, lat, lng). [rate]
+  /// multiplies how many there are (a player's spawn-rate bonus): a higher
+  /// rate only ever adds spots to the ones a lower rate gives.
+  List<(int, double, double)> spots(int cx, int cy, int d, CellGround ground, {double rate = 1}) {
     final rng = Rng(hashInts([seed, cx, cy, d]));
     final land = ground.landShare;
     if (land <= 0) return const [];
-    // ~0.5 spots in empty countryside up to ~3 in built-up blocks.
-    final expected = land * (0.5 + 2.5 * ground.builtShare / land);
-    final count = (expected.floor() + (rng.nextDouble() < expected - expected.floor() ? 1 : 0)).clamp(0, 4);
+    final expected = expectedSpots(ground) * rate;
+    final count = (expected.floor() + (rng.nextDouble() < expected - expected.floor() ? 1 : 0)).clamp(0, rate > 1 ? 8 : 4);
     final weights = [
       for (final v in ground.squares)
         switch (v) {
@@ -455,10 +463,14 @@ class WorldSpawner {
   /// The song at a spot: generation [gen] (0 = the day's first song; each
   /// catch moves the spot to the next).
   WorldSpawn? spawnAt(int cx, int cy, int d, int slot, int gen, double lat, double lng,
-      {required int expiresAt, Set<int> favorites = const {}, Map<int, double> bias = const {}}) {
+      {required int expiresAt,
+      Set<int> favorites = const {},
+      Map<int, double> bias = const {},
+      List<double> rarityBoost = const [1, 1, 1, 1, 1],
+      double shinyBoost = 1}) {
     final r = Rng(hashInts([seed, cx, cy, d, slot, gen]));
-    final rolled = r.rollRarity();
-    final shiny = r.chance(kShinyOdds);
+    final rolled = r.rollRarityBoosted(rarityBoost);
+    final shiny = r.nextInt(kShinyOdds * 1000) < 1000 * shinyBoost;
     final er = r.nextInt(kSampleOdds * kCanvasOdds);
     final genre = pool.pickGenre(r, bias: bias);
     final base = pool.pickSong(r, genreId: genre, rarity: rolled);

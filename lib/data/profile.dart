@@ -199,8 +199,19 @@ class PlayerProfile extends ChangeNotifier {
   bool get reduceEffects => batterySaver;
 
   int get level => levelForXp(xp);
-  static int levelForXp(int xp) => (math.sqrt(xp / 100)).floor() + 1;
-  static int xpForLevel(int level) => (level - 1) * (level - 1) * 100;
+
+  /// Level bonuses (from the server).
+  Bonuses bonuses = Bonuses();
+
+  /// The treasure map held, as the server sends it ({lat, lng, cLat, cLng,
+  /// fLat, fLng}).
+  Map<String, dynamic>? treasure;
+
+  /// Whether nearby players see this player on their map.
+  bool showOnMap = true;
+
+  /// Bonus choices already offered in a pop-up (so it shows once per level).
+  int bonusPromptedAt = 0;
 
   Future<void> load() async {
     if (await _file.exists()) {
@@ -304,6 +315,10 @@ class PlayerProfile extends ChangeNotifier {
         'lastFmKey': lastFmKey,
         'volume': volume,
         'playOnEncounter': playOnEncounter,
+        'bonuses': bonuses.toJson(),
+        'treasure': ?treasure,
+        'showOnMap': showOnMap,
+        'bonusPrompt': bonusPromptedAt,
       };
 
   void _fromJson(Map<String, dynamic> j) {
@@ -312,6 +327,10 @@ class PlayerProfile extends ChangeNotifier {
     coins = (j['coins'] as num?)?.toInt() ?? coins;
     bits = (j['bits'] as num?)?.toInt() ?? bits;
     xp = (j['xp'] as num?)?.toInt() ?? 0;
+    bonuses = Bonuses.fromJson(j['bonuses'] as Map<String, dynamic>?);
+    treasure = j['treasure'] as Map<String, dynamic>?;
+    showOnMap = j['showOnMap'] as bool? ?? true;
+    bonusPromptedAt = (j['bonusPrompt'] as num?)?.toInt() ?? 0;
     beatOffsetMs = (j['beatOffset'] as num?)?.toInt() ?? 0;
     soundEffects = j['sfx'] as bool? ?? true;
     showBuildings = j['buildings'] as bool? ?? false;

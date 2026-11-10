@@ -39,6 +39,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   /// Coins credited when the caught variant was already owned.
   int _dupCoins = 0;
   String? _catchNote;
+  int _xp = 0;
   bool _busy = false;
   bool _playing = false;
   bool _perfect = false;
@@ -327,6 +328,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
         _card = o.card;
         _dupCoins = o.card == null ? o.duplicateCoins : 0;
         _catchNote = o.note;
+        _xp = o.xp;
         if (!g.profile.keepPlayingAfterCatch && _playing) g.audio.stop();
         HapticFeedback.heavyImpact();
         _fx.forward(from: 0);
@@ -488,7 +490,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            '${_accuracy == null ? '' : '$_accuracy% timing  ·  '}+${s.rarity.catchCoins * (s.shiny || _perfect ? 3 : 1)} coins  ·  +${s.rarity.catchXp * (s.shiny || _perfect ? 3 : 1)} XP',
+                            '${_accuracy == null ? '' : '$_accuracy% timing  ·  '}+${s.rarity.catchCoins * (s.shiny || _perfect ? 3 : 1)} coins  ·  +$_xp XP',
                             style: const TextStyle(color: kTextSecondary, fontWeight: FontWeight.w500),
                           ),
                           if (_catchNote != null) ...[

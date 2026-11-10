@@ -13,5 +13,7 @@ export 'src/social_models.dart';
 export 'src/auction_models.dart';
 export 'src/song_catalog.dart';
 export 'src/economy_rules.dart';
+export 'src/progression.dart';
+export 'src/world_features.dart';
 export 'src/quest_rules.dart';
 export 'src/text_safety.dart';

@@ -117,6 +117,239 @@ void main() {
     expect(engine.claimSerial(5, Edition.canvas), 1);
   });
 
+  group('exploration', () {
+    const lat = 40.7812, lng = -73.9665;
+    Map<String, String> terrainAll(Terrain t) => {
+          for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng)) '$cx:$cy': CellTerrain(List.filled(64, t)).encode(),
+        };
+    List<Map<String, dynamic>> glow(String id) => (econ.worldAround(id)['glow'] as List).cast<Map<String, dynamic>>();
+
+    setUp(() {
+      econ.import('p1', {});
+      econ.import('p2', {});
+      engine.setUsername('p1', 'One');
+      engine.setUsername('p2', 'Two');
+    });
+
+    test('levels: 200 XP to level 2, 3,700 from 36 to 37, 10,000 from 99 to 100, then no further', () {
+      expect(xpToNextLevel(1), 200);
+      expect(xpToNextLevel(36), 3700);
+      expect(xpToNextLevel(99), 10000);
+      expect(levelForXp(0), 1);
+      expect(levelForXp(199), 1);
+      expect(levelForXp(200), 2);
+      expect(levelForXp(xpForLevel(37) - 1), 36);
+      expect(levelForXp(1 << 40), kMaxLevel);
+      expect(catchXp(Rarity.common), 5);
+      expect(catchXp(Rarity.legendary, shiny: true), 500);
+      expect(catchXp(Rarity.common, edition: Edition.canvas), 1000);
+      expect(catchXp(Rarity.rare, edition: Edition.live), 2000);
+    });
+
+    test('a bonus every five levels; choosing again costs bits; bonuses apply', () {
+      final a = econ.account('p1');
+      expect(() => econ.chooseBonus('p1', 'xp'), throwsA(isA<MarketException>()));
+      a.xp = xpForLevel(10);
+      econ.chooseBonus('p1', 'xp');
+      econ.chooseBonus('p1', 'scrap');
+      expect(() => econ.chooseBonus('p1', 'spawn'), throwsA(isA<MarketException>()));
+      expect(a.bonuses.xpMultiplier, closeTo(1.05, 1e-9));
+      // Minigame bits give ×5 XP, with the XP bonus on top.
+      final before = a.xp;
+      econ.startMinigame('p1', 'song');
+      econ.awardMinigame('p1', 'song', 5);
+      expect(a.xp - before, (25 * 1.05).round());
+      // Scrapping pays 5% more.
+      econ.merge('p1', {'cards': [card(1, 1, r: Rarity.legendary).toJson()]});
+      final worth = scrapValue(a.cards[1]!.rarity, false, 0);
+      expect(econ.scrap('p1', [1]), (worth * 1.05).round());
+      expect(() => econ.respecBonuses('p1'), throwsA(isA<MarketException>())); // no bits
+      a.bits = 150;
+      econ.respecBonuses('p1');
+      expect(a.bits, 50);
+      expect(a.bonuses.unspent(a.level), 2);
+    });
+
+    test('a spawn-rate bonus only adds spots', () {
+      final spawner = WorldSpawner(econ.catalog.pool, seed: 42);
+      final ground = CellGround(List.filled(64, CellGround.built));
+      for (var cx = 0; cx < 30; cx++) {
+        final base = spawner.spots(cx, 7, 100, ground), more = spawner.spots(cx, 7, 100, ground, rate: 2);
+        expect(more.length, greaterThanOrEqualTo(base.length));
+        expect(more.take(base.length).toList(), base);
+      }
+    });
+
+    test('trades give both players XP', () {
+      econ.merge('p2', {'cards': [card(7, 7).toJson()]});
+      econ.merge('p1', {'cards': [card(8, 8).toJson()]});
+      final o = engine.createDirectOffer('p1', 'p2', [7], [econ.account('p1').cards[8]!], 0);
+      engine.acceptOffer('p2', o.id);
+      expect(econ.account('p1').xp, kTradeXp);
+      expect(econ.account('p2').xp, kTradeXp);
+    });
+
+    test('features follow the terrain; about one in twenty glows, and a used one stops glowing', () {
+      econ.spawnsAround('p1', lat, lng, grounds: built(lat, lng), terrains: terrainAll(Terrain.urban));
+      final all = [
+        for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng)) ...WorldFeatures.inCell(cx, cy, CellTerrain(List.filled(64, Terrain.urban))),
+      ];
+      expect(all.every((f) => f.kind == FeatureKind.grate), true);
+      expect(all.length, inInclusiveRange(200, 450)); // ~13 a cell
+      final g = glow('p1');
+      expect(g.length, inInclusiveRange(3, 40));
+      final f = g.first;
+      // Too far away: nothing (and nothing is used up).
+      expect(() => econ.claimFeature('p1', f['id'] as String, (f['lat'] as double) + 0.01, f['lng'] as double), throwsA(isA<MarketException>()));
+      clock += 600000;
+      final before = econ.account('p1').coins;
+      final r = econ.claimFeature('p1', f['id'] as String, f['lat'] as double, f['lng'] as double);
+      expect([250, 500, 1000, 2500, 5000], contains(r['coins']));
+      expect(econ.account('p1').coins, before + (r['coins'] as int));
+      expect(glow('p1').any((x) => x['id'] == f['id']), false);
+      expect(() => econ.claimFeature('p1', f['id'] as String, f['lat'] as double, f['lng'] as double), throwsA(isA<MarketException>()));
+      // One that doesn't glow gives nothing.
+      final dull = all.firstWhere((x) => !g.any((y) => y['id'] == x.id));
+      expect(() => econ.claimFeature('p1', dull.id, dull.lat, dull.lng), throwsA(isA<MarketException>()));
+    });
+
+    test('lily pads and rock piles give an Epic or Legendary song', () {
+      econ.spawnsAround('p1', lat, lng, grounds: built(lat, lng), terrains: terrainAll(Terrain.rock));
+      final f = glow('p1').first;
+      expect(f['kind'], 'rocks');
+      final r = econ.claimFeature('p1', f['id'] as String, f['lat'] as double, f['lng'] as double);
+      final c = CardPayload.fromJson(r['card'] as Map<String, dynamic>);
+      expect(c.rarity.index, greaterThanOrEqualTo(Rarity.epic.index));
+      expect(econ.account('p1').cards.values.any((x) => x.songId == c.songId), true);
+      expect(econ.account('p1').xp, greaterThan(0));
+    });
+
+    test('a sand castle gives a treasure map; digging at the X pays bits; straying loses the map', () {
+      econ.spawnsAround('p1', lat, lng, grounds: built(lat, lng), terrains: terrainAll(Terrain.sand));
+      final g = glow('p1');
+      final f = g.first;
+      econ.claimFeature('p1', f['id'] as String, f['lat'] as double, f['lng'] as double);
+      final tr = econ.account('p1').treasure!;
+      final d = distanceMeters(f['lat'] as double, f['lng'] as double, tr.lat, tr.lng);
+      expect(d, inInclusiveRange(kTreasureMinMeters - 1, 401));
+      // Only one map at a time.
+      clock += 600000;
+      final f2 = g[1];
+      expect(() => econ.claimFeature('p1', f2['id'] as String, f2['lat'] as double, f2['lng'] as double), throwsA(isA<MarketException>()));
+      // Not at the X yet.
+      clock += 600000;
+      expect(() => econ.digTreasure('p1', f['lat'] as double, f['lng'] as double), throwsA(isA<MarketException>()));
+      clock += 600000;
+      final bits = econ.digTreasure('p1', tr.lat, tr.lng);
+      expect([20, 50, 100], contains(bits));
+      expect(econ.account('p1').bits, bits);
+      expect(econ.account('p1').treasure, isNull);
+      // Another map, then walking 600 m from where it was picked up.
+      clock += 600000;
+      econ.claimFeature('p1', f2['id'] as String, f2['lat'] as double, f2['lng'] as double);
+      expect(econ.account('p1').treasure, isNotNull);
+      clock += 600000;
+      econ.presence('p1', (f2['lat'] as double) + 0.0054, f2['lng'] as double);
+      expect(econ.account('p1').treasure, isNull);
+    });
+
+    test('glowing bushes are nests: more songs around them', () {
+      final plain = econ.spawnsAround('p2', lat, lng, grounds: built(lat, lng)).length;
+      final nests = econ.spawnsAround('p1', lat, lng, grounds: built(lat, lng), terrains: terrainAll(Terrain.grass));
+      expect(glow('p1').every((f) => f['kind'] == 'bush'), true);
+      expect(nests.length, greaterThan(plain + glow('p1').length));
+      // Bushes aren't tapped for anything.
+      final f = glow('p1').first;
+      expect(() => econ.claimFeature('p1', f['id'] as String, f['lat'] as double, f['lng'] as double), throwsA(isA<MarketException>()));
+    });
+
+    test('players near each other see each other for a minute; hidden and blocked ones are not shown', () {
+      econ.presence('p2', lat + 0.001, lng, heading: 90);
+      var seen = econ.presence('p1', lat, lng)['players'] as List;
+      expect(seen.single['name'], 'Two');
+      expect(seen.single['hdg'], 90);
+      econ.setShowOnMap('p2', false);
+      expect(econ.presence('p1', lat, lng)['players'], isEmpty);
+      econ.setShowOnMap('p2', true);
+      engine.setBlocked('p2', 'p1', true);
+      expect(econ.presence('p1', lat, lng)['players'], isEmpty);
+      engine.setBlocked('p2', 'p1', false);
+      clock += 61000;
+      seen = econ.presence('p1', lat, lng)['players'] as List;
+      expect(seen, isEmpty);
+    });
+
+    test('team accuracy: +50% for a second player, +25% a third, +12.5% a fourth', () {
+      expect(teamAccuracy([88]), 88);
+      expect(teamAccuracy([50, 50]), 75);
+      expect(teamAccuracy([50, 50, 50]), 87.5);
+      expect(teamAccuracy([50, 50, 50, 50]), 93.75);
+      expect(teamAccuracy([90, 95]), 100);
+      expect(djAccuracy(500000), 90);
+      expect(djAccuracy(1000000), 100);
+    });
+
+    test('a DJ battle: join, score, win a Canvas and XP — or lose', () {
+      econ.admins.add('p2');
+      econ.presence('p1', lat, lng);
+      final dj = DjNpc.fromJson(econ.adminSummonDj('p2', 'p1'));
+      expect(dj.accuracy, inInclusiveRange(90, 100));
+      expect((econ.worldAround('p1')['djs'] as List).any((x) => x['id'] == dj.id), true);
+      // A solo player at 88% loses; the DJ takes a break.
+      var b = econ.challengeDj('p1', dj.id, lat, lng);
+      b = econ.scoreBattle('p1', b['id'] as String, 88, 40);
+      expect(b['done'], true);
+      expect(b['won'], false);
+      expect(() => econ.challengeDj('p1', dj.id, lat, lng), throwsA(isA<MarketException>()));
+      clock += 11 * 60000;
+      // Two players at 70% make 100%: they win.
+      econ.presence('p2', lat, lng);
+      b = econ.challengeDj('p1', dj.id, lat, lng);
+      final id = b['id'] as String;
+      expect((econ.presence('p2', lat, lng)['battles'] as List).single['id'], id);
+      econ.joinBattle('p2', id, lat, lng);
+      expect(econ.scoreBattle('p1', id, 70, 40)['done'], false);
+      b = econ.scoreBattle('p2', id, 70, 40);
+      expect(b['won'], true);
+      expect(b['team'], 100);
+      final winner = (b['winner'] as Map)['id'] as String;
+      final prize = CardPayload.fromJson(b['prize'] as Map<String, dynamic>);
+      expect(prize.edition, Edition.canvas);
+      expect(prize.songId, dj.song.id);
+      expect(econ.account(winner).cards.containsKey(prize.uid), true);
+      expect(econ.account('p1').xp, kDjBattleXp);
+      expect(econ.account('p2').xp, kDjBattleXp);
+      expect((econ.worldAround('p1')['djs'] as List).any((x) => x['id'] == dj.id), false);
+    });
+
+    test('a battle nobody scores in is settled when its time is up', () {
+      econ.admins.add('p2');
+      econ.presence('p1', lat, lng);
+      final dj = DjNpc.fromJson(econ.adminSummonDj('p2', 'p1'));
+      final b = econ.challengeDj('p1', dj.id, lat, lng);
+      clock += (kBattleSeconds + 15) * 1000;
+      final after = econ.battleState('p1', b['id'] as String);
+      expect(after['done'], true);
+      expect(after['won'], false);
+    });
+
+    test('admins add and remove XP and bonuses', () {
+      econ.admins.add('p2');
+      expect(econ.adminXp('p2', 'p1', 5000), 5000);
+      expect(econ.adminXp('p2', 'p1', -9000), 0);
+      econ.adminBonus('p2', 'p1', 'rarity', 3);
+      expect(econ.account('p1').bonuses.of(Bonus.rarity), 3);
+      econ.adminBonus('p2', 'p1', 'rarity', -10);
+      expect(econ.account('p1').bonuses.of(Bonus.rarity), 0);
+      expect(() => econ.adminXp('p1', 'p2', 5), throwsA(isA<MarketException>()));
+      // Bonuses survive a save and load.
+      econ.adminBonus('p2', 'p1', 'spawn', 2);
+      final a = econ.account('p1');
+      final copy = Account.fromJson(a.toJson(), a.cards.values.toList());
+      expect(copy.bonuses.of(Bonus.spawn), 2);
+    });
+  });
+
   test('economy requests need an imported account', () {
     expect(() => econ.openPack('p1', 'pack_gold'), throwsA(isA<MarketException>()));
   });

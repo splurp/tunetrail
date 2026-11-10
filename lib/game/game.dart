@@ -16,6 +16,7 @@ import '../data/deezer_api.dart';
 import '../data/models.dart';
 import '../data/profile.dart';
 import '../data/samples.dart';
+import '../map3d/figure3d.dart' show IdleDirector;
 import '../map3d/map_data.dart';
 import '../map3d/props3d.dart';
 import 'genre_zones.dart';
@@ -34,6 +35,7 @@ import 'store_catalog.dart';
 import 'trusted_clock.dart';
 
 part 'economy_client.dart';
+part 'world.dart';
 
 /// Central game controller. Owns every subsystem and exposes game actions.
 class Game extends ChangeNotifier {
@@ -54,6 +56,9 @@ class Game extends ChangeNotifier {
   late final SamplePlayer samples = SamplePlayer(audio);
   final GenreZones zones;
   late final SpawnEngine spawnEngine;
+
+  /// Map features, DJs and other players around (the Exploration Update).
+  late final WorldState world = WorldState(this);
 
   /// Genre zone reading at the player's position.
   ZoneReading zoneHere = const ZoneReading({}, false);
@@ -113,6 +118,7 @@ class Game extends ChangeNotifier {
     location.addListener(_onLocation);
     catalog.addListener(_onCatalog);
     profile.addListener(notifyListeners);
+    world.addListener(notifyListeners);
     mapData.addListener(_onMapData);
     mapData.buildingsEnabled = profile.showBuildings;
     mapData.ensureAround(location.position.latitude, location.position.longitude);
@@ -266,6 +272,8 @@ class Game extends ChangeNotifier {
     }
     _refreshSpawns(force: true);
     unawaited(refreshQuests());
+    world.start();
+    unawaited(world.refreshPresence());
     notifyListeners();
   }
 
@@ -895,6 +903,7 @@ class Game extends ChangeNotifier {
     _spawnCenter = location.position;
     _spawnWindow = w;
     _spawnCatalogVersion = catalog.version;
+    world.rebuildFeatures();
     if (serverEconomy) {
       unawaited(_fetchServerSpawns());
       return;
@@ -970,6 +979,7 @@ class Game extends ChangeNotifier {
       final (_, cy) = WorldSpawner.cellOf(pos.latitude, pos.longitude);
       final cells = <String, Map<String, double>>{};
       final grounds = <String, String>{};
+      final terrain = <String, String>{};
       for (var dy = -2; dy <= 2; dy++) {
         final row = cy + dy;
         final cx = (pos.longitude / WorldSpawner.lngDegForRow(row)).floor();
@@ -979,15 +989,20 @@ class Game extends ChangeNotifier {
           if (bias.isNotEmpty) cells['${cx + dx}:$row'] = {for (final e in bias.entries) '${e.key}': e.value};
           final g = _groundOf(cx + dx, row);
           if (g != null) grounds['${cx + dx}:$row'] = g;
+          final t = world.terrainOf(cx + dx, row);
+          if (t != null) terrain['${cx + dx}:$row'] = t;
         }
       }
+
       final j = await econ.call('POST', '/spawns', body: {
         'lat': pos.latitude,
         'lng': pos.longitude,
         'tz': DateTime.now().timeZoneOffset.inMinutes,
         'zones': cells,
         'grounds': grounds,
+        'terrain': terrain,
       });
+      world.applyServer(j);
       final now = DateTime.now();
       final list = <Spawn>[];
       for (final x in (j['spawns'] as List? ?? const [])) {
@@ -1164,7 +1179,8 @@ class Game extends ChangeNotifier {
     final card = acquire(s.song.id, s.rarity, shiny, edition, CardSource.wild, announce: false, serial: serial);
     unawaited(audio.playSfx(Sfx.catchSong));
     profile.coins += s.rarity.catchCoins * (shiny ? 3 : 1);
-    profile.xp += s.rarity.catchXp * (shiny ? 3 : 1);
+    lastCatchXp = profile.bonuses.scaleXp(catchXp(s.rarity, shiny: shiny, edition: edition));
+    profile.xp += lastCatchXp;
     profile.totalCaught++;
     if (shiny) profile.shinyCaught++;
     questEvent(QuestKind.catchAny);
@@ -1177,6 +1193,9 @@ class Game extends ChangeNotifier {
   void fleeSpawn(Spawn s) => _markSpent(s);
 
   final math.Random _throwRng = math.Random();
+
+  /// XP the last local catch gave.
+  int lastCatchXp = 0;
 
   /// One throw in the catch minigame with [acc]% timing (100 = a perfect
   /// beat: always caught, and shiny). [attempt] counts from 1. On the server
@@ -1203,12 +1222,13 @@ class Game extends ChangeNotifier {
       final dup = (j['dupCoins'] as num?)?.toInt() ?? 0;
       lastDuplicateCoins = dup;
       lastCatchNote = j['note'] as String?;
-      return ThrowOutcome('caught', card: dup > 0 ? null : collection.byUid(c.uid), duplicateCoins: dup, note: lastCatchNote);
+      return ThrowOutcome('caught',
+          card: dup > 0 ? null : collection.byUid(c.uid), duplicateCoins: dup, note: lastCatchNote, xp: (j['xp'] as num?)?.toInt() ?? 0);
     }
     final success = acc == 100 || isPurchased(s) || _throwRng.nextDouble() < catchChance(s.rarity, acc);
     if (success) {
       final card = await catchSpawn(s, perfect: acc == 100);
-      return ThrowOutcome('caught', card: card, duplicateCoins: card == null ? lastDuplicateCoins : 0, note: lastCatchNote);
+      return ThrowOutcome('caught', card: card, duplicateCoins: card == null ? lastDuplicateCoins : 0, note: lastCatchNote, xp: lastCatchXp);
     }
     if (attempt >= kMaxThrows || _throwRng.nextDouble() < kFleeChance[s.rarity.index]) {
       fleeSpawn(s);
@@ -1877,6 +1897,7 @@ class Game extends ChangeNotifier {
     _collectionSync?.cancel();
     _profileSync?.cancel();
     _mapDebounce?.cancel();
+    world.dispose();
     mapData.dispose();
     market.dispose();
     purchases.dispose();
