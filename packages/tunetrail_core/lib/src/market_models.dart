@@ -336,6 +336,7 @@ class InboxItem {
     this.coins = 0,
     this.cards = const [],
     required this.createdAt,
+    this.credited = false,
   });
   final String id;
   final String message;
@@ -343,12 +344,17 @@ class InboxItem {
   final List<CardPayload> cards;
   final int createdAt;
 
+  /// The coins and cards were already added to the player's server-side
+  /// account: the game only shows the message.
+  final bool credited;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'message': message,
         'coins': coins,
         'cards': [for (final c in cards) c.toJson()],
         'createdAt': createdAt,
+        if (credited) 'credited': true,
       };
   factory InboxItem.fromJson(Map<String, dynamic> j) => InboxItem(
         id: j['id'] as String,
@@ -359,6 +365,7 @@ class InboxItem {
             CardPayload.fromJson(c as Map<String, dynamic>)
         ],
         createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
+        credited: j['credited'] as bool? ?? false,
       );
 }
 

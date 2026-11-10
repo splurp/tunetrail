@@ -39,9 +39,9 @@ jobs:
       - name: Core package tests
         working-directory: packages/tunetrail_core
         run: dart pub get && dart test
-      - name: Server analysis
+      - name: Server analysis and tests
         working-directory: server
-        run: dart pub get && dart analyze
+        run: dart pub get && dart analyze && dart test
 
   android:
     # Full builds only for releases (manual runs and version tags): pushes just

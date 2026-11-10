@@ -15,3 +15,6 @@ dependencies:
   shelf_router: ^1.1.0
   tunetrail_core:
     path: ../packages/tunetrail_core
+
+dev_dependencies:
+  test: ^1.25.0

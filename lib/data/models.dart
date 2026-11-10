@@ -68,6 +68,37 @@ class Song {
 
   String cover([int size = 250]) => coverUrl(coverMd5, size: size);
 
+  /// The shared (game + server) form of this song.
+  SongInfo toInfo() => SongInfo(
+        id: id,
+        title: title,
+        artistId: artistId,
+        artistName: artistName,
+        albumId: albumId,
+        albumTitle: albumTitle,
+        coverMd5: coverMd5,
+        artistPicMd5: artistPicMd5,
+        genreId: genreId,
+        rank: rank,
+        duration: duration,
+        plays: plays,
+      );
+
+  factory Song.fromInfo(SongInfo s) => Song(
+        id: s.id,
+        title: s.title,
+        artistId: s.artistId,
+        artistName: s.artistName,
+        albumId: s.albumId,
+        albumTitle: s.albumTitle,
+        coverMd5: s.coverMd5,
+        artistPicMd5: s.artistPicMd5,
+        genreId: s.genreId,
+        rank: s.rank,
+        duration: s.duration,
+        plays: s.plays,
+      );
+
   Map<String, dynamic> toJson() => {
         'i': id,
         't': title,

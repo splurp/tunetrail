@@ -14,9 +14,9 @@ import 'text_safety.dart';
 ///  * the offline "local market" inside the app (with NPC traders), and
 ///  * the multiplayer HTTP server in `server/`.
 ///
-/// Coin balances live on the client; the engine credits coins to sellers via
-/// their inbox and expects buyers to have debited themselves. A production
-/// deployment should move balances server-side (see README).
+/// The engine credits coins and cards via inboxes and expects buyers to have
+/// been debited already: by their game (local market), or by the server's
+/// economy, which holds balances and collections ([onDeliver]).
 class MarketEngine {
   MarketEngine({int? seed}) : _rand = math.Random(seed);
 
@@ -108,14 +108,21 @@ class MarketEngine {
 
   String nameOf(String id) => players[id]?.name ?? 'Unknown';
 
+  /// Credits coins and cards straight to [playerId]'s server-side account
+  /// (when balances live on the server). Returns true when it did, and the
+  /// inbox item is then only a notice.
+  bool Function(String playerId, int coins, List<CardPayload> cards)? onDeliver;
+
   void _deliver(String playerId, String message,
       {int coins = 0, List<CardPayload> cards = const []}) {
+    final credited = (coins > 0 || cards.isNotEmpty) && (onDeliver?.call(playerId, coins, cards) ?? false);
     inboxes.putIfAbsent(playerId, () => []).add(InboxItem(
         id: _id('i'),
         message: message,
         coins: coins,
         cards: cards,
-        createdAt: now()));
+        createdAt: now(),
+        credited: credited));
   }
 
   List<InboxItem> peekInbox(String playerId) =>
@@ -621,7 +628,15 @@ class MarketEngine {
     return o;
   }
 
+  /// Takes cards out of [playerId]'s server-side account (a direct trade
+  /// hands over songs from their collection). Returns false if they no
+  /// longer have them all; nothing is taken then.
+  bool Function(String playerId, List<CardPayload> cards)? onTake;
+
   void _acceptDirect(TradeOffer o) {
+    if (onTake != null && !onTake!(o.toId, o.requestedCards)) {
+      throw MarketException('You no longer have one of those songs');
+    }
     o.status = TradeStatus.accepted;
     offers.remove(o.id);
     _deliver(o.toId, 'Trade with ${o.fromName} complete', coins: o.offeredCoins, cards: o.offeredCards);

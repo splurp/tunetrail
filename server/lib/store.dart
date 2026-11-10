@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
 import 'package:postgres/postgres.dart';
@@ -22,6 +23,13 @@ abstract class Store {
 
   /// Adds/updates catalogue songs and artist fan counts.
   Future<void> saveCatalog(List<SongInfo> songs, Map<int, int> fans);
+
+  /// Every server-side account: its data and its cards.
+  Future<List<(Map<String, dynamic>, List<CardPayload>)>> loadAccounts();
+
+  /// Saves an account. [changed] maps card uids to their new card (null =
+  /// removed); with [allCards] the stored cards are replaced entirely.
+  Future<void> saveAccount(String id, Map<String, dynamic> data, {Map<int, CardPayload?> changed = const {}, List<CardPayload>? allCards, required List<CardPayload> Function() currentCards});
 
   /// Postgres when [databaseUrl] is set (e.g. a free Supabase or Neon
   /// database), else a JSON file next to the server.
@@ -81,6 +89,30 @@ class FileStore implements Store {
     await sink.close();
   }
 
+  Directory get _accounts => Directory('$path.accounts');
+
+  @override
+  Future<List<(Map<String, dynamic>, List<CardPayload>)>> loadAccounts() async {
+    final out = <(Map<String, dynamic>, List<CardPayload>)>[];
+    if (!await _accounts.exists()) return out;
+    await for (final f in _accounts.list()) {
+      if (f is! File || !f.path.endsWith('.json')) continue;
+      final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+      out.add((j['data'] as Map<String, dynamic>, [for (final c in (j['cards'] as List? ?? const [])) CardPayload.fromJson(c as Map<String, dynamic>)]));
+    }
+    return out;
+  }
+
+  @override
+  Future<void> saveAccount(String id, Map<String, dynamic> data,
+      {Map<int, CardPayload?> changed = const {}, List<CardPayload>? allCards, required List<CardPayload> Function() currentCards}) async {
+    await _accounts.create(recursive: true);
+    final name = sha256.convert(utf8.encode(id)).toString();
+    final f = File('${_accounts.path}/$name.json'), tmp = File('${f.path}.tmp');
+    await tmp.writeAsString(jsonEncode({'data': data, 'cards': [for (final c in allCards ?? currentCards()) c.toJson()]}));
+    await tmp.rename(f.path);
+  }
+
   Directory get _collections => Directory('$path.collections');
 
   @override
@@ -126,6 +158,8 @@ class PgStore implements Store {
     await c.execute('CREATE TABLE IF NOT EXISTS tunetrail_collections (player_id text PRIMARY KEY, cards jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())');
     await c.execute('CREATE TABLE IF NOT EXISTS tunetrail_songs (id bigint PRIMARY KEY, data jsonb NOT NULL)');
     await c.execute('CREATE TABLE IF NOT EXISTS tunetrail_artists (id bigint PRIMARY KEY, fans bigint NOT NULL)');
+    await c.execute('CREATE TABLE IF NOT EXISTS tunetrail_accounts (player_id text PRIMARY KEY, data jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())');
+    await c.execute('CREATE TABLE IF NOT EXISTS tunetrail_cards (player_id text NOT NULL, uid bigint NOT NULL, data jsonb NOT NULL, PRIMARY KEY (player_id, uid))');
     return s;
   }
 
@@ -168,6 +202,54 @@ class PgStore implements Store {
           'ON CONFLICT (player_id) DO UPDATE SET cards = EXCLUDED.cards, updated_at = now()'),
       parameters: {'id': playerId, 'c': jsonEncode(cards)},
     );
+  }
+
+  @override
+  Future<List<(Map<String, dynamic>, List<CardPayload>)>> loadAccounts() async {
+    final c = await _connection();
+    final cards = <String, List<CardPayload>>{};
+    for (final r in await c.execute(Sql.named('SELECT player_id, data::text FROM tunetrail_cards'))) {
+      cards.putIfAbsent(r[0] as String, () => []).add(CardPayload.fromJson(jsonDecode(r[1] as String) as Map<String, dynamic>));
+    }
+    return [
+      for (final r in await c.execute(Sql.named('SELECT player_id, data::text FROM tunetrail_accounts')))
+        (jsonDecode(r[1] as String) as Map<String, dynamic>, cards[r[0] as String] ?? <CardPayload>[]),
+    ];
+  }
+
+  @override
+  Future<void> saveAccount(String id, Map<String, dynamic> data,
+      {Map<int, CardPayload?> changed = const {}, List<CardPayload>? allCards, required List<CardPayload> Function() currentCards}) async {
+    final c = await _connection();
+    await c.runTx((tx) async {
+      await tx.execute(
+        Sql.named('INSERT INTO tunetrail_accounts (player_id, data, updated_at) VALUES (@id, @d::jsonb, now()) '
+            'ON CONFLICT (player_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()'),
+        parameters: {'id': id, 'd': jsonEncode(data)},
+      );
+      List<CardPayload> upserts;
+      if (allCards != null) {
+        await tx.execute(Sql.named('DELETE FROM tunetrail_cards WHERE player_id = @id'), parameters: {'id': id});
+        upserts = allCards;
+      } else {
+        final removed = [for (final e in changed.entries) if (e.value == null) e.key];
+        if (removed.isNotEmpty) {
+          await tx.execute(
+            Sql.named('DELETE FROM tunetrail_cards WHERE player_id = @id AND uid IN (SELECT (x)::bigint FROM jsonb_array_elements_text(@u::jsonb) x)'),
+            parameters: {'id': id, 'u': jsonEncode(removed)},
+          );
+        }
+        upserts = [for (final v in changed.values) ?v];
+      }
+      for (var i = 0; i < upserts.length; i += 500) {
+        final batch = upserts.sublist(i, math.min(upserts.length, i + 500));
+        await tx.execute(
+          Sql.named('INSERT INTO tunetrail_cards (player_id, uid, data) SELECT @id, (x->>\'uid\')::bigint, x FROM jsonb_array_elements(@b::jsonb) x '
+              'ON CONFLICT (player_id, uid) DO UPDATE SET data = EXCLUDED.data'),
+          parameters: {'id': id, 'b': jsonEncode([for (final card in batch) card.toJson()])},
+        );
+      }
+    });
   }
 
   @override

@@ -238,6 +238,25 @@ class SongPool {
     return songs[pool[rng.nextInt(pool.length)]];
   }
 
+  /// A song by one of [favorites] of at least [min] rarity.
+  SongInfo? favoriteAtLeast(Rng rng, Set<int> favorites, Rarity min) {
+    final list = [
+      for (final a in favorites)
+        for (final s in _byArtist[a] ?? const <SongInfo>[])
+          if (rarityOf(s.id).index >= min.index) s
+    ];
+    return list.isEmpty ? null : list[rng.nextInt(list.length)];
+  }
+
+  /// Every song of an artist in the pool.
+  List<SongInfo> songsBy(int artistId) => _byArtist[artistId] ?? const [];
+
+  /// Artists with at least [min] songs in the pool.
+  Iterable<MapEntry<int, List<SongInfo>>> artistsWithAtLeast(int min) => _byArtist.entries.where((e) => e.value.length >= min);
+
+  /// Songs in a genre (all rarities).
+  int genreSize(int genreId) => _pools[genreId]?.fold<int>(0, (n, p) => n + p.length) ?? 0;
+
   /// Favourite artists' songs turn up [boost]× as often: returns a forced
   /// favourite pick with the right probability, else null.
   SongInfo? maybeFavorite(Rng rng, Rarity rarity, Set<int> favorites, {double boost = 10, Map<int, double> bias = const {}}) {
@@ -320,7 +339,8 @@ class WorldSpawner {
   }
 
   /// Spawns within [radiusCells] cells of a position.
-  List<WorldSpawn> around(double lat, double lng, {int radiusCells = 2, required int nowMs, Set<int> favorites = const {}}) {
+  List<WorldSpawn> around(double lat, double lng,
+      {int radiusCells = 2, required int nowMs, Set<int> favorites = const {}, Map<int, double> Function(int cx, int cy)? bias}) {
     final w = windowAt(nowMs);
     final cy = (lat / cellDeg).floor();
     final out = <WorldSpawn>[];
@@ -328,26 +348,37 @@ class WorldSpawner {
       final lngDeg = lngDegForRow(cy + dy);
       final cx = (lng / lngDeg).floor();
       for (var dx = -radiusCells; dx <= radiusCells; dx++) {
-        out.addAll(cell(cx + dx, cy + dy, w, favorites: favorites));
+        out.addAll(cell(cx + dx, cy + dy, w, favorites: favorites, bias: bias?.call(cx + dx, cy + dy) ?? const {}));
       }
     }
     return out;
   }
 
   /// A spawn by id ("cx:cy:window:i"), or null if there's no such spawn.
-  WorldSpawn? byId(String id, {Set<int> favorites = const {}}) {
+  WorldSpawn? byId(String id, {Set<int> favorites = const {}, Map<int, double> bias = const {}}) {
     final p = id.split(':');
     if (p.length != 4) return null;
     final cx = int.tryParse(p[0]), cy = int.tryParse(p[1]), w = int.tryParse(p[2]);
     if (cx == null || cy == null || w == null) return null;
-    for (final s in cell(cx, cy, w, favorites: favorites)) {
+    for (final s in cell(cx, cy, w, favorites: favorites, bias: bias)) {
       if (s.id == id) return s;
     }
     return null;
   }
 
   /// The spawns of one cell in one window.
-  List<WorldSpawn> cell(int cx, int cy, int w, {Set<int> favorites = const {}}) {
+  /// The cell a position is in.
+  static (int, int) cellOf(double lat, double lng) {
+    final cy = (lat / cellDeg).floor();
+    return ((lng / lngDegForRow(cy)).floor(), cy);
+  }
+
+  /// The centre of a cell.
+  static (double, double) cellCenter(int cx, int cy) => ((cy + 0.5) * cellDeg, (cx + 0.5) * lngDegForRow(cy));
+
+  /// The spawns of one cell in one window. [bias] nudges genres (genre
+  /// zones, time of day); rarity, shininess and editions never depend on it.
+  List<WorldSpawn> cell(int cx, int cy, int w, {Set<int> favorites = const {}, Map<int, double> bias = const {}}) {
     final out = <WorldSpawn>[];
     final rng = Rng(hashInts([seed, cx, cy, w]));
     final roll = rng.nextInt(100);
@@ -363,7 +394,7 @@ class WorldSpawner {
       final rolled = r.rollRarity();
       final shiny = r.chance(kShinyOdds);
       final er = r.nextInt(kSampleOdds * kCanvasOdds);
-      final genre = pool.pickGenre(r);
+      final genre = pool.pickGenre(r, bias: bias);
       final base = pool.pickSong(r, genreId: genre, rarity: rolled);
       final fav = pool.maybeFavorite(Rng(hashInts([seed, cx, cy, w, i, 77])), rolled, favorites);
       var song = fav ?? base;

@@ -10,6 +10,10 @@
 //                      sign-in tokens are accepted
 //   ALLOW_GUESTS       "true" to also accept unauthenticated X-Player-Id
 //                      players (default: true only when no Google ids set)
+//   SPAWN_SEED         secret that decides what spawns where (any string;
+//                      defaults to one derived from SESSION_SECRET). Keep it
+//                      private: with it, spawns could be predicted.
+//   CATALOG_CRAWL      "false" to skip growing the song catalogue from Deezer
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -19,6 +23,9 @@ import 'package:shelf/shelf_io.dart' as io;
 import 'package:shelf_router/shelf_router.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 import 'package:tunetrail_server/auth.dart';
+import 'package:tunetrail_server/catalog.dart';
+import 'package:tunetrail_server/economy.dart';
+import 'package:tunetrail_server/economy_routes.dart';
 import 'package:tunetrail_server/push.dart';
 import 'package:tunetrail_server/store.dart';
 
@@ -55,6 +62,27 @@ Future<void> main(List<String> args) async {
   }
   stdout.writeln('Loaded ${engine.listings.length} listings and ${engine.collections.length} collections from ${store.label}');
 
+  // The song catalogue and the server-side economy (balances, cards,
+  // spawns, packs, quests).
+  final catalog = ServerCatalog(store);
+  await catalog.load();
+  final seedText = env['SPAWN_SEED'] ?? '';
+  final economy = Economy(
+    engine: engine,
+    catalog: catalog,
+    seed: hashString(seedText.isNotEmpty ? seedText : 'spawns:${secret.isEmpty ? 'dev' : secret}'),
+    admins: admins,
+  )..attach();
+  for (final (data, cards) in await store.loadAccounts()) {
+    final a = Account.fromJson(data, cards);
+    economy.accounts[a.id] = a;
+    if (a.imported) engine.collections[a.id] = a.cards.values.toList();
+  }
+  stdout.writeln('Economy: ${economy.accounts.length} accounts');
+  if ((env['CATALOG_CRAWL'] ?? 'true').toLowerCase() != 'false') {
+    unawaited(catalog.crawl().catchError((Object e) => stderr.writeln('catalogue crawl failed: $e')));
+  }
+
   // Saved before a changing request is answered: on hosts that pause the
   // CPU between requests (Cloud Run) a background timer could never run.
   var dirty = false;
@@ -62,7 +90,26 @@ Future<void> main(List<String> args) async {
   final dirtyCollections = <String>{};
   engine.onCollectionChanged = dirtyCollections.add;
   Future<void> persist() async {
+    for (final id in economy.dirty.toList()) {
+      economy.dirty.remove(id);
+      final a = economy.accounts[id];
+      if (a == null) continue;
+      final changed = economy.pendingCards.remove(id) ?? const <int, CardPayload?>{};
+      final full = economy.rewriteCards.remove(id);
+      try {
+        await store.saveAccount(id, a.toJson(), changed: changed, allCards: full ? a.cards.values.toList() : null, currentCards: () => a.cards.values.toList());
+      } catch (e) {
+        economy.dirty.add(id);
+        economy.rewriteCards.add(id);
+        stderr.writeln('account save failed: $e');
+      }
+    }
     for (final id in dirtyCollections.toList()) {
+      // Accounts on the server economy are saved above.
+      if (economy.active(id)) {
+        dirtyCollections.remove(id);
+        continue;
+      }
       dirtyCollections.remove(id);
       try {
         await store.saveCollection(id, [for (final c in engine.collections[id] ?? const <CardPayload>[]) c.toJson()]);
@@ -101,7 +148,7 @@ Future<void> main(List<String> args) async {
     };
   }
 
-  final app = buildRouter(engine, auth, admins: admins);
+  final app = buildRouter(engine, auth, admins: admins, economy: economy, catalog: catalog);
   final handler = const Pipeline()
       .addMiddleware(_cors())
       .addMiddleware(_rateLimit())
@@ -122,8 +169,9 @@ Future<void> main(List<String> args) async {
   stdout.writeln('Tunetrail server on :${server.port} · storage: ${store.label} · google ids: ${googleIds.length} · guests: ${auth.allowGuests} · push: ${push != null}');
 }
 
-Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
+Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}, Economy? economy, ServerCatalog? catalog}) {
   final r = Router();
+  final econ = economy;
 
   /// The calling player: from a session token, or (when guests are
   /// allowed) the X-Player-Id header.
@@ -191,6 +239,38 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
     }
   }
 
+  /// Runs a market request that hands over cards and/or coins: on the
+  /// server economy they're taken from the player's account first (the
+  /// player's own copies are used), and given back if the request fails.
+  Response escrowed(String id, List<CardPayload> offered, int coins, Response Function(List<CardPayload> own) f) {
+    final e = econ;
+    if (e == null || !e.active(id)) return f(offered);
+    if (coins < 0) throw MarketException('Invalid coin amount');
+    if ((e.accounts[id]?.coins ?? 0) < coins) throw MarketException('Not enough coins ($coins needed)');
+    final own = e.escrowCards(id, offered);
+    e.escrowCoins(id, coins);
+    try {
+      return f(own);
+    } catch (_) {
+      e.credit(id, coins: coins, cards: own);
+      rethrow;
+    }
+  }
+
+  /// Runs a purchase or bid of [price] coins (taken first on the server
+  /// economy; refunded if the request fails).
+  Response paid(String id, int price, Response Function() f) {
+    final e = econ;
+    if (e == null || !e.active(id) || price <= 0) return f();
+    e.escrowCoins(id, price);
+    try {
+      return f();
+    } catch (_) {
+      e.credit(id, coins: price);
+      rethrow;
+    }
+  }
+
   r.get('/serials/<song>/<edition>', (Request req, String song, String edition) => guard(() async => ok({
         'left': m.serialsLeft(int.parse(song), Edition.fromIndex(int.parse(edition))),
       })));
@@ -215,7 +295,16 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
   r.get('/me', (Request req) => guard(() async {
         final p = m.players[pid(req)]!;
         final admin = admins.contains(p.id);
-        return ok({'id': p.id, 'name': p.name, 'needsUsername': !p.named && p.id.startsWith('g_'), 'unread': m.unreadCount(p.id), 'admin': admin});
+        return ok({
+          'id': p.id,
+          'name': p.name,
+          'needsUsername': !p.named && p.id.startsWith('g_'),
+          'unread': m.unreadCount(p.id),
+          'admin': admin,
+          if (econ != null) 'economy': true,
+          if (econ != null) 'imported': econ.active(p.id),
+          if (econ != null) 'usernameCost': econ.usernameChangeCost(p.id),
+        });
       }));
   r.get('/usernames/check', (Request req) => guard(() async {
         final name = (req.url.queryParameters['name'] ?? '').trim();
@@ -225,12 +314,22 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
   r.post('/me/username', (Request req) => guard(() async {
         final id = pid(req);
         final b = await body(req);
-        final p = m.setUsername(id, b['name'] as String? ?? '');
+        final name = (b['name'] as String? ?? '').trim();
+        final changing = m.players[id]?.named ?? false;
+        if (changing && m.players[id]!.name == name) return ok({'name': name, 'token': auth.issue(id, name)});
+        final cost = econ?.usernameChangeCost(id) ?? 0;
+        if (cost > 0 && (econ!.accounts[id]?.bits ?? 0) < cost) throw MarketException('Changing your username again costs $cost bits');
+        final p = m.setUsername(id, name);
+        if (changing) econ?.chargeUsernameChange(id);
         return ok({'name': p.name, 'token': auth.issue(id, p.name)});
       }));
   r.put('/me/profile', (Request req) => guard(() async {
         final id = named(req);
         final b = await body(req);
+        if (b['favArtists'] != null && catalog != null) {
+          final ids = [for (final a in (b['favArtists'] as List)) ((a as Map<String, dynamic>)['id'] as num).toInt()];
+          unawaited(catalog.ensureArtists(ids.take(200)).catchError((Object _) {}));
+        }
         m.setPublicProfile(id,
             theme: b['theme'] as String?,
             level: (b['level'] as num?)?.toInt(),
@@ -249,6 +348,8 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
       }));
   r.put('/me/collection', (Request req) => guard(() async {
         final id = named(req);
+        // Cards of players on the server economy live on the server.
+        if (econ?.active(id) ?? false) return ok({'ok': true, 'count': m.collections[id]?.length ?? 0});
         final b = await body(req);
         m.setCollection(id, cards(b['cards']));
         return ok({'ok': true, 'count': m.collections[id]?.length ?? 0});
@@ -271,10 +372,11 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
   r.post('/players/<id>/offers', (Request req, String id) => guard(() async {
         final me = named(req);
         final b = await body(req);
-        final o = m.createDirectOffer(me, id, [for (final u in (b['uids'] as List? ?? const [])) (u as num).toInt()], cards(b['cards']),
-            (b['coins'] as num?)?.toInt() ?? 0,
-            note: b['note'] as String? ?? '');
-        return ok(o.toJson());
+        final coins = (b['coins'] as num?)?.toInt() ?? 0;
+        return escrowed(me, cards(b['cards']), coins, (offered) {
+          final o = m.createDirectOffer(me, id, [for (final u in (b['uids'] as List? ?? const [])) (u as num).toInt()], offered, coins, note: b['note'] as String? ?? '');
+          return ok(o.toJson());
+        });
       }));
   r.post('/players/<id>/block', (Request req, String id) => guard(() async {
         final b = await body(req);
@@ -299,43 +401,66 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
       ok([for (final l in m.listingsOf(pid(req))) l.toJson()])));
   r.post('/listings', (Request req) => guard(() async {
         final b = await body(req);
-        final l = m.createListing(
-          named(req),
-          [for (final i in (b['items'] as List? ?? const [])) ListingItem.fromJson(i as Map<String, dynamic>)],
-          folderPrice: (b['folderPrice'] as num?)?.toInt(),
-          note: b['note'] as String? ?? '',
-          acceptsTrades: b['trades'] as bool? ?? false,
-        );
-        return ok(l.toJson());
+        final me = named(req);
+        final items = [for (final i in (b['items'] as List? ?? const [])) ListingItem.fromJson(i as Map<String, dynamic>)];
+        return escrowed(me, [for (final i in items) i.card], 0, (own) {
+          final l = m.createListing(
+            me,
+            [for (var k = 0; k < items.length; k++) ListingItem(card: own[k], price: items[k].price)],
+            folderPrice: (b['folderPrice'] as num?)?.toInt(),
+            note: b['note'] as String? ?? '',
+            acceptsTrades: b['trades'] as bool? ?? false,
+          );
+          econ?.listedOnMarket(me);
+          return ok(l.toJson());
+        });
       }));
   r.post('/listings/<id>/bump', (Request req, String id) => guard(() async => ok(m.bumpListing(pid(req), id).toJson())));
-  r.post('/listings/<id>/cancel', (Request req, String id) => guard(() async =>
-      ok([for (final c in m.cancelListing(pid(req), id)) c.toJson()])));
+  r.post('/listings/<id>/cancel', (Request req, String id) => guard(() async {
+        final me = pid(req);
+        final back = m.cancelListing(me, id);
+        econ?.credit(me, cards: back);
+        return ok([for (final c in back) c.toJson()]);
+      }));
   r.post('/listings/<id>/buy', (Request req, String id) => guard(() async {
+        final me = pid(req);
         final b = await body(req);
-        return ok([for (final c in m.buyListing(pid(req), id, expectedPrice: (b['price'] as num?)?.toInt())) c.toJson()]);
+        final price = m.listings[id]?.folderPrice ?? 0;
+        return paid(me, price, () {
+          final got = m.buyListing(me, id, expectedPrice: (b['price'] as num?)?.toInt());
+          econ?.credit(me, cards: got);
+          return ok([for (final c in got) c.toJson()]);
+        });
       }));
   r.post('/listings/<id>/items/<uid>/buy', (Request req, String id, String uid) => guard(() async {
+        final me = pid(req);
         final b = await body(req);
-        return ok(m.buyItem(pid(req), id, int.parse(uid), expectedPrice: (b['price'] as num?)?.toInt()).toJson());
+        final u = int.parse(uid);
+        final price = m.listings[id]?.items.where((i) => i.card.uid == u).firstOrNull?.price ?? 0;
+        return paid(me, price, () {
+          final got = m.buyItem(me, id, u, expectedPrice: (b['price'] as num?)?.toInt());
+          econ?.credit(me, cards: [got]);
+          return ok(got.toJson());
+        });
       }));
-  r.post('/listings/<id>/items/<uid>/withdraw', (Request req, String id, String uid) => guard(() async =>
-      ok(m.withdrawItem(pid(req), id, int.parse(uid)).toJson())));
+  r.post('/listings/<id>/items/<uid>/withdraw', (Request req, String id, String uid) => guard(() async {
+        final me = pid(req);
+        final back = m.withdrawItem(me, id, int.parse(uid));
+        econ?.credit(me, cards: [back]);
+        return ok(back.toJson());
+      }));
 
   r.get('/offers', (Request req) => guard(() async =>
       ok([for (final o in m.offersFor(pid(req))) o.toJson()])));
   r.post('/offers', (Request req) => guard(() async {
         final b = await body(req);
-        final o = m.createOffer(
-            named(req),
-            b['listingId'] as String,
-            [
-              for (final c in (b['cards'] as List? ?? const []))
-                CardPayload.fromJson(c as Map<String, dynamic>)
-            ],
-            (b['coins'] as num?)?.toInt() ?? 0,
-            note: b['note'] as String? ?? '');
-        return ok(o.toJson());
+        final me = named(req);
+        final coins = (b['coins'] as num?)?.toInt() ?? 0;
+        if (coins < 0) throw MarketException('Invalid coin amount');
+        return escrowed(me, cards(b['cards']), coins, (offered) {
+          final o = m.createOffer(me, b['listingId'] as String, offered, coins, note: b['note'] as String? ?? '');
+          return ok(o.toJson());
+        });
       }));
   r.post('/offers/<id>/accept', (Request req, String id) => guard(() async {
         m.acceptOffer(pid(req), id);
@@ -355,25 +480,39 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
   r.post('/auctions', (Request req) => guard(() async {
         final me = named(req);
         final b = await body(req);
-        final a = m.createAuction(me, cards(b['cards']),
-            startPrice: (b['start'] as num).toInt(),
-            increment: (b['inc'] as num?)?.toInt() ?? kMinBidIncrement,
-            buyNow: (b['buyNow'] as num?)?.toInt(),
-            duration: Duration(hours: (b['hours'] as num?)?.toInt() ?? 24),
-            note: b['note'] as String? ?? '');
-        return ok(a.toJson());
+        return escrowed(me, cards(b['cards']), 0, (own) {
+          final a = m.createAuction(me, own,
+              startPrice: (b['start'] as num).toInt(),
+              increment: (b['inc'] as num?)?.toInt() ?? kMinBidIncrement,
+              buyNow: (b['buyNow'] as num?)?.toInt(),
+              duration: Duration(hours: (b['hours'] as num?)?.toInt() ?? 24),
+              note: b['note'] as String? ?? '');
+          econ?.listedOnMarket(me);
+          return ok(a.toJson());
+        });
       }));
   r.post('/auctions/<id>/bid', (Request req, String id) => guard(() async {
         final me = named(req);
         final b = await body(req);
-        return ok(m.bid(me, id, (b['amount'] as num).toInt()).toJson());
+        final amount = (b['amount'] as num).toInt();
+        return paid(me, amount, () => ok(m.bid(me, id, amount).toJson()));
       }));
   r.post('/auctions/<id>/buy', (Request req, String id) => guard(() async {
         final me = named(req);
         final b = await body(req);
-        return ok([for (final c in m.buyAuctionNow(me, id, expectedPrice: (b['price'] as num?)?.toInt())) c.toJson()]);
+        final price = m.auctions[id]?.buyNow ?? 0;
+        return paid(me, price, () {
+          final got = m.buyAuctionNow(me, id, expectedPrice: (b['price'] as num?)?.toInt());
+          econ?.credit(me, cards: got);
+          return ok([for (final c in got) c.toJson()]);
+        });
       }));
-  r.post('/auctions/<id>/cancel', (Request req, String id) => guard(() async => ok([for (final c in m.cancelAuction(pid(req), id)) c.toJson()])));
+  r.post('/auctions/<id>/cancel', (Request req, String id) => guard(() async {
+        final me = pid(req);
+        final back = m.cancelAuction(me, id);
+        econ?.credit(me, cards: back);
+        return ok([for (final c in back) c.toJson()]);
+      }));
 
   // ------------------------------------------------------------ reports
   r.post('/reports', (Request req) => guard(() async {
@@ -392,6 +531,8 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}}) {
     if (!admins.contains(id)) throw AuthException('Admins only');
     return id;
   }
+
+  if (econ != null) addEconomyRoutes(r, econ, pid: pid, named: named, admin: admin, body: body, ok: ok, guard: guard);
 
   r.get('/admin/reports', (Request req) => guard(() async {
         admin(req);

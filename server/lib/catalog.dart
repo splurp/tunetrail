@@ -122,6 +122,49 @@ class ServerCatalog {
     }
   }
 
+  /// Makes sure favourite artists' songs are in the catalogue (they spawn
+  /// more often for the players who follow them).
+  Future<void> ensureArtists(Iterable<int> ids) async {
+    var added = false;
+    for (final id in ids) {
+      if (_crawledArtists.contains(id)) continue;
+      await _artist(id, 0);
+      added = true;
+    }
+    if (added) await _flush();
+  }
+
+  /// An artist's name, Deezer fans and top songs (up to 100), for blind
+  /// boxes. The songs join the catalogue.
+  Future<({String name, int fans, List<SongInfo> songs})> artistTop(int id) async {
+    final a = await _get('/artist/$id');
+    final f = (a['nb_fan'] as num?)?.toInt() ?? 0;
+    fans[id] = f;
+    _pendingFans[id] = f;
+    final known = songs.values.firstWhere((s) => s.artistId == id && s.genreId != 0, orElse: () => const SongInfo(id: 0, title: '', artistId: 0, artistName: '')).genreId;
+    final list = [for (final t in _data(await _get('/artist/$id/top', {'limit': '100'}))) ?_song(t, known)];
+    _add(list);
+    _crawledArtists.add(id);
+    await _flush();
+    return (name: a['name'] as String? ?? 'Unknown Artist', fans: f, songs: [for (final s in list) songs[s.id] ?? s]);
+  }
+
+  /// An album's details and tracks (for album quests).
+  Future<({String title, String recordType, String coverMd5, List<SongInfo> tracks})> album(int id) async {
+    final a = await _get('/album/$id');
+    final genre = (a['genre_id'] as num?)?.toInt() ?? 0;
+    final cover = (a['md5_image'] as String?) ?? _md5(a['cover_small'] as String?);
+    final tracks = <SongInfo>[];
+    for (final t in _data(a['tracks'] as Map<String, dynamic>? ?? const {})) {
+      final s = _song({
+        ...t,
+        'album': {'id': id, 'title': a['title'], 'md5_image': cover},
+      }, genre < 0 ? 0 : genre);
+      if (s != null) tracks.add(s);
+    }
+    return (title: a['title'] as String? ?? '', recordType: a['record_type'] as String? ?? 'album', coverMd5: cover, tracks: tracks);
+  }
+
   /// Grows the catalogue in the background (charts, then each genre's
   /// popular artists, then related artists). Safe to call repeatedly.
   Future<void> crawl({bool chartsOnly = false}) async {
