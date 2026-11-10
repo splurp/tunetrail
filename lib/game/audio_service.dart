@@ -390,6 +390,51 @@ class AudioService extends ChangeNotifier {
     }
   }
 
+  final Map<int, Uint8List> _reversed = {};
+
+  /// A song's preview played backwards, as WAV bytes (mono, 44.1 kHz:
+  /// previews are 44.1 kHz, so every sample of the left channel is kept —
+  /// the decoder's "average" option gives loudness, not audio).
+  Future<Uint8List?> reversedPreview(int songId) async {
+    final cached = _reversed[songId];
+    if (cached != null) return cached;
+    final bytes = await previewBytes(songId);
+    if (bytes == null) return null;
+    await _ensureInit();
+    const fs = 44100;
+    final secs = await clipSeconds(songId, bytes);
+    final samples = await _sl.readSamplesFromMem(bytes, (secs * fs).round());
+    final wav = await compute(_reversedWav, (samples, fs));
+    if (_reversed.length > 3) _reversed.remove(_reversed.keys.first);
+    return _reversed[songId] = wav;
+  }
+
+  /// Plays the first [seconds] of a song's preview played backwards (the
+  /// Backwards minigame). Stops any other playback.
+  Future<bool> playReversedClip(int songId, {required double seconds}) async {
+    await stop();
+    final req = _request;
+    try {
+      final wav = await reversedPreview(songId);
+      if (wav == null || req != _request) return false;
+      final src = await _sl.loadMem('rev-$songId-${DateTime.now().microsecondsSinceEpoch}.wav', wav);
+      if (req != _request) {
+        await _sl.disposeSource(src);
+        return false;
+      }
+      _source = src;
+      final h = _handle = _sl.play(src, volume: _volume);
+      Future<void>.delayed(Duration(microseconds: (math.max(0.0, seconds - 0.06) * 1e6).round()), () {
+        if (_handle == h && _sl.getIsValidVoiceHandle(h)) _sl.fadeVolume(h, 0, const Duration(milliseconds: 60));
+      });
+      _sl.schedulePause(h, Duration(microseconds: (seconds * 1e6).round()));
+      return true;
+    } catch (e) {
+      debugPrint('reversed clip: $e');
+      return false;
+    }
+  }
+
   // ------------------------------------------------------------- effects
   final Map<Sfx, AudioSource> _sfx = {};
   bool sfxEnabled = true;
@@ -521,4 +566,43 @@ BeatInfo? analyzeBeats((Float32List, int, double) args) {
   }
   // Energy rises peak slightly before the perceived hit (~15 ms measured).
   return BeatInfo(bpm, (bestPhase * hop + 0.015) % (60 / bpm), estimated: estimated);
+}
+
+
+/// Reverses decoded samples (-1..1) into a 16-bit mono WAV file.
+Uint8List _reversedWav((Float32List, int) args) {
+  final (samples, fs) = args;
+  final n = samples.length;
+  // Normalise a little so quiet decodes aren't too soft.
+  var peak = 1e-6;
+  for (final v in samples) {
+    final a = v.abs();
+    if (a > peak) peak = a;
+  }
+  final gain = peak < 0.5 ? 0.9 / peak : 1.0;
+  final out = ByteData(44 + n * 2);
+  void str(int o, String s) {
+    for (var i = 0; i < s.length; i++) {
+      out.setUint8(o + i, s.codeUnitAt(i));
+    }
+  }
+
+  str(0, 'RIFF');
+  out.setUint32(4, 36 + n * 2, Endian.little);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  out.setUint32(16, 16, Endian.little);
+  out.setUint16(20, 1, Endian.little); // PCM
+  out.setUint16(22, 1, Endian.little); // mono
+  out.setUint32(24, fs, Endian.little);
+  out.setUint32(28, fs * 2, Endian.little);
+  out.setUint16(32, 2, Endian.little);
+  out.setUint16(34, 16, Endian.little);
+  str(36, 'data');
+  out.setUint32(40, n * 2, Endian.little);
+  for (var i = 0; i < n; i++) {
+    final v = (samples[n - 1 - i] * gain).clamp(-1.0, 1.0);
+    out.setInt16(44 + i * 2, (v * 32767).round(), Endian.little);
+  }
+  return out.buffer.asUint8List();
 }

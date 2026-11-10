@@ -189,15 +189,18 @@ void main() {
     expect(econ.account('p1').cards.keys, [2]);
   });
 
-  test('minigame rounds pay at most the round maximum, three times a day', () {
+  test('minigame rounds pay at most the round maximum, from one daily pool', () {
     econ.import('p1', {});
     expect(() => econ.awardMinigame('p1', 'song', 5), throwsA(isA<MarketException>()));
     econ.startMinigame('p1', 'song');
     expect(econ.awardMinigame('p1', 'song', 50), 5);
     expect(econ.awardMinigame('p1', 'song', 5), 0);
-    econ.startMinigame('p1', 'song');
-    econ.startMinigame('p1', 'song');
+    // One pool for all the games: as many rounds a day as there are games.
+    for (var i = 1; i < kMinigamePlaysPerDay; i++) {
+      econ.startMinigame('p1', i.isEven ? 'lyric' : 'backwards');
+    }
     expect(() => econ.startMinigame('p1', 'song'), throwsA(isA<MarketException>()));
+    expect(econ.minigameQuota('p1', 'artist')['left'], 0);
     expect(econ.account('p1').bits, 5);
   });
 

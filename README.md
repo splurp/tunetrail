@@ -44,8 +44,9 @@ play, showcase, list on the market or trade.
   collection, showcases, player search and direct messages.
 - **Shop.** Gold, Platinum and Prismatic packs, the Artist Blind Box, map themes
   (Synthwave, Sakura, Aurora, Candy…), profile themes, outfits, backpacks and pets.
-- **Minigames.** Song Guesser, Artist Guesser, Art Guesser and Trivia, tuned to the
-  languages and genres you listen to, for bits every day.
+- **Minigames.** Song Guesser, Artist Guesser, Art Guesser, Trivia, Finish the Lyric
+  and Backwards (huge hits played in reverse), tuned to the languages and genres you
+  listen to. One round a day per game, played in any mix, for bits.
 - **Accounts.** Google sign-in, unique usernames, push notifications (Android), and
   report and block tools.
 

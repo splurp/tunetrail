@@ -998,13 +998,16 @@ class Economy {
   }
 
   // ------------------------------------------------------------- minigames
+  static const _allGames = '_all';
+
   Map<String, dynamic> minigameQuota(String id, String game, {int? tz}) {
     final a = account(id);
     if (!kMinigames.contains(game)) throw MarketException('Unknown minigame');
     final day = today(a, tz);
-    final rec = a.plays[game];
+    // One pool of rounds a day for all the games together.
+    final rec = a.plays[_allGames];
     final used = rec != null && rec.$1 == day ? rec.$2 : 0;
-    return {'left': kMinigamePlaysPerDay - used, 'resetMs': msUntilMidnight(now(), a.tz ?? 0), 'day': day};
+    return {'left': math.max(0, kMinigamePlaysPerDay - used), 'total': kMinigamePlaysPerDay, 'resetMs': msUntilMidnight(now(), a.tz ?? 0), 'day': day};
   }
 
   /// Spends one of today's plays and opens a round.
@@ -1012,9 +1015,9 @@ class Economy {
     final a = account(id);
     final q = minigameQuota(id, game, tz: tz);
     if ((q['left'] as int) <= 0) throw MarketException('No plays left today');
-    final rec = a.plays[game];
+    final rec = a.plays[_allGames];
     final used = rec != null && rec.$1 == q['day'] ? rec.$2 : 0;
-    a.plays[game] = (q['day'] as String, used + 1);
+    a.plays[_allGames] = (q['day'] as String, used + 1);
     a.roundBits[game] = 0;
     a.stat('rounds', 1);
     touch(a);

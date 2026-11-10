@@ -298,7 +298,8 @@ int blindBoxPrice(int fans) {
 const int kBlindBoxCanvasOdds = 100;
 
 // ==================================================================== minigames
-const int kMinigamePlaysPerDay = 3;
+/// Rounds a day across all minigames together: one per minigame (any mix:
+/// six rounds of one game, or one of each).
 
 /// The most bits one round of a minigame can pay.
 int minigameMaxBits(String game) => switch (game) {
@@ -306,7 +307,11 @@ int minigameMaxBits(String game) => switch (game) {
       'artist' => 5,
       'album' => 3,
       'trivia' => 3,
+      'lyric' => 3,
+      'backwards' => 5,
       _ => 0,
     };
 
-const List<String> kMinigames = ['song', 'artist', 'album', 'trivia'];
+const List<String> kMinigames = ['song', 'artist', 'album', 'trivia', 'lyric', 'backwards'];
+
+final int kMinigamePlaysPerDay = kMinigames.length;

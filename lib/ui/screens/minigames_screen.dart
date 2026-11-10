@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import 'package:tunetrail_core/tunetrail_core.dart' show FavoriteArtist;
 import '../../game/game.dart';
 import '../../game/audio_service.dart';
+import '../../game/lyrics.dart';
 import '../../game/minigames.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
@@ -90,8 +91,28 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
             open: data == null ? null : () => TriviaScreen(data: data),
             onReturn: () => setState(() {}),
           ),
+          const SizedBox(height: 12),
+          _GameCard(
+            id: 'lyric',
+            icon: Icons.lyrics_outlined,
+            title: 'Finish the Lyric',
+            body: '3 iconic lines from songs everyone knows. Pick the real ending out of four.',
+            rewards: 'Win up to 3 bits per game!',
+            open: () => const LyricScreen(),
+            onReturn: () => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          _GameCard(
+            id: 'backwards',
+            icon: Icons.fast_rewind_rounded,
+            title: 'Backwards',
+            body: 'Name a huge hit played in reverse. Each miss (or skip) plays a longer clip: 3 s → 5 → 10 → 20 → 30 s.',
+            rewards: 'Win up to 5 bits per game!',
+            open: data == null ? null : () => SongGuesserScreen(data: data, backwards: true),
+            onReturn: () => setState(() {}),
+          ),
           const SizedBox(height: 8),
-          Text('Each game can be played ${Game.kMinigamePlaysPerDay} times a day; plays reset at midnight.',
+          Text('${Game.kMinigamePlaysPerDay} rounds a day across all the games — play any mix. Rounds reset at midnight.',
               style: const TextStyle(color: kTextTertiary, fontSize: 12)),
           const SizedBox(height: 18),
           Row(children: [
@@ -173,7 +194,7 @@ class _GameCard extends StatelessWidget {
                     : q == null
                     ? 'Needs internet'
                     : left > 0
-                    ? '$left/${Game.kMinigamePlaysPerDay} left'
+                    ? '$left/${Game.kMinigamePlaysPerDay} rounds left'
                     : 'Resets in ${q.resetIn.inHours}h ${q.resetIn.inMinutes % 60}m',
                 style: const TextStyle(fontSize: 11, color: kTextTertiary),
               ),
@@ -318,14 +339,20 @@ class _GuessFieldState extends State<_GuessField> {
 }
 
 // ======================================================================
+/// Song Guesser, and Backwards (the biggest hits played in reverse, with
+/// longer clips).
 class SongGuesserScreen extends StatefulWidget {
-  const SongGuesserScreen({super.key, required this.data});
+  const SongGuesserScreen({super.key, required this.data, this.backwards = false});
   final MinigameData data;
+  final bool backwards;
   @override
   State<SongGuesserScreen> createState() => _SongGuesserScreenState();
 }
 
 class _SongGuesserScreenState extends State<SongGuesserScreen> {
+  String get _game => widget.backwards ? 'backwards' : 'song';
+  List<double> get _secs => widget.backwards ? kBackwardsSeconds : kSnippetSeconds;
+
   @override
   void setState(VoidCallback fn) {
     super.setState(fn);
@@ -337,11 +364,11 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
     final s = _song;
     if (_loading || s == null) return;
     GameScope.read(context).savePendingMinigame(
-        'song', _solved || _gaveUp ? null : {'song': s.toJson(), 'artist': _artist?.id, 'stage': _stage, 'guesses': [..._guesses]});
+        _game, _solved || _gaveUp ? null : {'song': s.toJson(), 'artist': _artist?.id, 'stage': _stage, 'guesses': [..._guesses]});
   }
 
   bool _resume() {
-    final j = GameScope.read(context).pendingMinigame('song');
+    final j = GameScope.read(context).pendingMinigame(_game);
     if (j == null) return false;
     try {
       final song = Song.fromJson(j['song'] as Map<String, dynamic>);
@@ -349,7 +376,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
       setState(() {
         _song = song;
         _artist = widget.data.artists.where((a) => a.id == aid).firstOrNull;
-        _stage = (j['stage'] as num).toInt().clamp(0, kSnippetSeconds.length - 1);
+        _stage = (j['stage'] as num).toInt().clamp(0, _secs.length - 1);
         _guesses
           ..clear()
           ..addAll((j['guesses'] as List).cast<String>());
@@ -408,7 +435,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
     _clipToken++;
     await g.audio.stop();
     if (!mounted) return;
-    if (!await _startRound(context, 'song')) {
+    if (!await _startRound(context, _game)) {
       if (mounted) Navigator.of(context).pop();
       return;
     }
@@ -420,12 +447,14 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
       _guesses.clear();
       _song = null;
     });
+    final filter = MinigameFilter.fromJson(g.profile.minigameFilter);
     for (var tries = 0; tries < 6; tries++) {
-      final a = widget.data.pick(MinigameFilter.fromJson(g.profile.minigameFilter), _r, avoid: _recent);
+      final a = widget.backwards ? _superstar(filter) : widget.data.pick(filter, _r, avoid: _recent);
       if (a == null) break;
       try {
-        // Only well-known songs: one of the artist's five most popular.
-        final top = (await g.api.artistTop(a.id, limit: 10)).where((s) => s.rank > 0).take(5).toList();
+        // Only well-known songs: one of the artist's five most popular —
+        // for Backwards, one of the very biggest hits.
+        final top = (await g.api.artistTop(a.id, limit: 10)).where((s) => s.rank > 0).take(widget.backwards ? 2 : 5).toList();
         if (top.isEmpty) continue;
         _recent.add(a.id);
         if (_recent.length > 30) _recent.remove(_recent.first);
@@ -444,14 +473,29 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
     });
   }
 
+  /// Backwards draws only on the biggest artists (in the filter if it has
+  /// enough of them).
+  MiniArtist? _superstar(MinigameFilter f) {
+    List<MiniArtist> top(Iterable<MiniArtist> from) => (from.toList()..sort((a, b) => b.fans.compareTo(a.fans))).take(60).toList();
+    var pool = top(widget.data.pool(f).where((a) => a.fans >= 5000000));
+    if (pool.length < 10) pool = top(widget.data.artists);
+    final fresh = [for (final a in pool) if (!_recent.contains(a.id)) a];
+    final from = fresh.isEmpty ? pool : fresh;
+    return from.isEmpty ? null : from[_r.nextInt(from.length)];
+  }
+
   Future<void> _play() async {
     final s = _song;
     if (s == null) return;
     final g = GameScope.read(context);
-    final secs = _solved || _gaveUp ? 30.0 : kSnippetSeconds[_stage];
+    final secs = _solved || _gaveUp ? 30.0 : _secs[_stage];
     final token = ++_clipToken;
     setState(() => _playing = true);
-    await g.audio.playClip(s.id, seconds: secs);
+    if (widget.backwards && !(_solved || _gaveUp)) {
+      await g.audio.playReversedClip(s.id, seconds: secs);
+    } else {
+      await g.audio.playClip(s.id, seconds: secs);
+    }
     // Left the screen (or pressed stop) while the clip was loading.
     if (!mounted || token != _clipToken) {
       if (!mounted) _audio.stop();
@@ -471,7 +515,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
     final g = GameScope.read(context);
     if (ok) {
       final bits = kSnippetBits[_stage];
-      g.awardMinigameBits(bits, game: 'song');
+      g.awardMinigameBits(bits, game: _game);
       setState(() {
         _solved = true;
         _won = bits;
@@ -480,7 +524,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
     } else {
       setState(() {
         _guesses.add(text);
-        if (_stage < kSnippetSeconds.length - 1) _stage++;
+        if (_stage < _secs.length - 1) _stage++;
       });
       _play();
     }
@@ -504,7 +548,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
     final s = _song;
     final done = _solved || _gaveUp;
     return Scaffold(
-      appBar: AppBar(title: const Text('Song Guesser')),
+      appBar: AppBar(title: Text(widget.backwards ? 'Backwards' : 'Song Guesser')),
       body: ContentWidth(
         maxWidth: 720,
         child: _loading
@@ -514,7 +558,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
             : ListView(padding: const EdgeInsets.all(16), children: [
                 // Snippet ladder.
                 Row(children: [
-                  for (var i = 0; i < kSnippetSeconds.length; i++)
+                  for (var i = 0; i < _secs.length; i++)
                     Expanded(
                       child: Container(
                         margin: const EdgeInsets.symmetric(horizontal: 3),
@@ -525,7 +569,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
                           border: Border.all(color: i == _stage && !done ? kAccent : kOutline),
                         ),
                         child: Column(children: [
-                          Text('${kSnippetSeconds[i].round()} s', style: TextStyle(fontWeight: FontWeight.w700, color: i <= _stage ? kTextPrimary : kTextTertiary)),
+                          Text('${_secs[i].round()} s', style: TextStyle(fontWeight: FontWeight.w700, color: i <= _stage ? kTextPrimary : kTextTertiary)),
                           Text('${kSnippetBits[i]} bits', style: const TextStyle(fontSize: 11, color: kTextTertiary)),
                         ]),
                       ),
@@ -566,7 +610,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
                     child: Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        _stage == kSnippetSeconds.length - 1 ? 'Last clue: unlimited guesses at 10 s' : 'Replay the ${kSnippetSeconds[_stage].round()} s snippet as often as you like',
+                        _stage == _secs.length - 1 ? 'Last clue: unlimited guesses at ${_secs.last.round()} s' : 'Replay the ${_secs[_stage].round()} s snippet as often as you like',
                         style: const TextStyle(color: kTextTertiary, fontSize: 12),
                       ),
                     ),
@@ -577,7 +621,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
                 _GuessList(_guesses),
                 const SizedBox(height: 16),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  if (!done && _stage < kSnippetSeconds.length - 1)
+                  if (!done && _stage < _secs.length - 1)
                     OutlinedButton.icon(
                       // Skip ahead without guessing (costs the same as a miss).
                       onPressed: () {
@@ -585,7 +629,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
                         _play();
                       },
                       icon: const Icon(Icons.fast_forward, size: 18),
-                      label: Text('Longer snippet (${kSnippetSeconds[math.min(_stage + 1, kSnippetSeconds.length - 1)].round()} s)'),
+                      label: Text('Longer snippet (${_secs[math.min(_stage + 1, _secs.length - 1)].round()} s)'),
                     ),
                   if (!done) const SizedBox(width: 8),
                   if (!done)
@@ -1102,6 +1146,205 @@ class _TriviaScreenState extends State<TriviaScreen> {
                       child: Text(_i + 1 < _qs.length ? 'Next question' : 'See results'),
                     ),
                   ),
+              ]),
+      ),
+    );
+  }
+}
+
+// ======================================================================
+/// Finish the Lyric: three famous lines; pick the real ending out of four.
+class LyricScreen extends StatefulWidget {
+  const LyricScreen({super.key});
+  @override
+  State<LyricScreen> createState() => _LyricScreenState();
+}
+
+class _LyricScreenState extends State<LyricScreen> {
+  static const _perRound = 3;
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    if (_lines.isEmpty) return;
+    GameScope.read(context).savePendingMinigame(
+        'lyric', _i >= _lines.length ? null : {'lines': _lines, 'orders': _orders, 'i': _i, 'correct': _correct, 'picked': _picked});
+  }
+
+  bool _resume() {
+    final j = GameScope.read(context).pendingMinigame('lyric');
+    if (j == null) return false;
+    try {
+      setState(() {
+        _lines = (j['lines'] as List).cast<int>();
+        _orders = [for (final o in j['orders'] as List) (o as List).cast<int>()];
+        _i = (j['i'] as num).toInt();
+        _correct = (j['correct'] as num).toInt();
+        _picked = (j['picked'] as num?)?.toInt();
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  final _r = math.Random();
+
+  /// Indexes into [kLyricLines], and each line's option order (0 = the real
+  /// ending, 1–3 the wrong ones).
+  List<int> _lines = [];
+  List<List<int>> _orders = [];
+  int _i = 0, _correct = 0;
+  int? _picked;
+  bool _playing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_resume()) _start();
+    });
+  }
+
+  @override
+  void dispose() {
+    if (_playing) _audio.stop();
+    super.dispose();
+  }
+
+  late final AudioService _audio = GameScope.read(context).audio;
+
+  Future<void> _start() async {
+    _audio;
+    if (!await _startRound(context, 'lyric')) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+    if (!mounted) return;
+    // Lines not seen recently (on this device) first.
+    final g = GameScope.read(context);
+    final seen = ((g.profile.minigameRounds['lyricSeen']?['ids'] as List?) ?? const []).cast<int>().toSet();
+    final all = List.generate(kLyricLines.length, (i) => i)..shuffle(_r);
+    final fresh = [for (final i in all) if (!seen.contains(i)) i];
+    final pick = [...fresh, ...all.where((i) => !fresh.contains(i))].take(_perRound).toList();
+    final nextSeen = {...seen, ...pick};
+    g.profile.minigameRounds['lyricSeen'] = {'ids': nextSeen.length >= kLyricLines.length ? pick : nextSeen.toList()};
+    g.profile.touch();
+    setState(() {
+      _lines = pick;
+      _orders = [for (final _ in pick) [0, 1, 2, 3]..shuffle(_r)];
+      _i = 0;
+      _correct = 0;
+      _picked = null;
+    });
+  }
+
+  LyricLine get _line => kLyricLines[_lines[_i]];
+  String _option(int k) => k == 0 ? _line.answer : _line.wrong[k - 1];
+
+  void _pick(int k) {
+    if (_picked != null) return;
+    final right = k == 0;
+    if (right) GameScope.read(context).awardMinigameBits(1, game: 'lyric');
+    setState(() {
+      _picked = k;
+      if (right) _correct++;
+    });
+  }
+
+  /// Plays the song's preview (found by title and artist).
+  Future<void> _playSong() async {
+    final g = GameScope.read(context);
+    if (_playing) {
+      await g.audio.stop();
+      setState(() => _playing = false);
+      return;
+    }
+    setState(() => _playing = true);
+    try {
+      final hits = await g.api.searchTracks('${_line.title} ${_line.artist.split(' ft.').first}', limit: 1);
+      if (hits.isNotEmpty && mounted) await g.audio.playClip(hits.first.id, seconds: 30);
+    } catch (_) {
+      if (mounted) setState(() => _playing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final finished = _lines.isNotEmpty && _i >= _lines.length;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Finish the Lyric')),
+      body: ContentWidth(
+        maxWidth: 720,
+        child: _lines.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : finished
+            ? Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('$_correct / ${_lines.length}', style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800)),
+                  Text('+$_correct bits', style: const TextStyle(color: kAccent, fontWeight: FontWeight.w700, fontSize: 18)),
+                  const SizedBox(height: 16),
+                  FilledButton(onPressed: _start, child: const Text('Play again')),
+                ]),
+              )
+            : ListView(padding: const EdgeInsets.all(16), children: [
+                Text('Line ${_i + 1} of ${_lines.length}', style: const TextStyle(color: kTextTertiary)),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(16), border: Border.all(color: kOutline)),
+                  child: Text('“${_line.start}”', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, height: 1.35)),
+                ),
+                const SizedBox(height: 16),
+                for (final k in _orders[_i])
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        backgroundColor: _picked == null
+                            ? null
+                            : k == 0
+                            ? const Color(0x3342C77A)
+                            : k == _picked
+                            ? const Color(0x33E5737A)
+                            : null,
+                      ),
+                      onPressed: () => _pick(k),
+                      child: Text('…${_option(k)}', style: const TextStyle(fontSize: 16)),
+                    ),
+                  ),
+                if (_picked != null) ...[
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    IconButton.filledTonal(
+                      tooltip: _playing ? 'Stop' : 'Play the song',
+                      onPressed: _playSong,
+                      icon: Icon(_playing ? Icons.stop_rounded : Icons.play_arrow_rounded),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(_line.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        Text(_line.artist, style: const TextStyle(color: kTextSecondary)),
+                      ]),
+                    ),
+                    FilledButton(
+                      onPressed: () {
+                        if (_playing) {
+                          GameScope.read(context).audio.stop();
+                          _playing = false;
+                        }
+                        setState(() {
+                          _i++;
+                          _picked = null;
+                        });
+                      },
+                      child: Text(_i + 1 < _lines.length ? 'Next line' : 'See results'),
+                    ),
+                  ]),
+                ],
               ]),
       ),
     );

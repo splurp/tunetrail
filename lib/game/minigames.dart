@@ -225,6 +225,9 @@ int letterCount(String name) => RegExp(r'[\p{L}\p{N}]', unicode: true).allMatche
 const kSnippetSeconds = [1.0, 2.0, 3.0, 5.0, 10.0];
 const kSnippetBits = [5, 4, 3, 2, 1];
 
+/// Backwards: clip lengths (the same bits per stage as Song Guesser).
+const kBackwardsSeconds = [3.0, 5.0, 10.0, 20.0, 30.0];
+
 /// Artist Guesser: bits for a correct guess after N wrong guesses.
 int artistGuessBits(int wrong) => wrong >= 4 ? 1 : 5 - wrong;
 

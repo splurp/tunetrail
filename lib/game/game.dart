@@ -1605,7 +1605,8 @@ class Game extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------- minigames
-  static const kMinigamePlaysPerDay = 3;
+  /// Rounds a day across all the minigames together (one per game).
+  static int get kMinigamePlaysPerDay => kMinigames.length;
   final TrustedClock clock = TrustedClock();
 
   /// Plays left today for a minigame, plus time until the reset — using
@@ -1655,9 +1656,9 @@ class Game extends ChangeNotifier {
     }
     final off = profile.minigameTzOffset!;
     final day = TrustedClock.dayKey(now, off);
-    final rec = profile.minigamePlays[game];
+    final rec = profile.minigamePlays['_all'];
     final used = rec != null && rec.$1 == day ? rec.$2 : 0;
-    return MinigameQuota(kMinigamePlaysPerDay - used, TrustedClock.untilMidnight(now, off), day);
+    return MinigameQuota(math.max(0, kMinigamePlaysPerDay - used), TrustedClock.untilMidnight(now, off), day);
   }
 
   /// Spends one of today's plays; false if none are left (or no trusted time).
@@ -1672,9 +1673,9 @@ class Game extends ChangeNotifier {
     }
     final q = await minigameQuota(game);
     if (q == null || q.left <= 0) return false;
-    final rec = profile.minigamePlays[game];
+    final rec = profile.minigamePlays['_all'];
     final used = rec != null && rec.$1 == q.day ? rec.$2 : 0;
-    profile.minigamePlays[game] = (q.day, used + 1);
+    profile.minigamePlays['_all'] = (q.day, used + 1);
     profile.changed();
     return true;
   }
