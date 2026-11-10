@@ -18,10 +18,10 @@ class NetImage extends ImageProvider<NetImage> {
   const NetImage(this.url);
   final String url;
 
-  static final http.Client _client = http.Client();
+  static http.Client _client = http.Client();
   static int _active = 0;
   static final List<Completer<void>> _queue = [];
-  static const _maxConcurrent = 8;
+  static const _maxConcurrent = 10;
 
   @override
   Future<NetImage> obtainKey(ImageConfiguration configuration) => SynchronousFuture(this);
@@ -40,25 +40,33 @@ class NetImage extends ImageProvider<NetImage> {
     return decode(buffer);
   }
 
-  /// Slow or dropped connections (mobile data) get a few more tries: a
-  /// failed image is otherwise never fetched again while it's on screen.
+  /// Slow or dropped connections (mobile data) get a few more tries.
   Future<Uint8List> _bytes() async {
     for (var attempt = 0;; attempt++) {
       try {
         return await _fetch();
       } catch (e) {
-        if (attempt >= 3 || (e is _HttpStatus && e.code == 404)) rethrow;
-        await Future<void>.delayed(Duration(milliseconds: 800 * (attempt + 1)));
+        if (attempt >= 2 || (e is _HttpStatus && e.code == 404)) rethrow;
+        await Future<void>.delayed(Duration(milliseconds: 700 * (attempt + 1)));
       }
     }
   }
 
   Future<Uint8List> _fetch() async {
     await _acquire();
+    final client = _client;
     try {
-      final res = await _client.get(Uri.parse(url)).timeout(const Duration(seconds: 20));
+      final res = await client.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
       if (res.statusCode != 200 || res.bodyBytes.isEmpty) throw _HttpStatus(res.statusCode);
       return res.bodyBytes;
+    } on TimeoutException {
+      // A hung download usually means a dead pooled connection (mobile
+      // networks drop idle ones silently): start over with fresh ones.
+      if (identical(client, _client)) {
+        _client = http.Client();
+        client.close();
+      }
+      rethrow;
     } finally {
       _release();
     }
@@ -72,12 +80,16 @@ class NetImage extends ImageProvider<NetImage> {
     final c = Completer<void>();
     _queue.add(c);
     await c.future;
-    _active++;
   }
 
+  /// Newest requests first: those are the images on screen now (a fast
+  /// scroll queues hundreds that are already out of view).
   static void _release() {
-    _active--;
-    if (_queue.isNotEmpty) _queue.removeAt(0).complete();
+    if (_queue.isNotEmpty) {
+      _queue.removeLast().complete();
+    } else {
+      _active--;
+    }
   }
 
   @override
@@ -87,7 +99,9 @@ class NetImage extends ImageProvider<NetImage> {
 }
 
 /// Album art / artist picture with placeholder and size-limited decoding.
-class Art extends StatelessWidget {
+/// An image that fails to load tries again a little later (and again,
+/// further apart) while it's on screen.
+class Art extends StatefulWidget {
   const Art(this.url, {super.key, this.size = 56, this.radius = 6, this.circle = false, this.decodeSize});
   final String url;
   final double size;
@@ -96,30 +110,69 @@ class Art extends StatelessWidget {
   final int? decodeSize;
 
   @override
+  State<Art> createState() => _ArtState();
+}
+
+class _ArtState extends State<Art> {
+  int _attempt = 0;
+  Timer? _retry;
+
+  @override
+  void didUpdateWidget(Art old) {
+    super.didUpdateWidget(old);
+    if (old.url != widget.url) {
+      _retry?.cancel();
+      _attempt = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _retry?.cancel();
+    super.dispose();
+  }
+
+  void _failed(ImageProvider provider) {
+    if (_retry?.isActive ?? false) return;
+    if (_attempt >= 8) return;
+    _retry = Timer(Duration(seconds: 4 * (1 << _attempt.clamp(0, 4))), () {
+      if (!mounted) return;
+      provider.evict();
+      setState(() => _attempt++);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final size = widget.size;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final placeholder = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: const Color(0xFF1B1B1F),
-        borderRadius: circle ? null : BorderRadius.circular(radius),
-        shape: circle ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: widget.circle ? null : BorderRadius.circular(widget.radius),
+        shape: widget.circle ? BoxShape.circle : BoxShape.rectangle,
       ),
       child: Icon(Icons.music_note, size: size * 0.45, color: Colors.white24),
     );
-    if (url.isEmpty) return placeholder;
+    if (widget.url.isEmpty) return placeholder;
+    final provider = ResizeImage(NetImage(widget.url), width: widget.decodeSize ?? (size * dpr).round(), policy: ResizeImagePolicy.fit);
     final img = Image(
-      image: ResizeImage(NetImage(url), width: decodeSize ?? (size * dpr).round(), policy: ResizeImagePolicy.fit),
+      key: ValueKey(_attempt),
+      image: provider,
       width: size,
       height: size,
       fit: BoxFit.cover,
       gaplessPlayback: true,
       frameBuilder: (c, child, frame, sync) => frame == null && !sync ? placeholder : child,
-      errorBuilder: (c, e, s) => placeholder,
+      errorBuilder: (c, e, s) {
+        _failed(provider);
+        return placeholder;
+      },
     );
-    return circle
+    return widget.circle
         ? ClipOval(child: img)
-        : ClipRRect(borderRadius: BorderRadius.circular(radius), child: img);
+        : ClipRRect(borderRadius: BorderRadius.circular(widget.radius), child: img);
   }
 }

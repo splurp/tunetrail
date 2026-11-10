@@ -565,8 +565,12 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}, Ec
       }));
   r.put('/showcases/me', (Request req) => guard(() async {
         final b = await body(req);
+        final me = named(req);
+        if (econ != null && econ.active(me) && (econ.accounts[me]!.bits < kShowcaseBits)) {
+          throw MarketException('A showcase costs $kShowcaseBits bits');
+        }
         final s = m.setShowcase(
-            named(req),
+            me,
             b['title'] as String? ?? '',
             [
               for (final c in (b['cards'] as List? ?? const []))
@@ -580,6 +584,7 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}, Ec
               for (final a in (b['favArtists'] as List? ?? const []))
                 FavoriteArtist.fromJson(a as Map<String, dynamic>)
             ]);
+        econ?.chargeBits(me, kShowcaseBits, 'A showcase');
         return ok(s.toJson());
       }));
   r.post('/showcases/me/remove', (Request req) => guard(() async {

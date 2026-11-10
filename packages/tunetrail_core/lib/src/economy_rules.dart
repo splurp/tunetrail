@@ -183,6 +183,9 @@ ShopItem? shopItem(String id) => _shopById[id];
 /// Ids of every item of [kind] (what a bundle unlocks).
 List<String> shopIdsOfKind(ShopKind kind) => [for (final i in kShopItems) if (i.kind == kind) i.id];
 
+/// Bits it costs to put up (or replace) a showcase on the market.
+const int kShowcaseBits = 100;
+
 /// Bits a username change costs (the first choice and first change are free).
 const int kUsernameChangeBits = 100;
 

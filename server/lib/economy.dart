@@ -774,6 +774,15 @@ class Economy {
     touch(a);
   }
 
+  /// Takes [bits] for something (a showcase). Throws if short.
+  void chargeBits(String id, int bits, String what) {
+    final a = accounts[id];
+    if (a == null || !a.imported || bits <= 0) return;
+    if (a.bits < bits) throw MarketException('$what costs $bits bits');
+    a.bits -= bits;
+    touch(a);
+  }
+
   // ----------------------------------------------------------------- scrap
   /// Scraps cards for coins. Editions can't be scrapped, and cards on the
   /// market are held by it (not in the collection).
