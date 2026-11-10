@@ -225,7 +225,12 @@ class Game extends ChangeNotifier {
       profile.isAdmin = j['admin'] as bool? ?? false;
       unreadMessages.value = (j['unread'] as num?)?.toInt() ?? unreadMessages.value;
       profile.changed();
-      if (j['economy'] == true) await _startEconomy(m, j['imported'] == true);
+      _serverHasEconomy = j['economy'] == true;
+      if (j['economy'] == true) {
+        await _startEconomy(m, j['imported'] == true);
+      } else {
+        _refreshSpawns(force: true);
+      }
     } catch (_) {}
     await registerPush();
   }
@@ -869,6 +874,15 @@ class Game extends ChangeNotifier {
       unawaited(_fetchServerSpawns());
       return;
     }
+    // Builds with a server get their spawns from it (they're on the way:
+    // the account is connecting). Otherwise the local spawner needs a real
+    // song catalogue first — a fresh install only knows the built-in
+    // Sample songs, which would fill the whole map.
+    if (_awaitingServerSpawns || catalog.size < kMinLocalCatalog) {
+      spawns = [...debugSpawns];
+      notifyListeners();
+      return;
+    }
     final nowMs = now.millisecondsSinceEpoch;
     profile.spentSpawns.removeWhere((_, exp) => exp < nowMs);
     debugSpawns.removeWhere((d) => d.expiresAt.isBefore(now) || profile.spentSpawns.containsKey(d.id));
@@ -883,6 +897,18 @@ class Game extends ChangeNotifier {
     zoneHere = zones.sample(location.position.latitude, location.position.longitude);
     _applyEditionAvailability();
   }
+
+  /// Songs the local spawner needs before it places anything.
+  static const kMinLocalCatalog = 300;
+
+  /// The server's answer to "does it have the economy?" (null: not known
+  /// yet). Builds with a server wait for its spawns unless it says no.
+  bool? _serverHasEconomy;
+
+  bool get _awaitingServerSpawns => PlayerProfile.builtInServer.isNotEmpty && _serverHasEconomy != false && !serverEconomy;
+
+  /// No songs on the map yet because they're still on their way.
+  bool get findingSongs => spawns.isEmpty && (_awaitingServerSpawns || _spawnFetching || (!serverEconomy && catalog.size < kMinLocalCatalog));
 
   bool _spawnFetching = false;
   bool _spawnFetchAgain = false;

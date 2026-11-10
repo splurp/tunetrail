@@ -732,8 +732,8 @@ class _Hud extends StatelessWidget {
     final from = PlayerProfile.xpForLevel(lvl), to = PlayerProfile.xpForLevel(lvl + 1);
     final frac = ((p.xp - from) / (to - from)).clamp(0.0, 1.0);
     final zone = g.zoneHere.active;
-    final status = g.catalog.size == 0
-        ? (g.catalog.crawling ? 'Loading songs…' : 'Offline — connect to find songs')
+    final status = g.findingSongs
+        ? 'Finding songs nearby…'
         : (g.mapData.tiles.isEmpty && g.mapData.isLoading)
         ? 'Loading map…'
         : (g.location.gpsError != null && !g.location.joystickMode)

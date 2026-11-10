@@ -25,13 +25,27 @@ class ServerCatalog {
   static const nonEnglishMinFans = 500000;
   static const relatedMinFans = 100000;
 
-  /// The pool spawns and packs draw from (rebuilt as the catalogue grows).
+  int _poolAt = 0;
+
+  /// The pool spawns and packs draw from. Rebuilding it (rarities for every
+  /// song) takes a while, so while the catalogue grows it's rebuilt at most
+  /// every two minutes, or when the catalogue has grown by a tenth.
   SongPool get pool {
-    if (_poolSize != songs.length) {
+    final n = songs.length;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_poolSize != n && (_poolSize <= 0 || now - _poolAt > 120000 || n > _poolSize * 1.1)) {
       _pool = SongPool(songs.values, fansOf: (a) => fans[a] ?? 0);
-      _poolSize = songs.length;
+      _poolSize = n;
+      _poolAt = now;
     }
     return _pool;
+  }
+
+  /// The pool including every song added so far (rebuilt now if needed):
+  /// for songs that were only just added, such as a blind box's.
+  SongPool get freshPool {
+    if (_poolSize != songs.length) _poolSize = -1;
+    return pool;
   }
 
   Rarity rarityOf(int songId) => pool.rarityOf(songId);

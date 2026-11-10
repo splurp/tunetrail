@@ -362,7 +362,7 @@ class Economy {
     (b['stats'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {
       if (v is num && k.length < 40 && a.stats.length < 50) a.stats[k] = v;
     });
-    final pool = catalog.songs.isEmpty ? null : catalog.pool;
+    final pool = catalog.songs.isEmpty ? null : catalog.freshPool;
     final list = b['cards'] as List? ?? const [];
     if (list.length > MarketEngine.kMaxCollection) throw MarketException('Too many cards');
     for (final raw in list) {
@@ -748,7 +748,7 @@ class Economy {
     if (expectedPrice != null && price > expectedPrice) throw MarketException('The price changed to $price bits — try again');
     if (a.bits < price) throw MarketException('Not enough bits');
     a.bits -= price;
-    final pool = catalog.pool;
+    final pool = catalog.freshPool;
     final byRarity = <Rarity, List<SongInfo>>{};
     for (final s in info.songs) {
       (byRarity[pool.rarityOf(s.id)] ??= []).add(s);
