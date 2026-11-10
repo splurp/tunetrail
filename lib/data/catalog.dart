@@ -137,6 +137,48 @@ class Catalog extends ChangeNotifier {
     _write({'a': a.toJson()});
   }
 
+  /// Takes the genre the server gives a song (the server corrects genres
+  /// it had wrong; songs found through related artists used to inherit the
+  /// genre of the artist they were found from).
+  void adoptGenre(int songId, int genreId) {
+    final s = songs[songId];
+    if (s == null || genreId == 0 || s.genreId == genreId) return;
+    _genrePools[s.genreId]?.remove(songId);
+    final t = Song(
+      id: s.id,
+      title: s.title,
+      artistId: s.artistId,
+      artistName: s.artistName,
+      albumId: s.albumId,
+      albumTitle: s.albumTitle,
+      coverMd5: s.coverMd5,
+      artistPicMd5: s.artistPicMd5,
+      genreId: genreId,
+      rank: s.rank,
+      duration: s.duration,
+      plays: s.plays,
+    );
+    songs[songId] = t;
+    _genrePools.putIfAbsent(genreId, () => []).add(songId);
+    _artistSongGenre[s.artistId] = genreId;
+    _write({'s': t.toJson()});
+    version++;
+  }
+
+  /// The genre Deezer gives an artist's top album (null if unknown or not
+  /// one of the game's genres).
+  Future<int?> _topAlbumGenre(int artistId) async {
+    try {
+      final top = await api.artistTop(artistId, limit: 1);
+      if (top.isEmpty || top.first.albumId <= 0) return null;
+      final j = await api.getJson('/album/${top.first.albumId}');
+      final g = (j['genre_id'] as num?)?.toInt();
+      return g != null && kGenres.any((x) => x.id == g && x.id != 0) ? g : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void ensureFromPayload(CardPayload c) {
     if (!songs.containsKey(c.songId)) addSongs([Song.fromPayload(c)]);
   }
@@ -426,11 +468,14 @@ class Catalog extends ChangeNotifier {
         try {
           for (final r in await api.related(seed.id)) {
             if (_crawledArtists.contains(r.id)) continue;
-            final genre = kGenres.firstWhere((g) => g.id == seed.genreId,
-                orElse: () => kGenres.first);
+            var genre = kGenres.firstWhere((g) => g.id == seed.genreId, orElse: () => kGenres.first);
             final minFans = genre.nonEnglish ? nonEnglishMinFans : relatedMinFans;
             if (r.fans < minFans) continue;
-            r.genreId = seed.genreId;
+            // A related artist's own genre (their top album's), not the
+            // genre of the artist they were found from.
+            final own = await _topAlbumGenre(r.id);
+            if (own != null) genre = kGenres.firstWhere((g) => g.id == own);
+            r.genreId = genre.id;
             crawlStatus = 'Discovering ${r.name}…';
             notifyListeners();
             await _crawlArtist(r, genre, fansKnown: true);

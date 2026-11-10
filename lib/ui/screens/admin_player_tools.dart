@@ -132,6 +132,17 @@ class _AdminToolsState extends State<_AdminTools> {
         return 'Placed ${s.title} next to ${widget.name} (it stays for an hour)';
       });
 
+  Future<void> _restore() => _run((m) async {
+    final j = await m.send('POST', '/admin/players/$_pid/restore') as Map<String, dynamic>;
+    final n = (j['restored'] as num?)?.toInt() ?? 0;
+    return n == 0 ? 'Nothing to restore for ${widget.name}' : 'Restored $n cards to ${widget.name}';
+  });
+
+  Future<void> _minigames(int extra) => _run((m) async {
+    await m.send('POST', '/admin/players/$_pid/minigames', body: {'extra': extra});
+    return extra == 0 ? "Reset ${widget.name}'s minigame rounds for today" : 'Gave ${widget.name} $extra extra rounds today';
+  });
+
   Future<void> _search() async {
     final q = _q.text.trim();
     if (q.isEmpty) return;
@@ -227,17 +238,38 @@ class _AdminToolsState extends State<_AdminTools> {
           label: Text(_song == null ? 'Pick a song' : 'Spawn ${_song!.title}', overflow: TextOverflow.ellipsis),
         ),
       ),
-      if (_log.isNotEmpty) ...[
         const Divider(height: 32),
-        const SectionLabel('Admin history'),
-        for (final e in _log)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              '${DateTime.fromMillisecondsSinceEpoch((e as Map)['at'] as int).toLocal().toString().substring(0, 16)} · ${e['by']} ${e['what']}',
-              style: const TextStyle(fontSize: 12, color: kTextSecondary),
+        const SectionLabel('Minigames'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(onPressed: _busy ? null : () => _minigames(0), icon: const Icon(Icons.restart_alt), label: const Text("Reset today's rounds")),
+            for (final n in const [3, 6, 12]) OutlinedButton(onPressed: _busy ? null : () => _minigames(n), child: Text('+$n rounds')),
+          ],
+        ),
+        const Divider(height: 32),
+        const SectionLabel('Cards from before the server switch'),
+        const Text(
+          'Adds back cards from their collection as it was before Beta v1.0.3 (cards they still have, or numbered cards someone else now holds, are skipped).',
+          style: TextStyle(fontSize: 12, color: kTextSecondary),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonalIcon(onPressed: _busy ? null : _restore, icon: const Icon(Icons.history), label: const Text('Restore cards')),
+        ),
+        if (_log.isNotEmpty) ...[
+          const Divider(height: 32),
+          const SectionLabel('Admin history'),
+          for (final e in _log)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '${DateTime.fromMillisecondsSinceEpoch((e as Map)['at'] as int).toLocal().toString().substring(0, 16)} · ${e['by']} ${e['what']}',
+                style: const TextStyle(fontSize: 12, color: kTextSecondary),
+              ),
             ),
-          ),
       ],
     ]);
   }

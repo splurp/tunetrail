@@ -16,6 +16,9 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
+# Build numbers: 5000 + the version (1.0.5 -> 5105). Every APK shares this
+# code (android/gradle.properties); it must stay above the old per-
+# architecture codes (up to 4104 for 1.0.4).
 version: 1.0.4+104
 
 environment:

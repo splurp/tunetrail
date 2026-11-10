@@ -85,12 +85,18 @@ class EconomyClient {
 
   void _addCard(CardPayload p, CardSource source) {
     g.catalog.ensureFromPayload(p);
-    g.collection.add(p.songId, p.rarity, p.shiny, source,
-        uid: p.uid,
-        at: p.acquiredAt > 0 ? DateTime.fromMillisecondsSinceEpoch(p.acquiredAt) : null,
-        notify: false,
-        edition: p.edition,
-        serial: p.serial);
+    g.catalog.adoptGenre(p.songId, p.genreId);
+    g.collection.add(
+      p.songId,
+      p.rarity,
+      p.shiny,
+      source,
+      uid: p.uid,
+      at: p.acquiredAt > 0 ? DateTime.fromMillisecondsSinceEpoch(p.acquiredAt) : null,
+      notify: false,
+      edition: p.edition,
+      serial: p.serial,
+    );
   }
 
   /// Replaces the collection with the server's (keeping favourites, card
@@ -121,30 +127,45 @@ class EconomyClient {
     col.commit();
   }
 
+  /// Whether this device has progress of its own (beyond a new player's).
+  bool get hasLocalProgress => g.collection.length > 0 || _p.bits > 0 || _p.coins > 500;
+
+  /// Adds this device's progress to an account already on the server
+  /// (progress from a device that never moved its own over).
+  Future<void> mergeProgress() async {
+    final body = _progress()..['coins'] = (_p.coins - 500).clamp(0, 1 << 40);
+    await market.send('POST', '/me/merge', body: body, timeout: const Duration(seconds: 90));
+    _p.econImported = true;
+    _p.econRev = -1;
+    await sync();
+  }
+
+  Map<String, dynamic> _progress() {
+    final col = g.collection;
+    return {
+      'coins': _p.coins,
+      'bits': _p.bits,
+      'xp': _p.xp,
+      'owned': _p.owned.toList(),
+      'unc': _p.usernameChanges,
+      'claimed': _p.questsClaimed.toList(),
+      'stats': {
+        'caught': _p.totalCaught,
+        'shinies': _p.shinyCaught,
+        'packs': _p.packsOpened,
+        'scrapped': _p.cardsScrapped,
+        'sold': _p.cardsSold,
+        'trades': _p.tradesCompleted,
+        'meters': _p.metersWalked.round(),
+        'minigameBits': _p.minigameBits,
+      },
+      'cards': [for (var i = 0; i < col.length; i++) col.at(i).toPayload().toJson()],
+    };
+  }
+
   /// Copies this device's progress to the server (once per account).
   Future<void> importProgress() async {
-    final col = g.collection;
-    final j = await market.send('POST', '/me/import',
-        body: {
-          'coins': _p.coins,
-          'bits': _p.bits,
-          'xp': _p.xp,
-          'owned': _p.owned.toList(),
-          'unc': _p.usernameChanges,
-          'claimed': _p.questsClaimed.toList(),
-          'stats': {
-            'caught': _p.totalCaught,
-            'shinies': _p.shinyCaught,
-            'packs': _p.packsOpened,
-            'scrapped': _p.cardsScrapped,
-            'sold': _p.cardsSold,
-            'trades': _p.tradesCompleted,
-            'meters': _p.metersWalked.round(),
-            'minigameBits': _p.minigameBits,
-          },
-          'cards': [for (var i = 0; i < col.length; i++) col.at(i).toPayload().toJson()],
-        },
-        timeout: const Duration(seconds: 90)) as Map<String, dynamic>;
+    final j = await market.send('POST', '/me/import', body: _progress(), timeout: const Duration(seconds: 90)) as Map<String, dynamic>;
     _p.econImported = true;
     _p.econRev = -1;
     await apply(j['acct'] as Map<String, dynamic>);

@@ -66,6 +66,43 @@ void main() {
     expect(econ.sync(a, a.rev).containsKey('full'), false);
   });
 
+  test('admins can restore cards from before the switch; other devices merge in', () {
+    // The old game had uploaded two cards, one a numbered Canvas.
+    engine.collections['p1'] = [card(41, 1), CardPayload.fromJson({...card(42, 2).toJson(), 'ed': Edition.canvas.index, 'sn': 1})];
+    econ.import('p1', {}); // a fresh install imported nothing
+    expect(econ.account('p1').cards, isEmpty);
+    econ.import('p2', {});
+    econ.admins.add('p2');
+    expect(econ.adminRestoreLegacy('p2', 'p1'), 2);
+    expect(econ.account('p1').cards.keys.toSet(), {41, 42});
+    expect(econ.adminRestoreLegacy('p2', 'p1'), 0); // nothing twice
+    // A second device's progress is added once it finds the account on the server.
+    econ.merge('p1', {'coins': 300, 'cards': [card(43, 3).toJson(), card(41, 1).toJson()]});
+    expect(econ.account('p1').coins, 300);
+    expect(econ.account('p1').cards.length, 3);
+    expect(econ.account('p1').flags.last.kind, 'device_merge');
+  });
+
+  test('admins can reset or add minigame rounds', () {
+    econ.import('p1', {});
+    econ.import('p2', {});
+    econ.admins.add('p2');
+    for (var i = 0; i < kMinigamePlaysPerDay; i++) {
+      econ.startMinigame('p1', 'song');
+    }
+    expect(econ.minigameQuota('p1', 'song')['left'], 0);
+    econ.adminMinigames('p2', 'p1');
+    expect(econ.minigameQuota('p1', 'song')['left'], kMinigamePlaysPerDay);
+    econ.adminMinigames('p2', 'p1', extra: 4);
+    expect(econ.minigameQuota('p1', 'song')['left'], kMinigamePlaysPerDay + 4);
+  });
+
+  test('chat showcases use the server account\'s cards', () {
+    econ.import('p1', {'cards': [card(5, 5).toJson()]});
+    expect(engine.sendMessage('p1', 'p2', '', cardUid: 5).card!.songId, 5);
+    expect(() => engine.sendMessage('p1', 'p2', '', cardUid: 6), throwsA(isA<MarketException>()));
+  });
+
   test('economy requests need an imported account', () {
     expect(() => econ.openPack('p1', 'pack_gold'), throwsA(isA<MarketException>()));
   });

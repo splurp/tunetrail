@@ -246,9 +246,21 @@ class Game extends ChangeNotifier {
       toast('Your progress is now saved on the server');
     } else {
       if (!profile.econImported) {
-        // A new device, or progress moved from another one: the server's wins.
-        profile.econImported = true;
-        profile.econRev = -1;
+        if (e.hasLocalProgress && !(onlineAccounts && profile.authToken.isEmpty)) {
+          // This device has progress the account doesn't: add it.
+          try {
+            await e.mergeProgress();
+            toast("This device's progress was added to your account");
+          } catch (err) {
+            profile.econImported = true;
+            profile.econRev = -1;
+            toast('$err');
+          }
+        } else {
+          // A new device: the server's copy is the player's progress.
+          profile.econImported = true;
+          profile.econRev = -1;
+        }
       }
       await e.sync();
     }
@@ -451,7 +463,9 @@ class Game extends ChangeNotifier {
   /// Uploads the collection other players browse, at most every ~20 s.
   void _scheduleCollectionSync({bool soon = false}) {
     // Server accounts' collections are on the server already.
-    if (!_canPublish || serverEconomy) return;
+    // Nor upload while the server may still turn out to have the economy
+    // (an empty new install would replace the old public collection).
+    if (!_canPublish || serverEconomy || (PlayerProfile.builtInServer.isNotEmpty && _serverHasEconomy != false)) return;
     if (!soon && _collectionSync?.isActive == true) return;
     _collectionSync?.cancel();
     _collectionSync = Timer(Duration(seconds: soon ? 2 : 20), () async {
@@ -981,6 +995,7 @@ class Game extends ChangeNotifier {
         final w = WorldSpawn.fromJson(m);
         final song = Song.fromInfo(w.song);
         catalog.addSongs([song]);
+        catalog.adoptGenre(song.id, song.genreId);
         if (m['paid'] == true) purchasedSpawns.add(w.id);
         final s = Spawn(
           id: w.id,

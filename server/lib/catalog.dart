@@ -122,7 +122,16 @@ class ServerCatalog {
     }
   }
 
-  Future<void> _artist(int id, int genreId, {int knownFans = 0, bool nonEnglish = false}) async {
+  /// The genre Deezer gives an album, if it's one of the world's genres.
+  Future<int?> _albumGenre(int albumId) async {
+    if (albumId <= 0) return null;
+    final g = ((await _get('/album/$albumId'))['genre_id'] as num?)?.toInt();
+    return g != null && g > 0 && kWorldGenres.any((x) => x.id == g) ? g : null;
+  }
+
+  /// [guessGenre]: [genreId] is only a guess (an artist found through a
+  /// related artist, or a favourite) — use their top album's genre.
+  Future<void> _artist(int id, int genreId, {int knownFans = 0, bool nonEnglish = false, bool guessGenre = false}) async {
     if (!_crawledArtists.add(id)) return;
     try {
       var f = knownFans;
@@ -130,7 +139,12 @@ class ServerCatalog {
       fans[id] = f;
       _pendingFans[id] = f;
       if (nonEnglish && f < nonEnglishMinFans) return;
-      _add([for (final t in _data(await _get('/artist/$id/top', {'limit': '30'}))) ?_song(t, genreId)]);
+      final top = _data(await _get('/artist/$id/top', {'limit': '30'}));
+      if ((guessGenre || genreId == 0) && top.isNotEmpty) {
+        final album = ((top.first['album'] as Map<String, dynamic>?)?['id'] as num?)?.toInt() ?? 0;
+        genreId = await _albumGenre(album) ?? genreId;
+      }
+      _add([for (final t in top) ?_song(t, genreId)]);
     } catch (e) {
       stderr.writeln('crawl artist $id: $e');
     }
@@ -179,6 +193,50 @@ class ServerCatalog {
     return (title: a['title'] as String? ?? '', recordType: a['record_type'] as String? ?? 'album', coverMd5: cover, tracks: tracks);
   }
 
+  /// Corrects the genre of artists already in the catalogue: artists found
+  /// through related artists used to inherit the genre of the artist they
+  /// were found from (Coldplay as Hip Hop). Each artist's songs take the
+  /// genre of their top song's album. Runs in the background, once per
+  /// artist (remembered across restarts).
+  Future<void> fixGenres() async {
+    final checked = <int>{for (final x in (await store.loadBlob('genreChecked') as List? ?? const [])) (x as num).toInt()};
+    final byArtist = <int, List<SongInfo>>{};
+    for (final s in songs.values) {
+      byArtist.putIfAbsent(s.artistId, () => []).add(s);
+    }
+    var fixed = 0, done = 0;
+    for (final e in byArtist.entries) {
+      if (checked.contains(e.key) || e.key == 0) continue;
+      try {
+        final top = (List.of(e.value)..sort((a, b) => b.rank.compareTo(a.rank))).first;
+        final g = await _albumGenre(top.albumId);
+        if (g != null) {
+          final wrong = [
+            for (final s in e.value)
+              if (s.genreId != g) s,
+          ];
+          for (final s in wrong) {
+            final t = SongInfo.fromJson({...s.toJson(), 'g': g});
+            songs[s.id] = t;
+            _pendingSongs.add(t);
+          }
+          if (wrong.isNotEmpty) fixed++;
+        }
+        checked.add(e.key);
+      } catch (_) {
+        continue;
+      }
+      if (++done % 100 == 0) {
+        await _flush();
+        await store.saveBlob('genreChecked', checked.toList());
+      }
+    }
+    await _flush();
+    await store.saveBlob('genreChecked', checked.toList());
+    _poolSize = -1;
+    if (done > 0) stdout.writeln('Genres checked for $done artists; corrected $fixed');
+  }
+
   /// Grows the catalogue in the background (charts, then each genre's
   /// popular artists, then related artists). Safe to call repeatedly.
   Future<void> crawl({bool chartsOnly = false}) async {
@@ -217,7 +275,7 @@ class ServerCatalog {
           for (final r in _data(await _get('/artist/${seed.key}/related', {'limit': '20'}))) {
             final f = (r['nb_fan'] as num?)?.toInt() ?? 0;
             if (f < (g.nonEnglish ? nonEnglishMinFans : relatedMinFans)) continue;
-            await _artist((r['id'] as num).toInt(), g.id, knownFans: f);
+            await _artist((r['id'] as num).toInt(), g.id, knownFans: f, guessGenre: true);
           }
         } catch (_) {}
         await _flush();

@@ -33,6 +33,7 @@ class _AdminFlagsScreenState extends State<AdminFlagsScreen> {
     'big_import': 'Large progress import',
     'many_grants': 'Many store grants',
     'minigame_bits': 'Asked for too many minigame bits',
+    'device_merge': 'Merged progress from another device',
   };
 
   Future<void> _clear(String id) async {

@@ -714,23 +714,33 @@ class MarketEngine {
     _changed();
   }
 
-  ChatMessage sendMessage(String fromId, String toId, String raw) {
+  /// A card [playerId] owns, by uid, where the collection isn't in
+  /// [collections] (server accounts); null falls back to [collections].
+  CardPayload? Function(String playerId, int uid)? cardOf;
+
+  /// Sends a message; [cardUid] showcases one of the sender's cards.
+  ChatMessage sendMessage(String fromId, String toId, String raw, {int? cardUid}) {
     if (fromId == toId) throw MarketException("You can't message yourself");
     final to = _player(toId);
     _player(fromId);
     if (to.isBot) throw MarketException('This trader doesn\'t read messages');
     if (_blockedBetween(fromId, toId)) throw MarketException("You can't message this player");
-    final text = cleanUserText(raw, maxLength: kMaxMessageLength, multiline: true);
-    if (text.isEmpty) throw MarketException('Type a message');
+    var text = cleanUserText(raw, maxLength: kMaxMessageLength, multiline: true);
+    CardPayload? card;
+    if (cardUid != null) {
+      card = cardOf?.call(fromId, cardUid) ?? collections[fromId]?.where((c) => c.uid == cardUid).firstOrNull;
+      if (card == null) throw MarketException('That card isn\'t in your collection any more');
+    }
+    if (text.isEmpty && card == null) throw MarketException('Type a message');
     final t = now();
     final recent = _recentSends.putIfAbsent(fromId, () => [])..removeWhere((x) => t - x > 60000);
     if (recent.length >= 20) throw MarketException('You\'re sending messages too fast — wait a moment');
     recent.add(t);
-    final m = ChatMessage(id: _id('m'), from: fromId, to: toId, text: text, at: t);
+    final m = ChatMessage(id: _id('m'), from: fromId, to: toId, text: text, at: t, card: card);
     final list = messages.putIfAbsent(_conv(fromId, toId), () => [])..add(m);
     if (list.length > kMaxMessagesPerConversation) list.removeRange(0, list.length - kMaxMessagesPerConversation);
     lastRead.putIfAbsent(fromId, () => {})[toId] = t;
-    _notify(toId, nameOf(fromId), text);
+    _notify(toId, nameOf(fromId), text.isNotEmpty ? text : 'Showcased ${card!.title} by ${card.artistName}');
     _changed();
     return m;
   }

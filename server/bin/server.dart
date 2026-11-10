@@ -76,11 +76,16 @@ Future<void> main(List<String> args) async {
   for (final (data, cards) in await store.loadAccounts()) {
     final a = Account.fromJson(data, cards);
     economy.accounts[a.id] = a;
-    if (a.imported) engine.collections[a.id] = a.cards.values.toList();
+    if (a.imported) {
+      // Keep what their old game last uploaded (for restoring lost cards).
+      final old = engine.collections[a.id];
+      if (old != null && old.isNotEmpty) economy.legacy[a.id] = old;
+      engine.collections[a.id] = a.cards.values.toList();
+    }
   }
   stdout.writeln('Economy: ${economy.accounts.length} accounts');
   if ((env['CATALOG_CRAWL'] ?? 'true').toLowerCase() != 'false') {
-    unawaited(catalog.crawl().catchError((Object e) => stderr.writeln('catalogue crawl failed: $e')));
+    unawaited(catalog.crawl().then((_) => catalog.fixGenres()).catchError((Object e) => stderr.writeln('catalogue crawl failed: $e')));
   }
 
   // Saved before a changing request is answered: on hosts that pause the
@@ -299,69 +304,98 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}, Ec
       }));
 
   // ------------------------------------------------------------ account
-  r.get('/me', (Request req) => guard(() async {
-        final p = m.players[pid(req)]!;
-        final admin = admins.contains(p.id);
-        return ok({
-          'id': p.id,
-          'name': p.name,
-          'needsUsername': !p.named && p.id.startsWith('g_'),
-          'unread': m.unreadCount(p.id),
-          'admin': admin,
-          if (econ != null) 'economy': true,
-          if (econ != null) 'imported': econ.active(p.id),
-          if (econ != null) 'usernameCost': econ.usernameChangeCost(p.id),
-        });
-      }));
-  r.get('/usernames/check', (Request req) => guard(() async {
-        final name = (req.url.queryParameters['name'] ?? '').trim();
-        final err = usernameError(name);
-        return ok({'ok': err == null && m.usernameAvailable(name, forId: pid(req)), 'error': err ?? (m.usernameAvailable(name, forId: pid(req)) ? null : 'That username is taken')});
-      }));
-  r.post('/me/username', (Request req) => guard(() async {
-        final id = pid(req);
-        final b = await body(req);
-        final name = (b['name'] as String? ?? '').trim();
-        final changing = m.players[id]?.named ?? false;
-        if (changing && m.players[id]!.name == name) return ok({'name': name, 'token': auth.issue(id, name)});
-        final cost = econ?.usernameChangeCost(id) ?? 0;
-        if (cost > 0 && (econ!.accounts[id]?.bits ?? 0) < cost) throw MarketException('Changing your username again costs $cost bits');
-        final p = m.setUsername(id, name);
-        if (changing) econ?.chargeUsernameChange(id);
-        return ok({'name': p.name, 'token': auth.issue(id, p.name)});
-      }));
-  r.put('/me/profile', (Request req) => guard(() async {
-        final id = named(req);
-        final b = await body(req);
-        if (b['favArtists'] != null && catalog != null) {
-          final ids = [for (final a in (b['favArtists'] as List)) ((a as Map<String, dynamic>)['id'] as num).toInt()];
-          unawaited(catalog.ensureArtists(ids.take(200)).catchError((Object _) {}));
-        }
-        m.setPublicProfile(id,
-            look: b['look'] as Map<String, dynamic>?,
-            theme: b['theme'] as String?,
-            level: (b['level'] as num?)?.toInt(),
-            stats: b['stats'] == null ? null : {for (final e in (b['stats'] as Map<String, dynamic>).entries) if (e.value is num) e.key: e.value as num},
-            editionShowcase: b['editions'] == null ? null : cards(b['editions']),
-            favoriteArtists: b['favArtists'] == null
-                ? null
-                : [for (final a in (b['favArtists'] as List)) FavoriteArtist.fromJson(a as Map<String, dynamic>)]);
-        return ok({'ok': true});
-      }));
-  r.post('/me/push', (Request req) => guard(() async {
-        final id = named(req);
-        final b = await body(req);
-        m.registerPushToken(id, b['token'] as String? ?? '');
-        return ok({'ok': true});
-      }));
-  r.put('/me/collection', (Request req) => guard(() async {
-        final id = named(req);
-        // Cards of players on the server economy live on the server.
-        if (econ?.active(id) ?? false) return ok({'ok': true, 'count': m.collections[id]?.length ?? 0});
-        final b = await body(req);
-        m.setCollection(id, cards(b['cards']));
-        return ok({'ok': true, 'count': m.collections[id]?.length ?? 0});
-      }));
+  r.get(
+    '/me',
+    (Request req) => guard(() async {
+      final p = m.players[pid(req)]!;
+      final admin = admins.contains(p.id);
+      return ok({
+        'id': p.id,
+        'name': p.name,
+        'needsUsername': !p.named && p.id.startsWith('g_'),
+        'unread': m.unreadCount(p.id),
+        'admin': admin,
+        if (econ != null) 'economy': true,
+        if (econ != null) 'imported': econ.active(p.id),
+        if (econ != null) 'usernameCost': econ.usernameChangeCost(p.id),
+      });
+    }),
+  );
+  r.get(
+    '/usernames/check',
+    (Request req) => guard(() async {
+      final name = (req.url.queryParameters['name'] ?? '').trim();
+      final err = usernameError(name);
+      return ok({
+        'ok': err == null && m.usernameAvailable(name, forId: pid(req)),
+        'error': err ?? (m.usernameAvailable(name, forId: pid(req)) ? null : 'That username is taken'),
+      });
+    }),
+  );
+  r.post(
+    '/me/username',
+    (Request req) => guard(() async {
+      final id = pid(req);
+      final b = await body(req);
+      final name = (b['name'] as String? ?? '').trim();
+      final changing = m.players[id]?.named ?? false;
+      if (changing && m.players[id]!.name == name) return ok({'name': name, 'token': auth.issue(id, name)});
+      final cost = econ?.usernameChangeCost(id) ?? 0;
+      if (cost > 0 && (econ!.accounts[id]?.bits ?? 0) < cost) throw MarketException('Changing your username again costs $cost bits');
+      final p = m.setUsername(id, name);
+      if (changing) econ?.chargeUsernameChange(id);
+      return ok({'name': p.name, 'token': auth.issue(id, p.name)});
+    }),
+  );
+  r.put(
+    '/me/profile',
+    (Request req) => guard(() async {
+      final id = named(req);
+      final b = await body(req);
+      if (b['favArtists'] != null && catalog != null) {
+        final ids = [for (final a in (b['favArtists'] as List)) ((a as Map<String, dynamic>)['id'] as num).toInt()];
+        unawaited(catalog.ensureArtists(ids.take(200)).catchError((Object _) {}));
+      }
+      m.setPublicProfile(
+        id,
+        look: b['look'] as Map<String, dynamic>?,
+        theme: b['theme'] as String?,
+        level: (b['level'] as num?)?.toInt(),
+        stats: b['stats'] == null
+            ? null
+            : {
+                for (final e in (b['stats'] as Map<String, dynamic>).entries)
+                  if (e.value is num) e.key: e.value as num,
+              },
+        editionShowcase: b['editions'] == null ? null : cards(b['editions']),
+        favoriteArtists: b['favArtists'] == null ? null : [for (final a in (b['favArtists'] as List)) FavoriteArtist.fromJson(a as Map<String, dynamic>)],
+      );
+      return ok({'ok': true});
+    }),
+  );
+  r.post(
+    '/me/push',
+    (Request req) => guard(() async {
+      final id = named(req);
+      final b = await body(req);
+      m.registerPushToken(id, b['token'] as String? ?? '');
+      return ok({'ok': true});
+    }),
+  );
+  r.put(
+    '/me/collection',
+    (Request req) => guard(() async {
+      final id = named(req);
+      // Cards of players on the server economy live on the server.
+      if (econ?.active(id) ?? false) return ok({'ok': true, 'count': m.collections[id]?.length ?? 0});
+      final b = await body(req);
+      final next = cards(b['cards']);
+      // A fresh install mustn't wipe the collection an older game uploaded.
+      if (next.isEmpty && (m.collections[id]?.isNotEmpty ?? false)) return ok({'ok': true, 'count': m.collections[id]!.length});
+      m.setCollection(id, next);
+      return ok({'ok': true, 'count': m.collections[id]?.length ?? 0});
+    }),
+  );
 
   // ------------------------------------------------------------ players
   r.get('/players', (Request req) => guard(() async {
@@ -404,34 +438,42 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}, Ec
   // ----------------------------------------------------------- messages
   r.get('/messages', (Request req) => guard(() async => ok([for (final c in m.conversations(pid(req))) c.toJson()])));
   r.get('/messages/<id>', (Request req, String id) => guard(() async => ok([for (final x in m.thread(pid(req), id)) x.toJson()])));
-  r.post('/messages/<id>', (Request req, String id) => guard(() async {
-        final me = named(req);
-        final b = await body(req);
-        return ok(m.sendMessage(me, id, b['text'] as String? ?? '').toJson());
-      }));
+  r.post(
+    '/messages/<id>',
+    (Request req, String id) => guard(() async {
+      final me = named(req);
+      final b = await body(req);
+      return ok(m.sendMessage(me, id, b['text'] as String? ?? '', cardUid: (b['card'] as num?)?.toInt()).toJson());
+    }),
+  );
 
-  r.get('/listings', (Request req) => guard(() async {
-        final q = ListingQuery.fromQueryParams(req.url.queryParameters);
-        return ok([for (final l in m.browse(q)) l.toJson()]);
-      }));
-  r.get('/listings/mine', (Request req) => guard(() async =>
-      ok([for (final l in m.listingsOf(pid(req))) l.toJson()])));
-  r.post('/listings', (Request req) => guard(() async {
-        final b = await body(req);
-        final me = named(req);
-        final items = [for (final i in (b['items'] as List? ?? const [])) ListingItem.fromJson(i as Map<String, dynamic>)];
-        return escrowed(me, [for (final i in items) i.card], 0, (own) {
-          final l = m.createListing(
-            me,
-            [for (var k = 0; k < items.length; k++) ListingItem(card: own[k], price: items[k].price)],
-            folderPrice: (b['folderPrice'] as num?)?.toInt(),
-            note: b['note'] as String? ?? '',
-            acceptsTrades: b['trades'] as bool? ?? false,
-          );
-          econ?.listedOnMarket(me);
-          return ok(l.toJson());
-        });
-      }));
+  r.get(
+    '/listings',
+    (Request req) => guard(() async {
+      final q = ListingQuery.fromQueryParams(req.url.queryParameters);
+      return ok([for (final l in m.browse(q)) l.toJson()]);
+    }),
+  );
+  r.get('/listings/mine', (Request req) => guard(() async => ok([for (final l in m.listingsOf(pid(req))) l.toJson()])));
+  r.post(
+    '/listings',
+    (Request req) => guard(() async {
+      final b = await body(req);
+      final me = named(req);
+      final items = [for (final i in (b['items'] as List? ?? const [])) ListingItem.fromJson(i as Map<String, dynamic>)];
+      return escrowed(me, [for (final i in items) i.card], 0, (own) {
+        final l = m.createListing(
+          me,
+          [for (var k = 0; k < items.length; k++) ListingItem(card: own[k], price: items[k].price)],
+          folderPrice: (b['folderPrice'] as num?)?.toInt(),
+          note: b['note'] as String? ?? '',
+          acceptsTrades: b['trades'] as bool? ?? false,
+        );
+        econ?.listedOnMarket(me);
+        return ok(l.toJson());
+      });
+    }),
+  );
   r.post('/listings/<id>/bump', (Request req, String id) => guard(() async => ok(m.bumpListing(pid(req), id).toJson())));
   r.post('/listings/<id>/cancel', (Request req, String id) => guard(() async {
         final me = pid(req);

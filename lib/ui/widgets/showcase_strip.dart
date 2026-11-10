@@ -52,8 +52,9 @@ class CardPlayButton extends StatelessWidget {
   }
 }
 
-/// A card shown big, with its own play button.
-Future<void> showCardFullView(BuildContext context, CardPayload card) {
+/// A card shown big, with its own play button ([actions]: buttons under
+/// it, such as making an offer).
+Future<void> showCardFullView(BuildContext context, CardPayload card, {Widget Function(BuildContext ctx)? actions}) {
   final size = MediaQuery.sizeOf(context);
   final w = math.min(size.width * 0.82, math.min(420.0, (size.height - 160) / 1.5));
   return showDialog<void>(
@@ -81,6 +82,7 @@ Future<void> showCardFullView(BuildContext context, CardPayload card) {
             child: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(ctx)),
           ),
         ]),
+        if (actions != null) ...[const SizedBox(height: 14), actions(ctx)],
       ]),
     ),
   );

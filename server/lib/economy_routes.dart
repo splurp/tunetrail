@@ -25,11 +25,22 @@ void addEconomyRoutes(
   Response withAcct(Request req, String id, Map<String, dynamic> data) => ok({...data, 'acct': e.sync(e.account(id), rev(req))});
 
   // ---------------------------------------------------------------- account
-  r.post('/me/import', (Request req) => guard(() async {
-        final id = pid(req);
-        final a = e.import(id, await body(req));
-        return ok({'acct': e.sync(a, null)});
-      }));
+  r.post(
+    '/me/import',
+    (Request req) => guard(() async {
+      final id = pid(req);
+      final a = e.import(id, await body(req));
+      return ok({'acct': e.sync(a, null)});
+    }),
+  );
+  r.post(
+    '/me/merge',
+    (Request req) => guard(() async {
+      final id = pid(req);
+      final a = e.merge(id, await body(req));
+      return ok({'acct': e.sync(a, null)});
+    }),
+  );
   r.get('/me/account', (Request req) => guard(() async => withAcct(req, pid(req), const {})));
   r.get('/me/cards', (Request req) => guard(() async {
         final a = e.account(pid(req));
@@ -146,71 +157,139 @@ void addEconomyRoutes(
       }));
 
   // ------------------------------------------------------------------ admin
-  r.post('/admin/econ/balances', (Request req) => guard(() async {
-        final id = admin(req);
-        final b = await body(req);
-        e.adminSetBalances(id, coins: (b['coins'] as num?)?.toInt(), bits: (b['bits'] as num?)?.toInt());
-        return withAcct(req, id, const {});
-      }));
-  r.post('/admin/econ/cards', (Request req) => guard(() async {
-        final id = admin(req);
-        final b = await body(req);
-        return withAcct(req, id, {'added': e.adminGenerateCards(id, (b['n'] as num?)?.toInt() ?? 0)});
-      }));
-  r.post('/admin/econ/clear', (Request req) => guard(() async {
-        final id = admin(req);
-        e.adminClearCards(id);
-        return withAcct(req, id, const {});
-      }));
-  r.post('/admin/econ/minigames/reset', (Request req) => guard(() async {
-        final id = admin(req);
-        e.adminResetMinigames(id);
-        return withAcct(req, id, const {});
-      }));
-  r.post('/admin/econ/respawn', (Request req) => guard(() async {
-        final id = admin(req);
-        e.adminRespawn(id);
-        return withAcct(req, id, const {});
-      }));
-  r.post('/admin/econ/free/<item>', (Request req, String item) => guard(() async {
-        final id = admin(req);
-        e.buyItem(id, item, free: true);
-        return withAcct(req, id, const {});
-      }));
-  r.post('/admin/econ/spawn', (Request req) => guard(() async {
-        final id = admin(req);
-        final b = await body(req);
-        final s = e.debugSpawn(id, SongInfo.fromJson(b['song'] as Map<String, dynamic>), num0(b, 'lat'), num0(b, 'lng'),
-            shiny: b['shiny'] == true, edition: Edition.fromIndex((b['ed'] as num?)?.toInt() ?? 0));
-        return ok(s);
-      }));
-  r.post('/admin/players/<player>/grant', (Request req, String player) => guard(() async {
-        final id = admin(req);
-        final b = await body(req);
-        final what = e.adminGrant(id, Uri.decodeComponent(player),
-            item: b['item'] as String?, label: b['label'] as String?, coins: (b['coins'] as num?)?.toInt() ?? 0, bits: (b['bits'] as num?)?.toInt() ?? 0);
-        return ok({'given': what});
-      }));
-  r.post('/admin/players/<player>/spawn', (Request req, String player) => guard(() async {
-        final id = admin(req);
-        final b = await body(req);
-        final s = e.adminSpawnFor(id, Uri.decodeComponent(player), SongInfo.fromJson(b['song'] as Map<String, dynamic>),
-            shiny: b['shiny'] == true,
-            edition: Edition.fromIndex((b['ed'] as num?)?.toInt() ?? 0),
-            rarity: b['rarity'] == null ? null : Rarity.fromIndex((b['rarity'] as num).toInt()));
-        return ok(s);
-      }));
-  r.get('/admin/players/<player>/log', (Request req, String player) => guard(() async {
-        admin(req);
-        return ok(e.accounts[Uri.decodeComponent(player)]?.adminLog.reversed.take(50).toList() ?? const []);
-      }));
-  r.get('/admin/flags', (Request req) => guard(() async {
-        admin(req);
-        return ok(e.flagged());
-      }));
-  r.post('/admin/flags/<player>/clear', (Request req, String player) => guard(() async {
-        admin(req);
-        e.clearFlags(Uri.decodeComponent(player));
-        return ok({'ok': true});
-      }));
+  r.post(
+    '/admin/econ/balances',
+    (Request req) => guard(() async {
+      final id = admin(req);
+      final b = await body(req);
+      e.adminSetBalances(id, coins: (b['coins'] as num?)?.toInt(), bits: (b['bits'] as num?)?.toInt());
+      return withAcct(req, id, const {});
+    }),
+  );
+  r.post(
+    '/admin/econ/cards',
+    (Request req) => guard(() async {
+      final id = admin(req);
+      final b = await body(req);
+      return withAcct(req, id, {'added': e.adminGenerateCards(id, (b['n'] as num?)?.toInt() ?? 0)});
+    }),
+  );
+  r.post(
+    '/admin/econ/clear',
+    (Request req) => guard(() async {
+      final id = admin(req);
+      e.adminClearCards(id);
+      return withAcct(req, id, const {});
+    }),
+  );
+  r.post(
+    '/admin/econ/minigames/reset',
+    (Request req) => guard(() async {
+      final id = admin(req);
+      e.adminResetMinigames(id);
+      return withAcct(req, id, const {});
+    }),
+  );
+  r.post(
+    '/admin/econ/respawn',
+    (Request req) => guard(() async {
+      final id = admin(req);
+      e.adminRespawn(id);
+      return withAcct(req, id, const {});
+    }),
+  );
+  r.post(
+    '/admin/econ/free/<item>',
+    (Request req, String item) => guard(() async {
+      final id = admin(req);
+      e.buyItem(id, item, free: true);
+      return withAcct(req, id, const {});
+    }),
+  );
+  r.post(
+    '/admin/econ/spawn',
+    (Request req) => guard(() async {
+      final id = admin(req);
+      final b = await body(req);
+      final s = e.debugSpawn(
+        id,
+        SongInfo.fromJson(b['song'] as Map<String, dynamic>),
+        num0(b, 'lat'),
+        num0(b, 'lng'),
+        shiny: b['shiny'] == true,
+        edition: Edition.fromIndex((b['ed'] as num?)?.toInt() ?? 0),
+      );
+      return ok(s);
+    }),
+  );
+  r.post(
+    '/admin/players/<player>/grant',
+    (Request req, String player) => guard(() async {
+      final id = admin(req);
+      final b = await body(req);
+      final what = e.adminGrant(
+        id,
+        Uri.decodeComponent(player),
+        item: b['item'] as String?,
+        label: b['label'] as String?,
+        coins: (b['coins'] as num?)?.toInt() ?? 0,
+        bits: (b['bits'] as num?)?.toInt() ?? 0,
+      );
+      return ok({'given': what});
+    }),
+  );
+  r.post(
+    '/admin/players/<player>/spawn',
+    (Request req, String player) => guard(() async {
+      final id = admin(req);
+      final b = await body(req);
+      final s = e.adminSpawnFor(
+        id,
+        Uri.decodeComponent(player),
+        SongInfo.fromJson(b['song'] as Map<String, dynamic>),
+        shiny: b['shiny'] == true,
+        edition: Edition.fromIndex((b['ed'] as num?)?.toInt() ?? 0),
+        rarity: b['rarity'] == null ? null : Rarity.fromIndex((b['rarity'] as num).toInt()),
+      );
+      return ok(s);
+    }),
+  );
+  r.post(
+    '/admin/players/<player>/restore',
+    (Request req, String player) => guard(() async {
+      final id = admin(req);
+      return ok({'restored': e.adminRestoreLegacy(id, Uri.decodeComponent(player))});
+    }),
+  );
+  r.post(
+    '/admin/players/<player>/minigames',
+    (Request req, String player) => guard(() async {
+      final id = admin(req);
+      final b = await body(req);
+      e.adminMinigames(id, Uri.decodeComponent(player), extra: (b['extra'] as num?)?.toInt() ?? 0);
+      return ok({'ok': true});
+    }),
+  );
+  r.get(
+    '/admin/players/<player>/log',
+    (Request req, String player) => guard(() async {
+      admin(req);
+      return ok(e.accounts[Uri.decodeComponent(player)]?.adminLog.reversed.take(50).toList() ?? const []);
+    }),
+  );
+  r.get(
+    '/admin/flags',
+    (Request req) => guard(() async {
+      admin(req);
+      return ok(e.flagged());
+    }),
+  );
+  r.post(
+    '/admin/flags/<player>/clear',
+    (Request req, String player) => guard(() async {
+      admin(req);
+      e.clearFlags(Uri.decodeComponent(player));
+      return ok({'ok': true});
+    }),
+  );
 }

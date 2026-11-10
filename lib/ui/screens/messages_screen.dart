@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
+import '../../data/models.dart';
 import '../../game/profile_themes.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
 import '../widgets/profile_banner.dart';
+import '../widgets/showcase_strip.dart';
+import 'collection_screen.dart';
 import 'player_screen.dart';
 import 'report_dialogs.dart';
 
@@ -89,20 +92,35 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                   final mine = c.last.from == g.profile.playerId;
                   return ListTile(
                     leading: ThemeAvatar(themeId: c.otherTheme, name: c.otherName),
-                    title: Text(c.otherName, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontWeight: c.unread > 0 ? FontWeight.w800 : FontWeight.w600)),
-                    subtitle: Text('${mine ? 'You: ' : ''}${c.last.text}', maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: c.unread > 0 ? kTextPrimary : kTextSecondary)),
-                    trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      Text(_ago(c.last.at), style: const TextStyle(fontSize: 11, color: kTextTertiary)),
-                      if (c.unread > 0)
-                        Container(
-                          margin: const EdgeInsets.only(top: 4),
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-                          decoration: BoxDecoration(color: kAccent, borderRadius: BorderRadius.circular(10)),
-                          child: Text('${c.unread}', style: const TextStyle(fontSize: 11, color: Colors.black, fontWeight: FontWeight.w700)),
-                        ),
-                    ]),
+                    title: Text(
+                      c.otherName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontWeight: c.unread > 0 ? FontWeight.w800 : FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      '${mine ? 'You: ' : ''}${c.last.text.isEmpty && c.last.card != null ? '🃏 ${c.last.card!.title}' : c.last.text}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: c.unread > 0 ? kTextPrimary : kTextSecondary),
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(_ago(c.last.at), style: const TextStyle(fontSize: 11, color: kTextTertiary)),
+                        if (c.unread > 0)
+                          Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                            decoration: BoxDecoration(color: kAccent, borderRadius: BorderRadius.circular(10)),
+                            child: Text(
+                              '${c.unread}',
+                              style: const TextStyle(fontSize: 11, color: Colors.black, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                      ],
+                    ),
                     onTap: () async {
                       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ChatScreen(otherId: c.otherId, otherName: c.otherName, otherTheme: c.otherTheme)));
                       _load();
@@ -172,13 +190,64 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _send() async {
+  /// Shows one of your cards in the chat (with the typed text, if any).
+  Future<void> _showcase() async {
+    if (_sending) return;
+    final picked = await pickCards(context, title: 'Showcase a card');
+    if (picked == null || picked.isEmpty || !mounted) return;
+    await _send(cardUid: picked.first);
+  }
+
+  /// The other player's card, in full, with an offer button.
+  Future<void> _openCard(CardPayload card, bool mine) => showCardFullView(
+    context,
+    card,
+    actions: mine
+        ? null
+        : (ctx) => FilledButton.icon(
+            icon: const Icon(Icons.local_offer_outlined),
+            label: const Text('Make an offer'),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final g = GameScope.read(context);
+              try {
+                final to = await g.market.player(widget.otherId);
+                if (!mounted) return;
+                final sent = await composeDirectOffer(context, to, [card]);
+                if (sent == true) g.toast('Offer sent to ${widget.otherName}');
+              } catch (e) {
+                g.toast('$e');
+              }
+            },
+          ),
+  );
+
+  Widget _cardInChat(CardPayload c, bool mine) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: GestureDetector(
+      onTap: () => _openCard(c, mine),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SongCardView(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial, width: 150, live: false),
+          const SizedBox(height: 4),
+          Text(
+            mine ? 'You showcased this card' : 'Tap to see it in full or make an offer',
+            style: TextStyle(fontSize: 11, color: mine ? Colors.black54 : kTextTertiary),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Future<void> _send({int? cardUid}) async {
     final g = GameScope.read(context);
     final t = _text.text.trim();
-    if (t.isEmpty || _sending) return;
+    if ((t.isEmpty && cardUid == null) || _sending) return;
     setState(() => _sending = true);
     try {
-      final m = await g.market.sendMessage(widget.otherId, t);
+      final m = await g.market.sendMessage(widget.otherId, t, cardUid: cardUid);
       _text.clear();
       if (mounted) setState(() => _msgs = [..._msgs, m]);
     } catch (e) {
@@ -208,66 +277,81 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: ContentWidth(
         maxWidth: 760,
-        child: Column(children: [
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null && _msgs.isEmpty
-                    ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center)))
-                    : _msgs.isEmpty
-                        ? const Center(child: Text('Say hi 👋', style: TextStyle(color: kTextTertiary)))
-                        : ListView.builder(
-                            reverse: true,
-                            padding: const EdgeInsets.all(12),
-                            itemCount: _msgs.length,
-                            itemBuilder: (context, i) {
-                              final m = _msgs[_msgs.length - 1 - i];
-                              final mine = m.from == me;
-                              return Align(
-                                alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-                                child: Container(
-                                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.75),
-                                  margin: const EdgeInsets.symmetric(vertical: 3),
-                                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-                                  decoration: BoxDecoration(
-                                    color: mine ? kAccent.withValues(alpha: 0.85) : kSurface2,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                                    SelectableText(m.text, style: TextStyle(color: mine ? Colors.black : kTextPrimary)),
-                                    Text(_ago(m.at), style: TextStyle(fontSize: 10, color: (mine ? Colors.black : kTextTertiary).withValues(alpha: 0.6))),
-                                  ]),
-                                ),
-                              );
-                            },
+        child: Column(
+          children: [
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null && _msgs.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(_error!, textAlign: TextAlign.center),
+                      ),
+                    )
+                  : _msgs.isEmpty
+                  ? const Center(
+                      child: Text('Say hi 👋', style: TextStyle(color: kTextTertiary)),
+                    )
+                  : ListView.builder(
+                      reverse: true,
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _msgs.length,
+                      itemBuilder: (context, i) {
+                        final m = _msgs[_msgs.length - 1 - i];
+                        final mine = m.from == me;
+                        return Align(
+                          alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+                          child: Container(
+                            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.75),
+                            margin: const EdgeInsets.symmetric(vertical: 3),
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+                            decoration: BoxDecoration(color: mine ? kAccent.withValues(alpha: 0.85) : kSurface2, borderRadius: BorderRadius.circular(16)),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (m.card != null) _cardInChat(m.card!, mine),
+                                if (m.text.isNotEmpty) SelectableText(m.text, style: TextStyle(color: mine ? Colors.black : kTextPrimary)),
+                                Text(_ago(m.at), style: TextStyle(fontSize: 10, color: (mine ? Colors.black : kTextTertiary).withValues(alpha: 0.6))),
+                              ],
+                            ),
                           ),
-          ),
-          const Divider(height: 1),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-              child: Row(children: [
-                Expanded(
-                  child: TextField(
-                    controller: _text,
-                    minLines: 1,
-                    maxLines: 4,
-                    maxLength: kMaxMessageLength,
-                    maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _send(),
-                    decoration: const InputDecoration(hintText: 'Message', counterText: ''),
-                  ),
-                ),
-                IconButton(
-                  icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded, color: kAccent),
-                  onPressed: _send,
-                ),
-              ]),
+                        );
+                      },
+                    ),
             ),
-          ),
-        ]),
+            const Divider(height: 1),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+                child: Row(
+                  children: [
+                    IconButton(tooltip: 'Showcase a card', icon: const Icon(Icons.style_outlined), onPressed: _sending ? null : _showcase),
+                    Expanded(
+                      child: TextField(
+                        controller: _text,
+                        minLines: 1,
+                        maxLines: 4,
+                        maxLength: kMaxMessageLength,
+                        maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _send(),
+                        decoration: const InputDecoration(hintText: 'Message', counterText: ''),
+                      ),
+                    ),
+                    IconButton(
+                      icon: _sending
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.send_rounded, color: kAccent),
+                      onPressed: _send,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -56,7 +56,7 @@ abstract class MarketBackend {
   Future<void> setBlocked(String id, bool blocked);
   Future<List<Conversation>> conversations();
   Future<List<ChatMessage>> thread(String otherId);
-  Future<ChatMessage> sendMessage(String toId, String text);
+  Future<ChatMessage> sendMessage(String toId, String text, {int? cardUid});
   Future<int> unreadMessages();
 
   // ------------------------------------------------------------ auctions
@@ -360,7 +360,7 @@ class LocalMarket extends MarketBackend {
   @override
   Future<List<ChatMessage>> thread(String otherId) async => engine.thread(playerId, otherId);
   @override
-  Future<ChatMessage> sendMessage(String toId, String text) async => engine.sendMessage(playerId, toId, text);
+  Future<ChatMessage> sendMessage(String toId, String text, {int? cardUid}) async => engine.sendMessage(playerId, toId, text, cardUid: cardUid);
   @override
   Future<int> unreadMessages() async => engine.unreadCount(playerId);
   @override
@@ -576,8 +576,8 @@ class RemoteMarket extends MarketBackend {
   Future<List<ChatMessage>> thread(String otherId) async =>
       _list(await _send('GET', '/messages/${Uri.encodeComponent(otherId)}'), ChatMessage.fromJson);
   @override
-  Future<ChatMessage> sendMessage(String toId, String text) async =>
-      ChatMessage.fromJson(await _send('POST', '/messages/${Uri.encodeComponent(toId)}', body: {'text': text}) as Map<String, dynamic>);
+  Future<ChatMessage> sendMessage(String toId, String text, {int? cardUid}) async => ChatMessage.fromJson(
+      await _send('POST', '/messages/${Uri.encodeComponent(toId)}', body: {'text': text, 'card': ?cardUid}) as Map<String, dynamic>);
   @override
   Future<int> unreadMessages() async => ((await _send('GET', '/me') as Map)['unread'] as num? ?? 0).toInt();
 

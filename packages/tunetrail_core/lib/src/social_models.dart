@@ -117,21 +117,25 @@ class CollectionPage {
 
 /// A direct message.
 class ChatMessage {
-  const ChatMessage({required this.id, required this.from, required this.to, required this.text, required this.at});
+  const ChatMessage({required this.id, required this.from, required this.to, required this.text, required this.at, this.card});
   final String id;
   final String from;
   final String to;
   final String text;
   final int at;
 
-  Map<String, dynamic> toJson() => {'id': id, 'from': from, 'to': to, 'text': text, 'at': at};
+  /// A card from the sender's collection, showcased in the chat.
+  final CardPayload? card;
+
+  Map<String, dynamic> toJson() => {'id': id, 'from': from, 'to': to, 'text': text, 'at': at, if (card != null) 'card': card!.toJson()};
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
-        id: j['id'] as String,
-        from: j['from'] as String,
-        to: j['to'] as String,
-        text: j['text'] as String? ?? '',
-        at: (j['at'] as num?)?.toInt() ?? 0,
-      );
+    id: j['id'] as String,
+    from: j['from'] as String,
+    to: j['to'] as String,
+    text: j['text'] as String? ?? '',
+    at: (j['at'] as num?)?.toInt() ?? 0,
+    card: j['card'] is Map<String, dynamic> ? CardPayload.fromJson(j['card'] as Map<String, dynamic>) : null,
+  );
 }
 
 /// A conversation in the messages list.

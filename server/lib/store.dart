@@ -24,6 +24,10 @@ abstract class Store {
   /// Adds/updates catalogue songs and artist fan counts.
   Future<void> saveCatalog(List<SongInfo> songs, Map<int, int> fans);
 
+  /// A small named JSON value kept with the state (bookkeeping).
+  Future<Object?> loadBlob(String key);
+  Future<void> saveBlob(String key, Object? value);
+
   /// Every server-side account: its data and its cards.
   Future<List<(Map<String, dynamic>, List<CardPayload>)>> loadAccounts();
 
@@ -88,6 +92,17 @@ class FileStore implements Store {
     fans.forEach((a, f) => sink.writeln(jsonEncode({'a': a, 'f': f})));
     await sink.close();
   }
+
+  File _blob(String key) => File('$path.$key.json');
+
+  @override
+  Future<Object?> loadBlob(String key) async {
+    final f = _blob(key);
+    return await f.exists() ? jsonDecode(await f.readAsString()) : null;
+  }
+
+  @override
+  Future<void> saveBlob(String key, Object? value) => _blob(key).writeAsString(jsonEncode(value));
 
   Directory get _accounts => Directory('$path.accounts');
 
@@ -201,6 +216,23 @@ class PgStore implements Store {
       Sql.named('INSERT INTO tunetrail_collections (player_id, cards, updated_at) VALUES (@id, @c::jsonb, now()) '
           'ON CONFLICT (player_id) DO UPDATE SET cards = EXCLUDED.cards, updated_at = now()'),
       parameters: {'id': playerId, 'c': jsonEncode(cards)},
+    );
+  }
+
+  @override
+  Future<Object?> loadBlob(String key) async {
+    final rows = await (await _connection()).execute(Sql.named('SELECT data::text FROM tunetrail_state WHERE id = @id'), parameters: {'id': 'blob:$key'});
+    return rows.isEmpty ? null : jsonDecode(rows.first[0] as String);
+  }
+
+  @override
+  Future<void> saveBlob(String key, Object? value) async {
+    await (await _connection()).execute(
+      Sql.named(
+        'INSERT INTO tunetrail_state (id, data, updated_at) VALUES (@id, @d::jsonb, now()) '
+        'ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()',
+      ),
+      parameters: {'id': 'blob:$key', 'd': jsonEncode(value)},
     );
   }
 

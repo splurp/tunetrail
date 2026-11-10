@@ -69,6 +69,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
+  void _togglePick(CardPayload c) {
+    final g = GameScope.read(context);
+    setState(() {
+      if (_picked.containsKey(c.uid)) {
+        _picked.remove(c.uid);
+      } else if (_picked.length < kMaxListingItems) {
+        _picked[c.uid] = c;
+      } else {
+        g.toast('Up to $kMaxListingItems songs per offer');
+      }
+    });
+  }
+
+  /// Under a card's full view: offer for it (with any ticked songs).
+  Widget _fullViewActions(BuildContext ctx, PublicProfile p, CardPayload c) {
+    final others = _picked.values.where((x) => x.uid != c.uid).length;
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 10,
+      runSpacing: 8,
+      children: [
+        FilledButton.icon(
+          icon: const Icon(Icons.local_offer_outlined),
+          label: Text(others == 0 ? 'Make an offer' : 'Make an offer (with $others ticked)'),
+          onPressed: () async {
+            Navigator.pop(ctx);
+            final wanted = {..._picked, c.uid: c}.values.toList();
+            final sent = await composeDirectOffer(context, p, wanted);
+            if (sent == true && mounted) setState(_picked.clear);
+          },
+        ),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
+          onPressed: () {
+            Navigator.pop(ctx);
+            _togglePick(c);
+          },
+          child: Text(_picked.containsKey(c.uid) ? 'Untick' : 'Tick for a bigger offer'),
+        ),
+      ],
+    );
+  }
+
   Future<void> _reloadCards() async {
     _cards.clear();
     _more = true;
@@ -290,7 +333,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           const Padding(
                             padding: EdgeInsets.only(bottom: 8),
                             child: Text(
-                              'Tap songs to pick them, then make an offer. Hold a song to see it in full (play or report it there).',
+                              'Tap a song to see it in full and make an offer. Tick songs (or hold them) to offer for several at once.',
                               style: TextStyle(fontSize: 12, color: kTextTertiary),
                             ),
                           ),
@@ -330,20 +373,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             shiny: c.shiny,
                             edition: c.edition,
                             serial: c.serial,
-                            onTap: me || p.isBot
-                                ? () => g.audio.playOne(c.songId)
-                                : () => setState(() {
-                                    if (on) {
-                                      _picked.remove(c.uid);
-                                    } else if (_picked.length < kMaxListingItems) {
-                                      _picked[c.uid] = c;
-                                    } else {
-                                      g.toast('Up to $kMaxListingItems songs per offer');
-                                    }
-                                  }),
-                            onLongPress: () => showCardFullView(context, c),
+                            onTap: () => showCardFullView(context, c, actions: me || p.isBot ? null : (ctx) => _fullViewActions(ctx, p, c)),
+                            onLongPress: me || p.isBot ? null : () => _togglePick(c),
                           ),
                         ),
+                        if (!me && !p.isBot)
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: IconButton(
+                              visualDensity: VisualDensity.compact,
+                              tooltip: on ? 'Take out of the offer' : 'Add to an offer',
+                              icon: on
+                                  ? const Icon(Icons.check_circle, color: kAccent, size: 22)
+                                  : const Icon(Icons.radio_button_unchecked, color: Colors.white70, size: 22, shadows: [Shadow(blurRadius: 4)]),
+                              onPressed: () => _togglePick(c),
+                            ),
+                          ),
                         if (on)
                           Positioned.fill(
                             child: IgnorePointer(
@@ -353,9 +399,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   border: Border.all(color: kAccent, width: 3),
                                   color: kAccent.withValues(alpha: 0.15),
                                 ),
-                                alignment: Alignment.topRight,
-                                padding: const EdgeInsets.all(4),
-                                child: const Icon(Icons.check_circle, color: kAccent, size: 22),
                               ),
                             ),
                           ),

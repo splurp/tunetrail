@@ -101,6 +101,16 @@ void main() {
       expect(() => m.createDirectOffer('a', 'b', [1], const [], 5), throwsA(isA<MarketException>()));
     });
 
+    test('a card can be showcased in a message, only by its owner', () {
+      m.setCollection('a', [card(7)]);
+      final sent = m.sendMessage('a', 'b', '', cardUid: 7);
+      expect(sent.card!.uid, 7);
+      final got = m.thread('b', 'a').single;
+      expect(ChatMessage.fromJson(got.toJson()).card!.uid, 7);
+      expect(() => m.sendMessage('a', 'b', 'look', cardUid: 8), throwsA(isA<MarketException>()));
+      expect(() => m.sendMessage('b', 'a', '', cardUid: 7), throwsA(isA<MarketException>()));
+    });
+
     test('state survives a save and load', () {
       m.setUsername('a', 'Melody');
       m.setPublicProfile('a', theme: 'pt_neon', level: 7);

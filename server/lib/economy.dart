@@ -259,6 +259,10 @@ class Economy {
 
   final Map<String, Account> accounts = {};
 
+  /// Each player's collection as their pre-server game last uploaded it
+  /// (for restoring cards lost in the switch).
+  final Map<String, List<CardPayload>> legacy = {};
+
   /// Accounts with unsaved changes, and their card changes since the last
   /// save (or a full rewrite).
   final Set<String> dirty = {};
@@ -279,6 +283,10 @@ class Economy {
       }
       touch(a);
       return true;
+    };
+    engine.cardOf = (id, uid) {
+      final a = accounts[id];
+      return a == null || !a.imported ? null : a.cards[uid];
     };
     engine.onTake = (id, cards) {
       final a = accounts[id];
@@ -350,6 +358,8 @@ class Economy {
     final existing = accounts[id];
     if (existing != null && existing.imported) throw MarketException('Your progress is already on the server');
     final a = Account(id, createdAt: now());
+    final old = engine.collections[id];
+    if (old != null && old.isNotEmpty) legacy[id] ??= List.of(old);
     int num0(String k, int max) => ((b[k] as num?)?.toInt() ?? 0).clamp(0, max);
     a
       ..coins = num0('coins', 2000000000)
@@ -702,6 +712,96 @@ class Economy {
     return s.toJson();
   }
 
+  /// Serial-numbered cards anyone holds ("songId:edition:serial").
+  Set<String> _heldSerials() => {
+    for (final acc in accounts.values)
+      for (final c in acc.cards.values)
+        if (c.edition != Edition.standard && c.serial > 0) '${c.songId}:${c.edition.index}:${c.serial}',
+    for (final l in engine.listings.values)
+      for (final c in l.cards)
+        if (c.edition != Edition.standard && c.serial > 0) '${c.songId}:${c.edition.index}:${c.serial}',
+  };
+
+  /// Adds [cards] the account doesn't have (by uid); numbered editions
+  /// someone already holds are skipped. Returns how many were added.
+  int _addMissing(Account a, Iterable<CardPayload> cards) {
+    final held = _heldSerials();
+    final pool = catalog.songs.isEmpty ? null : catalog.pool;
+    var n = 0;
+    for (var c in cards) {
+      if (a.cards.containsKey(c.uid)) continue;
+      if (c.edition != Edition.standard) {
+        if (c.serial <= 0 || held.contains('${c.songId}:${c.edition.index}:${c.serial}')) continue;
+      }
+      if (pool != null && catalog.songs.containsKey(c.songId)) {
+        final r = pool.rarityOf(c.songId);
+        if (r != c.rarity) c = _withRarity(c, r);
+      }
+      _add(a, c);
+      n++;
+    }
+    return n;
+  }
+
+  /// Admin: gives back the cards a player had before the server switch
+  /// (from their old game's last uploaded collection) that they no longer
+  /// have. Returns how many were restored.
+  int adminRestoreLegacy(String adminId, String targetId) {
+    if (!admins.contains(adminId)) throw MarketException('Admins only');
+    final a = accounts[targetId];
+    if (a == null || !a.imported) throw MarketException('That player isn\'t on the server economy yet (they need to open the updated game once)');
+    final old = legacy[targetId];
+    if (old == null || old.isEmpty) throw MarketException('No collection from before the switch was found for this player');
+    final n = _addMissing(a, old);
+    _logAdmin(a, adminId, 'restored $n cards from before the server switch');
+    if (n > 0) engine.notice(targetId, '$n cards from before the server switch were restored to your collection', title: 'Cards restored');
+    touch(a);
+    return n;
+  }
+
+  /// Progress a second device still had when it found the account already
+  /// on the server: its cards, coins, bits, XP and items are added (a few
+  /// times per account at most; flagged for review).
+  Account merge(String id, Map<String, dynamic> b) {
+    final a = account(id);
+    if (a.statInt('merges') >= 3) throw MarketException('This account has already merged progress from other devices');
+    int num0(String k, int max) => ((b[k] as num?)?.toInt() ?? 0).clamp(0, max);
+    final coins = num0('coins', 100000000), bits = num0('bits', 10000000), xp = num0('xp', 100000000);
+    a
+      ..coins += coins
+      ..bits += bits
+      ..xp += xp;
+    for (final o in (b['owned'] as List? ?? const [])) {
+      if (shopItem('$o') != null) a.owned.add('$o');
+    }
+    final list = b['cards'] as List? ?? const [];
+    if (list.length > MarketEngine.kMaxCollection) throw MarketException('Too many cards');
+    final n = _addMissing(a, [for (final c in list) CardPayload.fromJson(c as Map<String, dynamic>)]);
+    a.stat('merges', 1);
+    final t = now();
+    a.flags.add(CheatFlag('device_merge', 'merged another device: $n cards, $coins coins, $bits bits', t));
+    dirty.add(a.id);
+    touch(a);
+    return a;
+  }
+
+  /// Admin: gives back today's minigame rounds ([extra] > 0 adds rounds on
+  /// top of the daily allowance).
+  void adminMinigames(String adminId, String targetId, {int extra = 0}) {
+    if (!admins.contains(adminId)) throw MarketException('Admins only');
+    final a = accounts[targetId];
+    if (a == null || !a.imported) throw MarketException('That player isn\'t on the server economy yet (they need to open the updated game once)');
+    final day = today(a, null);
+    final rec = a.plays[_allGames];
+    final used = rec != null && rec.$1 == day ? rec.$2 : 0;
+    // Plays used can go below zero: that's rounds on top of the allowance.
+    a.plays[_allGames] = (day, extra > 0 ? used - extra : 0);
+    a.roundBits.clear();
+    _logAdmin(a, adminId, extra > 0 ? 'gave $extra extra minigame rounds' : 'reset today\'s minigame rounds');
+    engine.notice(targetId, extra > 0 ? 'You got $extra extra minigame rounds for today' : 'Your minigame rounds for today were reset', title: 'Minigames');
+    touch(a);
+  }
+
   void _logAdmin(Account a, String adminId, String what) {
     a.adminLog.add({'by': engine.nameOf(adminId), 'id': adminId, 'what': what, 'at': now()});
     if (a.adminLog.length > 200) a.adminLog.removeAt(0);
@@ -829,8 +929,19 @@ class Economy {
     if (a.bits < price) throw MarketException('Not enough bits');
     a.bits -= price;
     final pool = catalog.freshPool;
+    // Songs the player doesn't have yet (as the shiny a box gives) come
+    // first, so boxes don't keep handing out the same song; once they own
+    // them all, any song can come up again.
+    final ownedShiny = {
+      for (final c in a.cards.values)
+        if (c.shiny && c.edition == Edition.standard) c.songId,
+    };
+    final fresh = [
+      for (final s in info.songs)
+        if (!ownedShiny.contains(s.id)) s,
+    ];
     final byRarity = <Rarity, List<SongInfo>>{};
-    for (final s in info.songs) {
+    for (final s in fresh.isEmpty ? info.songs : fresh) {
       (byRarity[pool.rarityOf(s.id)] ??= []).add(s);
     }
     final rarities = byRarity.keys.toList();
