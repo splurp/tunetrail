@@ -416,11 +416,26 @@ class RemoteMarket extends MarketBackend {
     return Uri.parse('$b$path').replace(queryParameters: q);
   }
 
-  Future<dynamic> _send(String method, String path, {Object? body, Map<String, String>? q, Duration timeout = const Duration(seconds: 12)}) async {
-    final req = http.Request(method, _u(path, q))..headers.addAll(_h);
+  /// A request to the game server (the economy uses this directly).
+  Future<dynamic> send(String method, String path, {Object? body, Map<String, String>? q, Map<String, String> headers = const {}, Duration timeout = const Duration(seconds: 15)}) =>
+      _send(method, path, body: body, q: q, headers: headers, timeout: timeout);
+
+  Future<dynamic> _send(String method, String path, {Object? body, Map<String, String>? q, Map<String, String> headers = const {}, Duration timeout = const Duration(seconds: 12)}) async {
+    final req = http.Request(method, _u(path, q))
+      ..headers.addAll(_h)
+      ..headers.addAll(headers);
     if (body != null) req.body = jsonEncode(body);
     final res = await http.Response.fromStream(await _c.send(req).timeout(timeout));
-    final decoded = res.body.isEmpty ? null : jsonDecode(res.body);
+    dynamic decoded;
+    try {
+      decoded = res.body.isEmpty ? null : jsonDecode(res.body);
+    } on FormatException {
+      // Not JSON: an older server without this feature ("Route not found"),
+      // or a proxy error page.
+      throw MarketException(res.statusCode == 404
+          ? 'The game server needs an update for this feature'
+          : 'Server error ${res.statusCode}');
+    }
     if (res.statusCode != 200) {
       throw MarketException(decoded is Map ? '${decoded['error']}' : 'Server error ${res.statusCode}');
     }

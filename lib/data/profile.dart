@@ -109,6 +109,13 @@ class PlayerProfile extends ChangeNotifier {
   /// Username changes after the first choice (the first change is free).
   int usernameChanges = 0;
 
+  /// This player's coins, bits, items and cards live on the server (moved
+  /// there once); the game shows what the server says.
+  bool econImported = false;
+
+  /// The account version of the cards this game has (for syncing).
+  int econRev = -1;
+
   /// Battery Saver: 60 FPS cap and no theme particles.
   bool batterySaver = false;
   bool freePurchases = false;
@@ -282,6 +289,8 @@ class PlayerProfile extends ChangeNotifier {
         'freePurchases': freePurchases,
         'joystick': joystickEnabled,
         'unlimitedRange': unlimitedRange,
+        'econImported': econImported,
+        'econRev': econRev,
         'showFps': showFps,
         'speed': speedMultiplier,
         'marketMode': marketMode.index,
@@ -374,6 +383,8 @@ class PlayerProfile extends ChangeNotifier {
     freePurchases = j['freePurchases'] as bool? ?? false;
     joystickEnabled = j['joystick'] as bool? ?? false;
     unlimitedRange = j['unlimitedRange'] as bool? ?? false;
+    econImported = j['econImported'] as bool? ?? false;
+    econRev = (j['econRev'] as num?)?.toInt() ?? -1;
     showFps = j['showFps'] as bool? ?? false;
     speedMultiplier = (j['speed'] as num?)?.toDouble() ?? 1.0;
     marketMode = MarketMode.values[((j['marketMode'] as num?)?.toInt() ?? 0).clamp(0, 1)];

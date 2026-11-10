@@ -5,6 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+class _HttpStatus implements Exception {
+  _HttpStatus(this.code);
+  final int code;
+  @override
+  String toString() => 'image $code';
+}
+
 /// Network image, streamed: nothing is written to disk (album art is kept
 /// only in Flutter's in-memory image cache while the app runs).
 class NetImage extends ImageProvider<NetImage> {
@@ -33,13 +40,24 @@ class NetImage extends ImageProvider<NetImage> {
     return decode(buffer);
   }
 
+  /// Slow or dropped connections (mobile data) get a few more tries: a
+  /// failed image is otherwise never fetched again while it's on screen.
   Future<Uint8List> _bytes() async {
+    for (var attempt = 0;; attempt++) {
+      try {
+        return await _fetch();
+      } catch (e) {
+        if (attempt >= 3 || (e is _HttpStatus && e.code == 404)) rethrow;
+        await Future<void>.delayed(Duration(milliseconds: 800 * (attempt + 1)));
+      }
+    }
+  }
+
+  Future<Uint8List> _fetch() async {
     await _acquire();
     try {
       final res = await _client.get(Uri.parse(url)).timeout(const Duration(seconds: 20));
-      if (res.statusCode != 200 || res.bodyBytes.isEmpty) {
-        throw StateError('image ${res.statusCode}');
-      }
+      if (res.statusCode != 200 || res.bodyBytes.isEmpty) throw _HttpStatus(res.statusCode);
       return res.bodyBytes;
     } finally {
       _release();

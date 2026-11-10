@@ -212,6 +212,7 @@ class _BrowseState extends State<_Browse> {
       );
       // Live auctions come first (all of them on the first page).
       final first = _items.isEmpty && _auctions.isEmpty;
+      // Auctions are optional: the listings still load if they fail.
       final auctions = first
           ? await g.market.browseAuctions(
               ListingQuery(
@@ -224,7 +225,7 @@ class _BrowseState extends State<_Browse> {
                 limit: 200,
                 excludeSellerId: g.profile.playerId,
               ),
-            )
+            ).catchError((Object _) => const <Auction>[])
           : const <Auction>[];
       final res = _q.auctionsOnly ? const <Listing>[] : await g.market.browse(q);
       if (!mounted) return;
