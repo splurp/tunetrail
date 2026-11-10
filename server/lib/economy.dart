@@ -785,6 +785,29 @@ class Economy {
     return a;
   }
 
+  /// Admin: wipes a numbered card that no longer exists (lost with an
+  /// uninstalled game, say) from every record and frees its number. Refused
+  /// while anyone holds it. Returns how many records were removed.
+  int adminPurgeSerial(String adminId, int songId, Edition edition, int serial) {
+    if (!admins.contains(adminId)) throw MarketException('Admins only');
+    bool same(CardPayload c) => c.songId == songId && c.edition == edition && c.serial == serial;
+    for (final a in accounts.values) {
+      if (a.cards.values.any(same)) throw MarketException('${engine.nameOf(a.id)} still has this card');
+    }
+    var n = engine.purgeSerial(songId, edition, serial);
+    for (final l in legacy.values) {
+      final before = l.length;
+      l.removeWhere(same);
+      n += before - l.length;
+    }
+    final me = accounts[adminId];
+    if (me != null) {
+      _logAdmin(me, adminId, 'purged ${edition.label} #$serial of song $songId ($n records)');
+      touch(me);
+    }
+    return n;
+  }
+
   /// Admin: gives back today's minigame rounds ([extra] > 0 adds rounds on
   /// top of the daily allowance).
   void adminMinigames(String adminId, String targetId, {int extra = 0}) {

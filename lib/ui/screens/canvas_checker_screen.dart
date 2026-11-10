@@ -3,6 +3,7 @@ import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/models.dart';
 import '../../data/samples.dart';
+import '../../game/market_service.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
 import '../widgets/edition_views.dart';
@@ -246,6 +247,40 @@ class _RowState extends State<_Row> {
     }
   }
 
+  /// Admin: removes a numbered card that no longer exists and frees its
+  /// number (the server refuses if anyone still has it).
+  Future<void> _purge() async {
+    final g = GameScope.read(context);
+    final m = g.market;
+    final ctl = TextEditingController(text: '1');
+    final sn = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Purge a ${_e.label} of ${widget.song.title}'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Only for a card nobody has any more (lost with an uninstalled game). It disappears from every record and its number can be pulled again.'),
+          const SizedBox(height: 12),
+          TextField(controller: ctl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Serial number', prefixText: '#')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, int.tryParse(ctl.text.trim())), child: const Text('Purge')),
+        ],
+      ),
+    );
+    ctl.dispose();
+    if (sn == null) return;
+    if (m is! RemoteMarket) return g.toast('Not connected to the server');
+    try {
+      final j = await m.send('POST', '/admin/serials/${widget.song.id}/${_e.index}/$sn/purge') as Map<String, dynamic>;
+      g.toast('Purged ${_e.label} #$sn of ${widget.song.title} (${j['removed']} records)');
+      final n = await m.serialsLeft(widget.song.id, _e);
+      if (mounted) setState(() => _left = n);
+    } catch (err) {
+      g.toast('$err');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = widget.song;
@@ -285,6 +320,18 @@ class _RowState extends State<_Row> {
                     Text(status, style: const TextStyle(color: Colors.white)),
                     if (e == Edition.canvas && _media != null)
                       Text(_media! ? 'Its canvas is the music video' : 'No music video — its canvas is the cover art', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                    if (GameScope.read(context).profile.isAdmin && found != null && found > 0) ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+                        icon: const Icon(Icons.delete_forever_outlined),
+                        label: const Text('Purge a lost card (admin)'),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _purge();
+                        },
+                      ),
+                    ],
                   ]),
                 ),
               ),

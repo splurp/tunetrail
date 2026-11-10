@@ -103,6 +103,20 @@ void main() {
     expect(() => engine.sendMessage('p1', 'p2', '', cardUid: 6), throwsA(isA<MarketException>()));
   });
 
+  test('admins can purge a lost numbered card, not one someone has', () {
+    econ.import('p1', {});
+    econ.import('p2', {});
+    econ.admins.add('p2');
+    expect(engine.claimSerial(5, Edition.canvas), 1);
+    expect(engine.claimSerial(5, Edition.canvas), 2);
+    final held = CardPayload.fromJson({...card(9, 5).toJson(), 'ed': Edition.canvas.index, 'sn': 2});
+    econ.merge('p1', {'cards': [held.toJson()]});
+    expect(() => econ.adminPurgeSerial('p2', 5, Edition.canvas, 2), throwsA(isA<MarketException>()));
+    expect(() => econ.adminPurgeSerial('p1', 5, Edition.canvas, 1), throwsA(isA<MarketException>())); // admins only
+    econ.adminPurgeSerial('p2', 5, Edition.canvas, 1);
+    expect(engine.claimSerial(5, Edition.canvas), 1);
+  });
+
   test('economy requests need an imported account', () {
     expect(() => econ.openPack('p1', 'pack_gold'), throwsA(isA<MarketException>()));
   });

@@ -277,6 +277,13 @@ void addEconomyRoutes(
       return ok(e.accounts[Uri.decodeComponent(player)]?.adminLog.reversed.take(50).toList() ?? const []);
     }),
   );
+  r.post(
+    '/admin/serials/<song>/<ed>/<sn>/purge',
+    (Request req, String song, String ed, String sn) => guard(() async {
+      final id = admin(req);
+      return ok({'removed': e.adminPurgeSerial(id, int.parse(song), Edition.fromIndex(int.parse(ed)), int.parse(sn))});
+    }),
+  );
   r.get(
     '/admin/flags',
     (Request req) => guard(() async {

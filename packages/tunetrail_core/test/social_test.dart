@@ -111,6 +111,24 @@ void main() {
       expect(() => m.sendMessage('b', 'a', '', cardUid: 7), throwsA(isA<MarketException>()));
     });
 
+    test('a lost numbered card can be purged and its number pulled again', () {
+      final song = SongInfo(id: 9, title: 'Melatonin', artistId: 1, artistName: 'A');
+      expect(m.claimSerial(9, Edition.canvas, song: song, playerId: 'a'), 1);
+      expect(m.claimSerial(9, Edition.canvas, song: song, playerId: 'a'), 2);
+      final lost = CardPayload.fromJson({...card(3).toJson(), 'songId': 9, 'ed': Edition.canvas.index, 'sn': 1});
+      m.setCollection('a', [lost]);
+      expect(m.purgeSerial(9, Edition.canvas, 1), greaterThanOrEqualTo(2)); // collection + recent pull
+      expect(m.collections['a'], isEmpty);
+      expect(m.recentPulls.where((p) => p['sn'] == 1), isEmpty);
+      expect(m.serialsLeft(9, Edition.canvas), Edition.canvas.maxSerials - 1);
+      final copy = MarketEngine()..loadJson(m.toJson());
+      expect(copy.claimSerial(9, Edition.canvas), 1); // the freed number first
+      expect(copy.claimSerial(9, Edition.canvas), 3);
+      // Purging the newest number just lowers the count.
+      copy.purgeSerial(9, Edition.canvas, 3);
+      expect(copy.claimSerial(9, Edition.canvas), 3);
+    });
+
     test('state survives a save and load', () {
       m.setUsername('a', 'Melody');
       m.setPublicProfile('a', theme: 'pt_neon', level: 7);

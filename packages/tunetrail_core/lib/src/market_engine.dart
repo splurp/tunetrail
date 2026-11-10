@@ -37,21 +37,81 @@ class MarketEngine {
   int? claimSerial(int songId, Edition edition, {SongInfo? song, String? playerId}) {
     if (!edition.serialized) return null;
     final key = '$songId:${edition.index}';
-    final n = serials[key] ?? 0;
-    if (n >= edition.maxSerials) return null;
-    serials[key] = n + 1;
+    final freed = freedSerials[key];
+    final int sn;
+    if (freed != null && freed.isNotEmpty) {
+      // Purged numbers are handed out again first, lowest first.
+      freed.sort();
+      sn = freed.removeAt(0);
+      if (freed.isEmpty) freedSerials.remove(key);
+    } else {
+      final n = serials[key] ?? 0;
+      if (n >= edition.maxSerials) return null;
+      serials[key] = sn = n + 1;
+    }
     if (song != null) {
       recentPulls.insert(0, {
         'song': song.toJson(),
         'ed': edition.index,
-        'sn': n + 1,
+        'sn': sn,
         'at': now(),
         if (playerId != null) 'by': nameOf(playerId),
       });
       if (recentPulls.length > kRecentPulls) recentPulls.removeRange(kRecentPulls, recentPulls.length);
     }
     onChanged?.call();
-    return n + 1;
+    return sn;
+  }
+
+  /// Serial numbers given back by [purgeSerial], per "songId:edition".
+  final Map<String, List<int>> freedSerials = {};
+
+  /// Admin: removes every record of a numbered card that no longer exists
+  /// (public collections, profile showcases, recent pulls) and frees its
+  /// number to be pulled again. The caller checks nobody holds it.
+  /// Returns how many records were removed.
+  int purgeSerial(int songId, Edition edition, int serial) {
+    if (!edition.serialized || serial < 1 || serial > edition.maxSerials) throw MarketException('Not a numbered card');
+    bool same(CardPayload c) => c.songId == songId && c.edition == edition && c.serial == serial;
+    for (final l in listings.values) {
+      if (l.items.any((i) => same(i.card))) throw MarketException('That card is listed on the market');
+    }
+    for (final a in auctions.values) {
+      if (a.cards.any(same)) throw MarketException('That card is up for auction');
+    }
+    for (final o in offers.values) {
+      if (o.offeredCards.any(same) || o.requestedCards.any(same)) throw MarketException('That card is part of a pending offer');
+    }
+    var n = 0;
+    for (final e in collections.entries) {
+      final before = e.value.length;
+      e.value.removeWhere(same);
+      if (e.value.length != before) {
+        n += before - e.value.length;
+        onCollectionChanged?.call(e.key);
+      }
+    }
+    for (final p in players.values) {
+      final before = p.editionShowcase.length;
+      p.editionShowcase = [for (final c in p.editionShowcase) if (!same(c)) c];
+      n += before - p.editionShowcase.length;
+    }
+    final before = recentPulls.length;
+    recentPulls.removeWhere((p) => (p['song'] as Map?)?['id'] == songId && p['ed'] == edition.index && p['sn'] == serial);
+    n += before - recentPulls.length;
+    final key = '$songId:${edition.index}';
+    final issued = serials[key] ?? 0;
+    final freed = freedSerials.putIfAbsent(key, () => []);
+    if (serial <= issued && !freed.contains(serial)) freed.add(serial);
+    // Numbers freed at the top just lower the count.
+    var top = issued;
+    while (top > 0 && freed.remove(top)) {
+      top--;
+    }
+    serials[key] = top;
+    if (freed.isEmpty) freedSerials.remove(key);
+    onChanged?.call();
+    return n;
   }
 
   /// The latest Canvas / Sample / Live editions pulled anywhere, newest
@@ -65,7 +125,7 @@ class MarketEngine {
 
   /// How many serials of [edition] for [songId] are still unclaimed.
   int serialsLeft(int songId, Edition edition) =>
-      edition.serialized ? edition.maxSerials - (serials['$songId:${edition.index}'] ?? 0) : 0;
+      edition.serialized ? edition.maxSerials - (serials['$songId:${edition.index}'] ?? 0) + (freedSerials['$songId:${edition.index}']?.length ?? 0) : 0;
   final Map<String, List<InboxItem>> inboxes = {};
   final Map<String, Set<String>> showcaseLikes = {};
   int _counter = 0;
@@ -1049,6 +1109,7 @@ class MarketEngine {
         },
         'counter': _counter,
         'serials': serials,
+        if (freedSerials.isNotEmpty) 'freedSerials': freedSerials,
         'pulls': recentPulls,
         'messages': {
           for (final e in messages.entries) e.key: [for (final m in e.value) m.toJson()]
@@ -1064,6 +1125,11 @@ class MarketEngine {
     serials
       ..clear()
       ..addAll({for (final e in (j['serials'] as Map<String, dynamic>? ?? const {}).entries) e.key: (e.value as num).toInt()});
+    freedSerials
+      ..clear()
+      ..addAll({
+        for (final e in (j['freedSerials'] as Map<String, dynamic>? ?? const {}).entries) e.key: [for (final v in e.value as List) (v as num).toInt()]
+      });
     recentPulls
       ..clear()
       ..addAll([for (final p in (j['pulls'] as List? ?? const [])) Map<String, dynamic>.from(p as Map)]);
