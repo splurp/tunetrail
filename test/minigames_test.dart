@@ -13,6 +13,13 @@ void main() {
     expect(guessMatches('', 'Queen'), isFalse);
   });
 
+  test('any version of the right album or song counts', () {
+    expect(guessMatches('Abbey Road', 'Abbey Road (2019 Mix)'), isTrue);
+    expect(guessMatches('Abbey Road (Remastered 2009)', 'Abbey Road (2019 Mix)'), isTrue);
+    expect(guessMatches('Abbey Road (Super Deluxe Edition)', 'Abbey Road'), isTrue);
+    expect(guessMatches('Let It Be (Remastered)', 'Abbey Road (2019 Mix)'), isFalse);
+  });
+
   test('song titles match without features and edition suffixes', () {
     expect(guessMatches('Stronger', 'Stronger (feat. Daft Punk)'), isTrue);
     expect(guessMatches('bohemian rhapsody', 'Bohemian Rhapsody - Remastered 2011'), isTrue);

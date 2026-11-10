@@ -191,10 +191,15 @@ String coreTitle(String title) {
   return t.trim();
 }
 
+/// Whether a guess names the answer. Version labels in brackets or after
+/// a dash ("(2019 Mix)", "(Remastered 2009)", "- Live") don't matter on
+/// either side, so any version of the right song or album counts.
 bool guessMatches(String guess, String answer) {
   final g = normalizeGuess(guess);
   if (g.isEmpty) return false;
-  return g == normalizeGuess(answer) || g == normalizeGuess(coreTitle(answer));
+  final a = normalizeGuess(answer), ac = normalizeGuess(coreTitle(answer));
+  final gc = normalizeGuess(coreTitle(guess));
+  return g == a || g == ac || (gc.isNotEmpty && (gc == a || gc == ac));
 }
 
 /// Hangman-style name pattern: the first letter (and, once revealed, every

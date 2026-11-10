@@ -944,7 +944,9 @@ class _AlbumGuesserScreenState extends State<AlbumGuesserScreen> {
       final seen = <String>{};
       return [
         for (final a in (j['data'] as List? ?? const []).cast<Map<String, dynamic>>())
-          if (seen.add('${a['title']} — ${(a['artist'] as Map?)?['name'] ?? ''}')) '${a['title']} — ${(a['artist'] as Map?)?['name'] ?? ''}'
+          // One entry per album, by its plain title: "Abbey Road" rather than
+          // its 2009 remaster, 2019 mix and deluxe editions.
+          if (seen.add('${coreTitle('${a['title']}')} — ${(a['artist'] as Map?)?['name'] ?? ''}')) '${coreTitle('${a['title']}')} — ${(a['artist'] as Map?)?['name'] ?? ''}'
       ];
     } catch (_) {
       return [];
@@ -968,7 +970,7 @@ class _AlbumGuesserScreenState extends State<AlbumGuesserScreen> {
                 Center(child: Art(p.album.cover(500), size: math.min(320.0, MediaQuery.sizeOf(context).width - 64), radius: 16, decodeSize: 500)),
                 const SizedBox(height: 14),
                 if (done) ...[
-                  Center(child: Text(p.album.title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
+                  Center(child: Text(coreTitle(p.album.title), textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
                   Center(child: Text('${p.artist.name}${p.album.releaseDate.length >= 4 ? ' · ${p.album.releaseDate.substring(0, 4)}' : ''}', style: const TextStyle(color: kTextSecondary))),
                   const SizedBox(height: 8),
                   Center(
