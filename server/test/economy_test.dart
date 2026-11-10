@@ -48,10 +48,12 @@ void main() {
       'bits': 40,
       'xp': 12,
       'owned': ['pet_cat', 'not_an_item'],
+      'claimed': ['m_size_10', 'd_catch'],
       'cards': [card(5, 1).toJson(), card(6, 2).toJson()],
     });
     expect(a.coins, 900);
     expect(a.owned, {'pet_cat'});
+    expect(a.questsClaimed, {'m_size_10'});
     expect(a.cards.length, 2);
     expect(engine.collections['p1']!.length, 2);
     expect(() => econ.import('p1', {}), throwsA(isA<MarketException>()));

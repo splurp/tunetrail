@@ -342,6 +342,11 @@ class Economy {
     for (final o in (b['owned'] as List? ?? const [])) {
       if (shopItem('$o') != null) a.owned.add('$o');
     }
+    // Milestones, spotlights and albums already claimed stay claimed.
+    for (final q in (b['claimed'] as List? ?? const [])) {
+      final id = '$q';
+      if (id.length < 80 && (id.startsWith('m_') || id.startsWith('u_') || id.startsWith('a_'))) a.questsClaimed.add(id);
+    }
     (b['stats'] as Map<String, dynamic>? ?? const {}).forEach((k, v) {
       if (v is num && k.length < 40 && a.stats.length < 50) a.stats[k] = v;
     });

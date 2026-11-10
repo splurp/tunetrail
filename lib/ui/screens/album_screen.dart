@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../data/collection.dart';
 import '../../data/models.dart';
 import '../../game/quests.dart';
 import '../app.dart';
@@ -87,10 +88,16 @@ class _AlbumScreenState extends State<AlbumScreen> {
                   ? const Icon(Icons.check_circle, color: Colors.green)
                   : FilledButton(
                       onPressed: g.questDone(quest)
-                          ? () {
-                              final c = g.claimQuest(quest);
-                              if (c != null) {
-                                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CardDetailScreen(uid: c.uid)));
+                          ? () async {
+                              OwnedCard? c;
+                              try {
+                                c = await g.claimQuest(quest);
+                              } catch (e) {
+                                g.toast('$e');
+                                return;
+                              }
+                              if (c != null && context.mounted) {
+                                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CardDetailScreen(uid: c!.uid)));
                               }
                             }
                           : null,

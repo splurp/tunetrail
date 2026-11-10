@@ -471,7 +471,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
     final g = GameScope.read(context);
     if (ok) {
       final bits = kSnippetBits[_stage];
-      g.awardMinigameBits(bits);
+      g.awardMinigameBits(bits, game: 'song');
       setState(() {
         _solved = true;
         _won = bits;
@@ -703,7 +703,7 @@ class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
     if (a == null || _solved || _gaveUp) return;
     if (guessMatches(text, a.name)) {
       final bits = artistGuessBits(_guesses.length + _skips);
-      GameScope.read(context).awardMinigameBits(bits);
+      GameScope.read(context).awardMinigameBits(bits, game: 'artist');
       setState(() {
         _solved = true;
         _won = bits;
@@ -884,7 +884,7 @@ class _AlbumGuesserScreenState extends State<AlbumGuesserScreen> {
     final title = text.split(' — ').first;
     if (guessMatches(title, p.album.title)) {
       final bits = albumGuessBits(_guesses.length);
-      GameScope.read(context).awardMinigameBits(bits);
+      GameScope.read(context).awardMinigameBits(bits, game: 'album');
       setState(() {
         _solved = true;
         _won = bits;
@@ -1039,7 +1039,7 @@ class _TriviaScreenState extends State<TriviaScreen> {
   void _pick(int k) {
     if (_picked != null) return;
     final right = k == _qs[_i].answer;
-    if (right) GameScope.read(context).awardMinigameBits(1);
+    if (right) GameScope.read(context).awardMinigameBits(1, game: 'trivia');
     setState(() {
       _picked = k;
       if (right) _correct++;

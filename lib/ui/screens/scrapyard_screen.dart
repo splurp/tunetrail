@@ -136,7 +136,13 @@ class _ScrapyardScreenState extends State<ScrapyardScreen> {
                           ),
                         );
                         if (ok == true) {
-                          final got = g.scrap(_selected);
+                          final int got;
+                          try {
+                            got = await g.scrap(_selected);
+                          } catch (e) {
+                            g.toast('$e');
+                            return;
+                          }
                           g.toast('Scrapped ${cards.length} songs for ${formatNumber(got)} coins');
                           setState(_selected.clear);
                         }

@@ -29,7 +29,6 @@ class EncounterScreen extends StatefulWidget {
 class _EncounterScreenState extends State<EncounterScreen> with TickerProviderStateMixin {
   late final AnimationController _ring;
   late final AnimationController _fx = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
-  final _rand = math.Random();
   int _attempts = 0;
   String? _feedback;
   Color _feedbackColor = Colors.white;
@@ -63,18 +62,6 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   double _ringZero = 0;
   late final AnimationController _spin = AnimationController(vsync: this, duration: const Duration(milliseconds: 1700));
 
-  static const _baseCatch = [0.92, 0.78, 0.62, 0.48, 0.34];
-  static const _fleeChance = [0.02, 0.03, 0.05, 0.07, 0.1];
-
-  /// Catch chance for a throw with [acc]% timing: 90%+ always catches,
-  /// 50–89% climbs from the rarity's base chance towards certain, and an
-  /// off-beat throw keeps a small chance.
-  static double catchChance(Rarity r, int acc) {
-    final base = _baseCatch[r.index];
-    if (acc >= 90) return 1;
-    if (acc >= 50) return (base + (1 - base) * 0.75 * (acc - 50) / 40).clamp(0.0, 1.0);
-    return base * 0.3;
-  }
   static const _maxAttempts = 5;
 
   Rarity get r => widget.spawn.rarity;
@@ -82,7 +69,6 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
   /// A Canvas spawn stays a Canvas even without a music video — its
   /// canvas falls back to the cover art.
   Edition get _edition => widget.spawn.edition;
-  bool get _purchased => _game?.isPurchased(widget.spawn) ?? false;
 
   /// Serial number shown on edition cards: the one claimed once caught,
   /// before that the next one still free.
@@ -301,7 +287,9 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     _attempts++;
     // A 100% perfect beat always catches — and turns the song shiny.
     // A bought song can't get away (it's still shiny on a perfect beat).
-    final success = hit == _Hit.perfect || _purchased || _rand.nextDouble() < catchChance(r, acc);
+    // The throw is sent now (the server rolls it) while the result shows.
+    final g0 = GameScope.read(context);
+    final outcome = g0.throwAt(widget.spawn, acc, _attempts);
     setState(() {
       _accuracy = acc;
       _perfect = hit == _Hit.perfect;
@@ -322,11 +310,23 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     Future<void>.delayed(Duration(milliseconds: hit == _Hit.perfect ? 900 : 650), () async {
       if (!mounted) return;
       final g = GameScope.read(context);
-      if (success) {
-        _card = await g.catchSpawn(widget.spawn, perfect: _perfect);
+      ThrowOutcome o;
+      try {
+        o = await outcome;
+      } catch (e) {
         if (!mounted) return;
-        _dupCoins = _card == null ? g.lastDuplicateCoins : 0;
-        _catchNote = g.lastCatchNote;
+        _attempts--;
+        setState(() {
+          _feedback = '$e';
+          _busy = false;
+        });
+        return;
+      }
+      if (!mounted) return;
+      if (o.caught) {
+        _card = o.card;
+        _dupCoins = o.card == null ? o.duplicateCoins : 0;
+        _catchNote = o.note;
         if (!g.profile.keepPlayingAfterCatch && _playing) g.audio.stop();
         HapticFeedback.heavyImpact();
         _fx.forward(from: 0);
@@ -335,8 +335,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
           _caught = true;
           _busy = false;
         });
-      } else if (_attempts >= _maxAttempts || _rand.nextDouble() < _fleeChance[r.index]) {
-        g.fleeSpawn(widget.spawn);
+      } else if (o.fled) {
         setState(() {
           _fled = true;
           _busy = false;
@@ -387,7 +386,14 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
       ),
     );
     if (ok != true || !mounted) return;
-    final coins = g.scrap([card.uid]);
+    final int coins;
+    try {
+      coins = await g.scrap([card.uid]);
+    } catch (e) {
+      g.toast('$e');
+      return;
+    }
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scrapped for $coins coins')));
     Navigator.of(context).pop();
   }

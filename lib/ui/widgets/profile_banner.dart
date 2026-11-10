@@ -197,7 +197,7 @@ class ProfileThemePicker extends StatelessWidget {
             );
             if (ok == true) {
               try {
-                g.buyProfileTheme(t);
+                await g.buyProfileTheme(t);
               } catch (e) {
                 g.toast('$e');
               }

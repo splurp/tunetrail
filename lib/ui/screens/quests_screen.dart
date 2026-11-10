@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../data/collection.dart';
 import '../../data/models.dart';
 import '../../game/quests.dart';
 import '../app.dart';
@@ -8,8 +9,22 @@ import '../widgets/net_image.dart';
 import 'artist_screen.dart';
 import 'card_detail_screen.dart';
 
-class QuestsScreen extends StatelessWidget {
+class QuestsScreen extends StatefulWidget {
   const QuestsScreen({super.key});
+
+  @override
+  State<QuestsScreen> createState() => _QuestsScreenState();
+}
+
+class _QuestsScreenState extends State<QuestsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Fresh progress from the server (on the server economy).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) GameScope.read(context).refreshQuests();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -96,11 +111,17 @@ class _QuestList extends StatelessWidget {
                       ? const Icon(Icons.check_circle, color: Colors.green)
                       : FilledButton(
                           onPressed: done
-                              ? () {
-                                  final card = g.claimQuest(q);
+                              ? () async {
+                                  OwnedCard? card;
+                                  try {
+                                    card = await g.claimQuest(q);
+                                  } catch (e) {
+                                    g.toast('$e');
+                                    return;
+                                  }
                                   g.toast('Quest complete: ${q.title}');
-                                  if (card != null) {
-                                    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CardDetailScreen(uid: card.uid)));
+                                  if (card != null && context.mounted) {
+                                    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CardDetailScreen(uid: card!.uid)));
                                   }
                                 }
                               : null,

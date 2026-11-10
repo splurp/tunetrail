@@ -33,6 +33,8 @@ import 'spawns.dart';
 import 'store_catalog.dart';
 import 'trusted_clock.dart';
 
+part 'economy_client.dart';
+
 /// Central game controller. Owns every subsystem and exposes game actions.
 class Game extends ChangeNotifier {
   Game._(this.dir, this.api, this.catalog, this.collection, this.profile, this.location, this.audio, this.mapData, this.movies)
@@ -57,6 +59,14 @@ class Game extends ChangeNotifier {
   ZoneReading zoneHere = const ZoneReading({}, false);
   late final PurchaseService purchases;
   late MarketBackend market;
+
+  /// The server economy (when the server has one).
+  EconomyClient? _econ;
+
+  /// Coins, bits, items and cards live on the server: actions are server
+  /// requests.
+  bool get serverEconomy => _econ != null && profile.econImported && market is RemoteMarket;
+  EconomyClient get econ => _econ!;
 
   final _toasts = StreamController<String>.broadcast();
   Stream<String> get toasts => _toasts.stream;
@@ -122,12 +132,15 @@ class Game extends ChangeNotifier {
     }
     // A song has exactly one rarity (from its popularity): re-rate cards
     // from older versions before folding duplicates.
-    collection.normalizeRarities((id) {
-      final s = catalog.songs[id];
-      return s == null ? null : catalog.rarityOf(s);
-    });
+    // (Cards on the server keep the server's rarities.)
+    if (!profile.econImported) {
+      collection.normalizeRarities((id) {
+        final s = catalog.songs[id];
+        return s == null ? null : catalog.rarityOf(s);
+      });
+    }
     // One copy per variant: fold any older duplicates into the scrapyard.
-    final dups = collection.removeDuplicateVariants();
+    final dups = profile.econImported ? const <OwnedCard>[] : collection.removeDuplicateVariants();
     if (dups.isNotEmpty) {
       var coins = 0;
       for (final c in dups) {
@@ -165,12 +178,14 @@ class Game extends ChangeNotifier {
         ..marketMode = MarketMode.online
         ..serverUrl = server;
     }
+    _econ = null;
     if (profile.marketMode == MarketMode.online) {
       market = RemoteMarket(server, profile.playerId, profile.name, token: profile.authToken);
       _marketReady = true;
       try {
         await market.register(profile.playerId, profile.name);
         unawaited(refreshAccount());
+        return;
       } catch (e) {
         if (PlayerProfile.builtInServer.isEmpty) {
           toast('Market server unreachable — using local market');
@@ -204,14 +219,37 @@ class Game extends ChangeNotifier {
   Future<void> refreshAccount() async {
     unawaited(refreshBlockedSongs());
     final m = market;
-    if (m is! RemoteMarket || profile.authToken.isEmpty) return;
+    if (m is! RemoteMarket || (profile.authToken.isEmpty && onlineAccounts)) return;
     try {
       final j = await m.me();
       profile.isAdmin = j['admin'] as bool? ?? false;
       unreadMessages.value = (j['unread'] as num?)?.toInt() ?? unreadMessages.value;
       profile.changed();
+      if (j['economy'] == true) await _startEconomy(m, j['imported'] == true);
     } catch (_) {}
     await registerPush();
+  }
+
+  /// Moves this player's progress to the server the first time (or picks
+  /// up the server's copy on a new device), then follows the server.
+  Future<void> _startEconomy(RemoteMarket m, bool imported) async {
+    final e = _econ ??= EconomyClient(this, m);
+    if (!imported) {
+      // Before importing, the account must be this player's for good.
+      if (onlineAccounts && profile.authToken.isEmpty) return;
+      await e.importProgress();
+      toast('Your progress is now saved on the server');
+    } else {
+      if (!profile.econImported) {
+        // A new device, or progress moved from another one: the server's wins.
+        profile.econImported = true;
+        profile.econRev = -1;
+      }
+      await e.sync();
+    }
+    _refreshSpawns(force: true);
+    unawaited(refreshQuests());
+    notifyListeners();
   }
 
   /// Signs this device up for push notifications (messages, sales, offers).
@@ -279,9 +317,13 @@ class Game extends ChangeNotifier {
     try {
       final items = await market.claimInbox();
       for (final i in items) {
-        if (i.coins > 0) profile.coins += i.coins;
-        for (final c in i.cards) {
-          acquirePayload(c, CardSource.trade);
+        // On the server economy the coins and cards are already in the
+        // account (synced below).
+        if (!i.credited && !serverEconomy) {
+          if (i.coins > 0) profile.coins += i.coins;
+          for (final c in i.cards) {
+            acquirePayload(c, CardSource.trade);
+          }
         }
         if (i.message.contains('accepted your trade')) newOffers.value++;
         if (i.message.contains('accepted') || i.message.contains('Trade with')) {
@@ -296,6 +338,7 @@ class Game extends ChangeNotifier {
         toast(i.message);
       }
       if (items.isNotEmpty) {
+        if (serverEconomy) await econ.sync();
         profile.changed();
         notifyListeners();
       }
@@ -365,7 +408,9 @@ class Game extends ChangeNotifier {
     if (changing && name.trim() == profile.name) return;
     if (profile.bits < cost) throw MarketException('Changing your username again costs $cost bits');
     final (chosen, token) = await market.setUsername(name.trim());
-    if (changing) {
+    if (serverEconomy) {
+      await econ.sync();
+    } else if (changing) {
       profile.bits -= cost;
       profile.usernameChanges++;
     }
@@ -396,7 +441,8 @@ class Game extends ChangeNotifier {
 
   /// Uploads the collection other players browse, at most every ~20 s.
   void _scheduleCollectionSync({bool soon = false}) {
-    if (!_canPublish) return;
+    // Server accounts' collections are on the server already.
+    if (!_canPublish || serverEconomy) return;
     if (!soon && _collectionSync?.isActive == true) return;
     _collectionSync?.cancel();
     _collectionSync = Timer(Duration(seconds: soon ? 2 : 20), () async {
@@ -447,8 +493,15 @@ class Game extends ChangeNotifier {
   }
 
   /// Buys a profile theme with bits and puts it on.
-  void buyProfileTheme(ProfileTheme t) {
+  Future<void> buyProfileTheme(ProfileTheme t) async {
     if (profile.owned.contains(t.id)) return setProfileTheme(t.id);
+    if (serverEconomy) {
+      await econ.call('POST', _debugFree ? '/admin/econ/free/${t.id}' : '/shop/${t.id}/buy');
+      profile.profileTheme = t.id;
+      profile.changed();
+      toast('Unlocked ${t.name}');
+      return;
+    }
     if (!(kAdminBuild && profile.freePurchases && profile.debugEnabled)) {
       if (profile.bits < t.price) throw MarketException('Not enough bits');
       profile.bits -= t.price;
@@ -459,11 +512,29 @@ class Game extends ChangeNotifier {
     toast('Unlocked ${t.name}');
   }
 
+  void _econChanged() => notifyListeners();
+
+  bool get _debugFree => kAdminBuild && profile.freePurchases && profile.debugEnabled;
+
+  /// On the server economy: runs a market request (the server holds and
+  /// pays the cards and coins), then syncs the account.
+  Future<T> _serverTrade<T>(Future<T> Function() f) async {
+    try {
+      return await f();
+    } finally {
+      await econ.sync();
+    }
+  }
+
   /// Offers cards and/or coins for songs in another player's collection.
   Future<void> makeDirectOffer(String toId, String toName, List<CardPayload> wanted, List<int> uids, int coins, {String note = ''}) async {
     if (coins < 0) throw MarketException('Invalid coin amount');
     if (profile.coins < coins) throw MarketException('Not enough coins');
     final cards = [for (final u in uids) ?collection.byUid(u)];
+    if (serverEconomy) {
+      await _serverTrade(() => market.createDirectOffer(toId, [for (final w in wanted) w.uid], [for (final c in cards) c.toPayload()], coins, note: note));
+      return;
+    }
     for (final c in cards) {
       _removeFromPlaylists(c.uid);
       collection.remove(c.uid);
@@ -530,6 +601,12 @@ class Game extends ChangeNotifier {
       if (c == null) throw MarketException('You no longer own one of those songs');
       cards.add(c);
     }
+    if (serverEconomy) {
+      await _serverTrade(() => market.createListing([for (final c in cards) ListingItem(card: c.toPayload(), price: prices[c.uid]!)],
+          folderPrice: folderPrice, note: note, acceptsTrades: trades));
+      unawaited(audio.playSfx(Sfx.list));
+      return;
+    }
     for (final c in cards) {
       _removeFromPlaylists(c.uid);
       collection.remove(c.uid);
@@ -557,12 +634,14 @@ class Game extends ChangeNotifier {
   }
 
   Future<void> cancelListing(Listing l) async {
+    if (serverEconomy) return _serverTrade(() => market.cancelListing(l.id));
     for (final c in await market.cancelListing(l.id)) {
       acquirePayload(c, CardSource.market);
     }
   }
 
   Future<void> withdrawFromListing(Listing l, int cardUid) async {
+    if (serverEconomy) return _serverTrade(() => market.withdrawItem(l.id, cardUid));
     acquirePayload(await market.withdrawItem(l.id, cardUid), CardSource.market);
   }
 
@@ -570,6 +649,7 @@ class Game extends ChangeNotifier {
   Future<void> buyListing(Listing l) async {
     final price = l.folderPrice;
     if (profile.coins < price) throw MarketException('Not enough coins');
+    if (serverEconomy) return _serverTrade(() => market.buy(l.id, price));
     profile.coins -= price;
     profile.changed();
     try {
@@ -590,6 +670,7 @@ class Game extends ChangeNotifier {
       throw MarketException('You already own this variant');
     }
     if (profile.coins < item.price) throw MarketException('Not enough coins');
+    if (serverEconomy) return _serverTrade(() => market.buyItem(l.id, item.card.uid, item.price));
     profile.coins -= item.price;
     profile.changed();
     try {
@@ -605,6 +686,7 @@ class Game extends ChangeNotifier {
   Future<void> makeOffer(Listing l, List<int> uids, int coins, {String note = ''}) async {
     if (profile.coins < coins) throw MarketException('Not enough coins');
     final cards = [for (final u in uids) ?collection.byUid(u)];
+    if (serverEconomy) return _serverTrade(() => market.createOffer(l.id, [for (final c in cards) c.toPayload()], coins, note: note));
     for (final c in cards) {
       _removeFromPlaylists(c.uid);
       collection.remove(c.uid);
@@ -628,6 +710,10 @@ class Game extends ChangeNotifier {
   Future<Auction> createAuction(List<int> uids, {required int startPrice, required int increment, int? buyNow, required Duration duration, String note = ''}) async {
     final cards = [for (final u in uids) ?collection.byUid(u)];
     if (cards.length != uids.length) throw MarketException('You no longer own one of those songs');
+    if (serverEconomy) {
+      return _serverTrade(() => market.createAuction([for (final c in cards) c.toPayload()],
+          startPrice: startPrice, increment: increment, buyNow: buyNow, duration: duration, note: note));
+    }
     for (final c in cards) {
       _removeFromPlaylists(c.uid);
       collection.remove(c.uid);
@@ -647,6 +733,7 @@ class Game extends ChangeNotifier {
   /// through the inbox) or win.
   Future<Auction> placeBid(Auction a, int amount) async {
     if (profile.coins < amount) throw MarketException('Not enough coins');
+    if (serverEconomy) return _serverTrade(() => market.bid(a.id, amount));
     profile.coins -= amount;
     profile.changed();
     try {
@@ -662,6 +749,11 @@ class Game extends ChangeNotifier {
     final price = a.buyNow;
     if (price == null) throw MarketException('No Buy It Now price');
     if (profile.coins < price) throw MarketException('Not enough coins');
+    if (serverEconomy) {
+      await _serverTrade(() => market.buyAuctionNow(a.id, price));
+      unawaited(audio.playSfx(Sfx.tradeAccepted));
+      return;
+    }
     profile.coins -= price;
     profile.changed();
     try {
@@ -677,6 +769,7 @@ class Game extends ChangeNotifier {
   }
 
   Future<void> cancelAuction(Auction a) async {
+    if (serverEconomy) return _serverTrade(() => market.cancelAuction(a.id));
     for (final c in await market.cancelAuction(a.id)) {
       acquirePayload(c, CardSource.market);
     }
@@ -685,6 +778,11 @@ class Game extends ChangeNotifier {
   Future<void> acceptOffer(TradeOffer o) async {
     if (!o.direct) {
       await market.acceptOffer(o.id);
+      await syncInbox();
+      return;
+    }
+    if (serverEconomy) {
+      await _serverTrade(() => market.acceptOffer(o.id));
       await syncInbox();
       return;
     }
@@ -725,7 +823,11 @@ class Game extends ChangeNotifier {
     if (cards.isEmpty) throw MarketException('Add at least one card');
     if (profile.bits < showcaseCost) throw MarketException('A showcase costs $showcaseCost bits');
     await market.setShowcase(profile.showcaseTitle, cards, const []);
-    profile.bits -= showcaseCost;
+    if (serverEconomy) {
+      await econ.sync();
+    } else {
+      profile.bits -= showcaseCost;
+    }
     profile.showcasePublished = true;
     profile.changed();
   }
@@ -763,6 +865,10 @@ class Game extends ChangeNotifier {
     _spawnCenter = location.position;
     _spawnWindow = w;
     _spawnCatalogVersion = catalog.version;
+    if (serverEconomy) {
+      unawaited(_fetchServerSpawns());
+      return;
+    }
     final nowMs = now.millisecondsSinceEpoch;
     profile.spentSpawns.removeWhere((_, exp) => exp < nowMs);
     debugSpawns.removeWhere((d) => d.expiresAt.isBefore(now) || profile.spentSpawns.containsKey(d.id));
@@ -776,6 +882,75 @@ class Game extends ChangeNotifier {
     ];
     zoneHere = zones.sample(location.position.latitude, location.position.longitude);
     _applyEditionAvailability();
+  }
+
+  bool _spawnFetching = false;
+  bool _spawnFetchAgain = false;
+
+  /// Spawns that turned out to have no live footage (their Live edition is
+  /// shown, and caught, as a regular card).
+  final Set<String> _noLive = {};
+
+  /// Asks the server what's spawned around the player. The game sends its
+  /// genre zones per map cell (the server mixes them with the time of day).
+  Future<void> _fetchServerSpawns() async {
+    if (_spawnFetching) {
+      _spawnFetchAgain = true;
+      return;
+    }
+    _spawnFetching = true;
+    try {
+      final pos = location.position;
+      final (_, cy) = WorldSpawner.cellOf(pos.latitude, pos.longitude);
+      final cells = <String, Map<String, double>>{};
+      for (var dy = -2; dy <= 2; dy++) {
+        final row = cy + dy;
+        final cx = (pos.longitude / WorldSpawner.lngDegForRow(row)).floor();
+        for (var dx = -2; dx <= 2; dx++) {
+          final (lat, lng) = WorldSpawner.cellCenter(cx + dx, row);
+          final bias = zones.sample(lat, lng).genreBias;
+          if (bias.isNotEmpty) cells['${cx + dx}:$row'] = {for (final e in bias.entries) '${e.key}': e.value};
+        }
+      }
+      final j = await econ.call('POST', '/spawns', body: {
+        'lat': pos.latitude,
+        'lng': pos.longitude,
+        'tz': DateTime.now().timeZoneOffset.inMinutes,
+        'zones': cells,
+      });
+      final now = DateTime.now();
+      final list = <Spawn>[];
+      for (final x in (j['spawns'] as List? ?? const [])) {
+        final m = x as Map<String, dynamic>;
+        final w = WorldSpawn.fromJson(m);
+        final song = Song.fromInfo(w.song);
+        catalog.addSongs([song]);
+        if (m['paid'] == true) purchasedSpawns.add(w.id);
+        final s = Spawn(
+          id: w.id,
+          point: LatLng(w.lat, w.lng),
+          song: song,
+          rarity: w.rarity,
+          shiny: w.shiny,
+          expiresAt: DateTime.fromMillisecondsSinceEpoch(w.expiresAt),
+          edition: w.edition,
+        );
+        list.add(_noLive.contains(s.id) ? s.withEdition(Edition.standard) : s);
+      }
+      _spawnMemo.removeWhere((_, s) => s.expiresAt.isBefore(now));
+      spawns = list;
+      zoneHere = zones.sample(pos.latitude, pos.longitude);
+      _applyEditionAvailability();
+    } catch (_) {
+      // Retried on the next move or tick.
+      _spawnCenter = null;
+    } finally {
+      _spawnFetching = false;
+      if (_spawnFetchAgain) {
+        _spawnFetchAgain = false;
+        unawaited(_fetchServerSpawns());
+      }
+    }
   }
 
   /// Serials left per "songId:edition" (cached from the market backend).
@@ -800,6 +975,7 @@ class Game extends ChangeNotifier {
           unawaited(movies.liveClipFor(s.song).then((_) => _applyEditionAvailability()).catchError((_) {}));
         }
         if (has == false) {
+          _noLive.add(s.id);
           final std = s.withEdition(Edition.standard);
           _spawnMemo[s.id] = std;
           out.add(std);
@@ -865,8 +1041,15 @@ class Game extends ChangeNotifier {
 
   /// Pays [spawnPrice] coins for an out-of-range spawn; the catch minigame
   /// then plays as usual, except the song can't get away.
-  void buySpawn(Spawn s) {
+  Future<void> buySpawn(Spawn s) async {
     if (isPurchased(s)) return;
+    if (serverEconomy) {
+      final p = location.position;
+      await econ.call('POST', '/spawns/${Uri.encodeComponent(s.id)}/buy', body: {'lat': p.latitude, 'lng': p.longitude});
+      purchasedSpawns.add(s.id);
+      notifyListeners();
+      return;
+    }
     final price = spawnPrice(s);
     if (price == null) throw MarketException('This song can\'t be bought — go and catch it');
     if (profile.coins < price) throw MarketException('Not enough coins ($price needed)');
@@ -922,6 +1105,47 @@ class Game extends ChangeNotifier {
 
   void fleeSpawn(Spawn s) => _markSpent(s);
 
+  final math.Random _throwRng = math.Random();
+
+  /// One throw in the catch minigame with [acc]% timing (100 = a perfect
+  /// beat: always caught, and shiny). [attempt] counts from 1. On the server
+  /// economy the server rolls it; otherwise it's rolled here.
+  Future<ThrowOutcome> throwAt(Spawn s, int acc, int attempt) async {
+    lastCatchNote = null;
+    if (serverEconomy) {
+      final p = location.position;
+      final j = await econ.call('POST', '/spawns/${Uri.encodeComponent(s.id)}/throw',
+          body: {
+            'lat': p.latitude,
+            'lng': p.longitude,
+            'acc': acc,
+            if (_noLive.contains(s.id)) 'noLive': true,
+            if (kAdminBuild && profile.debugEnabled && profile.unlimitedRange) 'unlimited': true,
+          },
+          source: CardSource.wild);
+      final result = j['result'] as String? ?? 'slipped';
+      if (result == 'slipped') return const ThrowOutcome('slipped');
+      _markSpent(s);
+      if (result == 'fled') return const ThrowOutcome('fled');
+      unawaited(audio.playSfx(Sfx.catchSong));
+      final c = CardPayload.fromJson(j['card'] as Map<String, dynamic>);
+      final dup = (j['dupCoins'] as num?)?.toInt() ?? 0;
+      lastDuplicateCoins = dup;
+      lastCatchNote = j['note'] as String?;
+      return ThrowOutcome('caught', card: dup > 0 ? null : collection.byUid(c.uid), duplicateCoins: dup, note: lastCatchNote);
+    }
+    final success = acc == 100 || isPurchased(s) || _throwRng.nextDouble() < catchChance(s.rarity, acc);
+    if (success) {
+      final card = await catchSpawn(s, perfect: acc == 100);
+      return ThrowOutcome('caught', card: card, duplicateCoins: card == null ? lastDuplicateCoins : 0, note: lastCatchNote);
+    }
+    if (attempt >= kMaxThrows || _throwRng.nextDouble() < kFleeChance[s.rarity.index]) {
+      fleeSpawn(s);
+      return const ThrowOutcome('fled');
+    }
+    return const ThrowOutcome('slipped');
+  }
+
   double _walkPending = 0;
 
   /// Walking is reported ~30×/s by the joystick and every few metres by GPS;
@@ -929,6 +1153,8 @@ class Game extends ChangeNotifier {
   /// many times a second. Distance is batched into 25 m chunks instead.
   void _onTravel(double m) {
     profile.metersWalked += m;
+    // (The server measures walking itself.)
+    if (serverEconomy) return;
     _walkPending += m;
     if (_walkPending >= 25) {
       final whole = _walkPending.floor();
@@ -963,8 +1189,23 @@ class Game extends ChangeNotifier {
 
   /// Opens a pack; returns the new cards. Throws if not enough bits.
   /// Packs never contain Sample or Live editions.
+  /// A pack or blind-box card from the server.
+  PackPull _pull(Map<String, dynamic> j) {
+    final c = CardPayload.fromJson(j['card'] as Map<String, dynamic>);
+    final dup = (j['dup'] as num?)?.toInt();
+    final owned = dup == null ? collection.byUid(c.uid) : null;
+    if (owned != null) return PackPull(owned, 0);
+    catalog.ensureFromPayload(c);
+    final song = catalog.songs[c.songId] ?? Song.fromInfo(SongInfo(id: c.songId, title: c.title, artistId: c.artistId, artistName: c.artistName, albumId: c.albumId, albumTitle: c.albumTitle, coverMd5: c.coverMd5));
+    return PackPull(OwnedCard(-1, song, c.rarity, c.shiny, false, DateTime.now(), CardSource.pack, c.edition, c.serial), dup ?? 0);
+  }
+
   Future<List<PackPull>> openPack(PackDef p) async {
     if (profile.bits < p.bits) throw MarketException('Not enough bits');
+    if (serverEconomy) {
+      final j = await econ.call('POST', '/packs/${p.id}/open', source: CardSource.pack);
+      return [for (final x in (j['pulls'] as List)) _pull(x as Map<String, dynamic>)];
+    }
     if (catalog.size == 0) throw MarketException('Song catalog still loading');
     profile.bits -= p.bits;
     profile.changed();
@@ -1028,6 +1269,10 @@ class Game extends ChangeNotifier {
   Future<PackPull> openArtistBlindBox(ArtistInfo artist) async {
     final price = blindBoxPrice(artist.fans);
     if (profile.bits < price) throw MarketException('Not enough bits');
+    if (serverEconomy) {
+      final j = await econ.call('POST', '/blindbox/${artist.id}/open', body: {'price': price}, source: CardSource.pack);
+      return _pull(j['pull'] as Map<String, dynamic>);
+    }
     final tracks = await api.artistTop(artist.id, limit: 100);
     if (tracks.isEmpty) throw MarketException('No songs found for ${artist.name}');
     catalog.addSongs(tracks);
@@ -1070,7 +1315,7 @@ class Game extends ChangeNotifier {
       return PurchaseResult.granted;
     }
     if (p.bitsPrice > 0) {
-      buyWithBits(p);
+      await buyWithBits(p);
       return PurchaseResult.granted;
     }
     final r = await purchases.buy(p, debugFree: kAdminBuild && profile.debugEnabled && profile.freePurchases);
@@ -1078,9 +1323,14 @@ class Game extends ChangeNotifier {
   }
 
   /// Buys a bits-priced item (pets).
-  void buyWithBits(Product p) {
+  Future<void> buyWithBits(Product p) async {
     if (profile.owned.contains(p.id)) return;
     if (profile.bits < p.bitsPrice) throw MarketException('Not enough bits');
+    if (serverEconomy) {
+      await econ.call('POST', '/shop/${p.id}/buy');
+      toast('Unlocked ${p.name}');
+      return;
+    }
     profile.bits -= p.bitsPrice;
     profile.owned.add(p.id);
     profile.changed();
@@ -1091,6 +1341,14 @@ class Game extends ChangeNotifier {
   void grantFree(Product p) => _grantProduct(p);
 
   void _grantProduct(Product p) {
+    if (serverEconomy) {
+      unawaited(econ.call('POST', '/shop/${p.id}/grant').then((_) {
+        toast(p.kind == ProductKind.bits ? '+${p.bits} bits' : 'Unlocked ${p.name}');
+      }).catchError((Object e) {
+        toast('Couldn\'t add ${p.name}: $e — it will be restored on the next connection');
+      }));
+      return;
+    }
     if (p.kind == ProductKind.bits) {
       profile.bits += p.bits;
       toast('+${p.bits} bits');
@@ -1131,7 +1389,12 @@ class Game extends ChangeNotifier {
   int scrapValueOf(OwnedCard c) => scrapValue(c.rarity, c.shiny, c.song.rank, edition: c.edition);
 
   /// Scraps cards for coins. Returns the coins earned.
-  int scrap(Iterable<int> uids) {
+  Future<int> scrap(Iterable<int> uids) async {
+    if (serverEconomy) {
+      final j = await econ.call('POST', '/me/scrap', body: {'uids': uids.toList()});
+      unawaited(audio.playSfx(Sfx.quicksell));
+      return (j['coins'] as num?)?.toInt() ?? 0;
+    }
     var total = 0;
     var n = 0;
     for (final uid in uids.toList()) {
@@ -1160,11 +1423,40 @@ class Game extends ChangeNotifier {
     }
   }
 
-  List<Quest> get dailyQuests => QuestBoard.daily(DateTime.now(), catalog);
-  List<Quest> get unlockQuests => QuestBoard.unlocks(DateTime.now(), catalog);
-  List<Quest> get milestoneQuests => QuestBoard.milestones();
+  /// The server's quest board (on the server economy).
+  Map<String, dynamic>? _board;
+  final Map<String, int> _boardProgress = {};
+  final Set<String> _boardClaimed = {};
+
+  List<Quest> _boardList(String k) => [for (final q in (_board?[k] as List? ?? const [])) Quest.fromJson(q as Map<String, dynamic>)];
+
+  /// Fetches the quest board and progress from the server.
+  Future<void> refreshQuests() async {
+    if (!serverEconomy) return;
+    try {
+      final j = await econ.call('GET', '/quests', q: {'tz': '${DateTime.now().timeZoneOffset.inMinutes}'});
+      _board = j;
+      _boardProgress.clear();
+      _boardClaimed
+        ..clear()
+        ..addAll([for (final a in (j['albums'] as List? ?? const [])) '$a']);
+      for (final k in ['daily', 'unlock', 'milestone']) {
+        for (final q in (j[k] as List? ?? const [])) {
+          final m = q as Map<String, dynamic>;
+          _boardProgress[m['id'] as String] = (m['progress'] as num?)?.toInt() ?? 0;
+          if (m['claimed'] == true) _boardClaimed.add(m['id'] as String);
+        }
+      }
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  List<Quest> get dailyQuests => serverEconomy ? _boardList('daily') : QuestBoard.daily(DateTime.now(), catalog);
+  List<Quest> get unlockQuests => serverEconomy ? _boardList('unlock') : QuestBoard.unlocks(DateTime.now(), catalog);
+  List<Quest> get milestoneQuests => serverEconomy ? _boardList('milestone') : QuestBoard.milestones();
 
   void questEvent(QuestKind kind, {int amount = 1, int? genreId}) {
+    if (serverEconomy) return;
     _resetDailyIfNeeded();
     for (final q in dailyQuests) {
       if (q.kind != kind) continue;
@@ -1175,6 +1467,7 @@ class Game extends ChangeNotifier {
   }
 
   int questProgress(Quest q) {
+    if (serverEconomy && q.kind != QuestKind.albumComplete) return _boardProgress[q.id] ?? 0;
     switch (q.kind) {
       case QuestKind.artistSongs:
         return collection.distinctSongsByArtist(q.artistId!);
@@ -1190,10 +1483,17 @@ class Game extends ChangeNotifier {
   }
 
   bool questDone(Quest q) => questProgress(q) >= q.target;
-  bool questClaimed(Quest q) => profile.questsClaimed.contains(q.id);
+  bool questClaimed(Quest q) => serverEconomy ? _boardClaimed.contains(q.id) : profile.questsClaimed.contains(q.id);
 
-  OwnedCard? claimQuest(Quest q) {
+  Future<OwnedCard?> claimQuest(Quest q) async {
     if (!questDone(q) || questClaimed(q)) return null;
+    if (serverEconomy) {
+      final j = await econ.call('POST', '/quests/${Uri.encodeComponent(q.id)}/claim', source: CardSource.quest);
+      _boardClaimed.add(q.id);
+      unawaited(refreshQuests());
+      final c = j['card'];
+      return c == null ? null : collection.byUid((c as Map<String, dynamic>)['uid'] as int);
+    }
     profile.questsClaimed.add(q.id);
     profile.coins += q.reward.coins;
     profile.bits += q.reward.bits;
@@ -1308,7 +1608,8 @@ class Game extends ChangeNotifier {
   }
 
   /// Debug: give back today's plays of every minigame.
-  void resetMinigamePlays() {
+  Future<void> resetMinigamePlays() async {
+    if (serverEconomy) await econ.call('POST', '/admin/econ/minigames/reset');
     profile.minigamePlays.clear();
     profile.minigameRounds.clear();
     profile.changed();
@@ -1316,6 +1617,14 @@ class Game extends ChangeNotifier {
   }
 
   Future<MinigameQuota?> minigameQuota(String game) async {
+    if (serverEconomy) {
+      try {
+        final j = await econ.market.send('GET', '/minigames/$game', q: {'tz': '${DateTime.now().timeZoneOffset.inMinutes}'}) as Map<String, dynamic>;
+        return MinigameQuota((j['left'] as num).toInt(), Duration(milliseconds: (j['resetMs'] as num).toInt()), j['day'] as String);
+      } catch (_) {
+        return null;
+      }
+    }
     final now = await clock.now();
     if (now == null) return null;
     final device = DateTime.now().timeZoneOffset.inMinutes;
@@ -1334,6 +1643,14 @@ class Game extends ChangeNotifier {
 
   /// Spends one of today's plays; false if none are left (or no trusted time).
   Future<bool> useMinigamePlay(String game) async {
+    if (serverEconomy) {
+      try {
+        await econ.call('POST', '/minigames/$game/start', body: {'tz': DateTime.now().timeZoneOffset.inMinutes});
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
     final q = await minigameQuota(game);
     if (q == null || q.left <= 0) return false;
     final rec = profile.minigamePlays[game];
@@ -1343,8 +1660,15 @@ class Game extends ChangeNotifier {
     return true;
   }
 
-  void awardMinigameBits(int bits) {
+  /// Pays [bits] won in a round of [game] (on the server economy the server
+  /// pays them, up to the round's maximum).
+  void awardMinigameBits(int bits, {String? game}) {
     if (bits <= 0) return;
+    if (serverEconomy) {
+      if (game == null) return;
+      unawaited(econ.call('POST', '/minigames/$game/award', body: {'bits': bits}).catchError((Object _) => <String, dynamic>{}));
+      return;
+    }
     profile.bits += bits;
     profile.minigameBits += bits;
     profile.changed();
@@ -1352,7 +1676,11 @@ class Game extends ChangeNotifier {
   }
 
   // ----------------------------------------------------------------- debug
-  void debugSetBalances({int? coins, int? bits}) {
+  Future<void> debugSetBalances({int? coins, int? bits}) async {
+    if (serverEconomy) {
+      await econ.call('POST', '/admin/econ/balances', body: {'coins': ?coins, 'bits': ?bits});
+      return;
+    }
     if (coins != null) profile.coins = coins;
     if (bits != null) profile.bits = bits;
     profile.changed();
@@ -1388,7 +1716,7 @@ class Game extends ChangeNotifier {
   final List<Spawn> debugSpawns = [];
 
   /// Debug: spawns [song] a few metres in front of the player.
-  Spawn debugSpawnSong(Song song, {bool shiny = false, Edition edition = Edition.standard}) {
+  Future<Spawn> debugSpawnSong(Song song, {bool shiny = false, Edition edition = Edition.standard}) async {
     catalog.addSongs([song]);
     final known = catalog.songs[song.id] ?? song;
     final rng = math.Random();
@@ -1397,6 +1725,14 @@ class Game extends ChangeNotifier {
     final p = location.position;
     final lat = p.latitude + math.cos(heading) * dist / 111132.95;
     final lng = p.longitude + math.sin(heading) * dist / (111319.49 * math.cos(p.latitude * math.pi / 180));
+    if (serverEconomy) {
+      final j = await econ.market.send('POST', '/admin/econ/spawn', body: {'song': known.toInfo().toJson(), 'lat': lat, 'lng': lng, 'shiny': shiny, 'ed': edition.index})
+          as Map<String, dynamic>;
+      await _fetchServerSpawns();
+      final w = WorldSpawn.fromJson(j);
+      return spawns.firstWhere((x) => x.id == w.id,
+          orElse: () => Spawn(id: w.id, point: LatLng(w.lat, w.lng), song: known, rarity: w.rarity, shiny: w.shiny, expiresAt: DateTime.fromMillisecondsSinceEpoch(w.expiresAt), edition: w.edition));
+    }
     final s = Spawn(
       id: 'debug:${known.id}:${DateTime.now().microsecondsSinceEpoch}',
       point: LatLng(lat, lng),
@@ -1413,6 +1749,14 @@ class Game extends ChangeNotifier {
 
   /// Stress-test helper: adds [n] random cards using the current catalog.
   Future<int> debugGenerateCards(int n) async {
+    if (serverEconomy) {
+      var added = 0;
+      for (var left = n; left > 0; left -= 5000) {
+        final j = await econ.call('POST', '/admin/econ/cards', body: {'n': math.min(left, 5000)}, source: CardSource.debug);
+        added += (j['added'] as num?)?.toInt() ?? 0;
+      }
+      return added;
+    }
     if (catalog.size == 0) return 0;
     final rng = Rng(DateTime.now().microsecondsSinceEpoch);
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -1433,7 +1777,8 @@ class Game extends ChangeNotifier {
     return n;
   }
 
-  void debugClearCollection() {
+  Future<void> debugClearCollection() async {
+    if (serverEconomy) await econ.call('POST', '/admin/econ/clear');
     collection.clear();
     for (final p in profile.playlists) {
       p.cardUids.clear();
@@ -1443,7 +1788,8 @@ class Game extends ChangeNotifier {
     notifyListeners();
   }
 
-  void debugRespawn() {
+  Future<void> debugRespawn() async {
+    if (serverEconomy) await econ.call('POST', '/admin/econ/respawn');
     profile.spentSpawns.clear();
     _refreshSpawns(force: true);
   }

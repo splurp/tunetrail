@@ -556,7 +556,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
     if (ok != true) return;
     try {
-      g.buySpawn(s);
+      await g.buySpawn(s);
     } catch (e) {
       g.toast('$e');
       return;

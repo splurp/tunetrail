@@ -178,7 +178,13 @@ class CardDetailScreen extends StatelessWidget {
               ),
             );
             if (ok == true && context.mounted) {
-              g.scrap([uid]);
+              try {
+                await g.scrap([uid]);
+              } catch (e) {
+                g.toast('$e');
+                return;
+              }
+              if (!context.mounted) return;
               g.toast('Scrapped for $v coins');
               Navigator.pop(context);
             }
