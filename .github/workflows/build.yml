@@ -11,6 +11,11 @@ on:
         description: 'Publish as a named release with this tag (e.g. beta-1.0.0 → "Tunetrail Beta v1.0.0"); empty = dev build'
         required: false
         default: ''
+      no_release:
+        description: 'Build only: keep the files on this run (7 days) and publish no release'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -203,7 +208,7 @@ jobs:
 
   release:
     needs: [test, android, windows, linux]
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    if: (github.event_name == 'workflow_dispatch' && github.event.inputs.no_release != 'true') || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
