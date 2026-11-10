@@ -7,6 +7,7 @@ import '../../data/profile.dart';
 import '../../data/samples.dart';
 import '../../game/store_catalog.dart';
 import '../app.dart';
+import '../widgets/figure_portrait.dart';
 import '../widgets/figure_preview.dart';
 import '../widgets/profile_banner.dart';
 import '../widgets/cards.dart';
@@ -75,6 +76,7 @@ class ProfileScreen extends StatelessWidget {
               ProfileBanner(
                 themeId: p.profileTheme,
                 name: p.name,
+                portrait: FigurePortrait(key: ValueKey('${look.color}|${look.hat}|${look.shirt}|${look.backpack}|${look.pet}'), look: look, diameter: 112, name: p.name),
                 subtitle: 'Level ${p.level} • ${formatNumber(p.xp)} XP',
                 actions: [
                   _BannerButton(icon: Icons.edit, tooltip: 'Change username', onTap: () => showChangeUsername(context)),

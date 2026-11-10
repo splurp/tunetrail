@@ -7,6 +7,15 @@ import '../../game/audio_service.dart';
 /// Equipped look for the player's stick figure.
 class FigureLook {
   const FigureLook({required this.color, this.hat, this.shirt, this.pet, this.backpack});
+
+  /// From a public profile's look ({color, hat, shirt, backpack, pet}).
+  factory FigureLook.fromJson(Map<String, dynamic> j) => FigureLook(
+        color: Color(((j['color'] as num?)?.toInt() ?? 0xFFE9E6FF) | 0xFF000000),
+        hat: j['hat'] as String?,
+        shirt: j['shirt'] as String?,
+        backpack: j['backpack'] as String?,
+        pet: j['pet'] as String?,
+      );
   final Color color;
   final String? hat;
   final String? shirt;

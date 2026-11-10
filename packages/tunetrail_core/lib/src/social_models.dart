@@ -35,7 +35,17 @@ class PublicProfile {
     this.cardCount = 0,
     this.blockedByMe = false,
     this.isBot = false,
+    this.look = const {},
+    this.coins,
+    this.bits,
   });
+
+  /// Figure colour and equipped hat/shirt/backpack/pet ids.
+  final Map<String, dynamic> look;
+
+  /// Balances (players on the server economy).
+  final int? coins;
+  final int? bits;
   final String id;
   final String name;
   final String theme;
@@ -66,6 +76,9 @@ class PublicProfile {
         'cardCount': cardCount,
         'blocked': blockedByMe,
         'bot': isBot,
+        if (look.isNotEmpty) 'look': look,
+        'coins': ?coins,
+        'bits': ?bits,
       };
 
   factory PublicProfile.fromJson(Map<String, dynamic> j) => PublicProfile(
@@ -81,6 +94,9 @@ class PublicProfile {
         cardCount: (j['cardCount'] as num?)?.toInt() ?? 0,
         blockedByMe: j['blocked'] as bool? ?? false,
         isBot: j['bot'] as bool? ?? false,
+        look: (j['look'] as Map<String, dynamic>?) ?? const {},
+        coins: (j['coins'] as num?)?.toInt(),
+        bits: (j['bits'] as num?)?.toInt(),
       );
 }
 

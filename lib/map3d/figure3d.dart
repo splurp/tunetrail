@@ -12,8 +12,12 @@ enum IdleActivity { none, headphones, turntable }
 /// Drives walking/idle blending and look-around. Updated every frame by the
 /// map screen; all transitions are eased so the figure never snaps.
 class IdleDirector {
-  IdleDirector([int? seed]) : _r = math.Random(seed);
+  IdleDirector([int? seed, this.activities = true]) : _r = math.Random(seed);
   final math.Random _r;
+
+  /// Sit down for headphones / the turntable now and then (off: only look
+  /// around — e.g. a head-and-shoulders portrait).
+  final bool activities;
 
   /// 0 = standing, 1 = full walk cycle (smoothed).
   double walk = 0;
@@ -48,7 +52,7 @@ class IdleDirector {
     }
 
     if (activity == IdleActivity.none) {
-      if (!moving && _stillFor > _nextIdleAt) {
+      if (activities && !moving && _stillFor > _nextIdleAt) {
         activity = _last == IdleActivity.headphones ? IdleActivity.turntable : IdleActivity.headphones;
         if (_r.nextInt(4) == 0) activity = _last; // occasionally repeat
         _last = activity;
@@ -91,6 +95,9 @@ double _ease(double t) {
   return t * t * (3 - 2 * t);
 }
 
+(double, double, double) _mix((double, double, double) a, (double, double, double) b, double t) =>
+    (a.$1 + (b.$1 - a.$1) * t, a.$2 + (b.$2 - a.$2) * t, a.$3 + (b.$3 - a.$3) * t);
+
 /// Joint positions in the figure's local frame: (forward, right, up) metres.
 class _Pose {
   _Pose(this.j);
@@ -120,7 +127,11 @@ class Figure3DPainter extends CustomPainter {
     required this.facing,
     required this.accent,
     required this.contrast,
+    this.wave = 0,
   });
+
+  /// Progress through a wave hello (0 = not waving, 0→1 over the wave).
+  final double wave;
 
   final Camera3D camera;
   final FigureLook look;
@@ -243,6 +254,32 @@ class Figure3DPainter extends CustomPainter {
     var pose = _walkPose(phase, walk);
     if (act == IdleActivity.headphones) pose = _Pose.lerp(pose, _headphonesPose(idle.activityTime), e);
     if (act == IdleActivity.turntable) pose = _Pose.lerp(pose, _turntablePose(idle.activityTime, deckTopFull), e);
+    // Waving hello: the right arm swings up and waves from the elbow while
+    // the upper body leans in towards the viewer.
+    final waveAmt = wave <= 0 || wave >= 1 ? 0.0 : _ease(wave / 0.18) * _ease((1 - wave) / 0.22);
+    var waveAngle = 0.0, waveSpeed = 0.0;
+    if (waveAmt > 0) {
+      final cycles = 2.5;
+      // Swings out to the side and back, never across the face.
+      waveAngle = 0.32 + 0.42 * math.sin(wave * math.pi * 2 * cycles);
+      waveSpeed = math.cos(wave * math.pi * 2 * cycles);
+      final sh = pose.j['shoulder']!;
+      const fore = 1.55 * s;
+      final elbow = (sh.$1 + 0.6 * s, sh.$2 + 2.5 * s, sh.$3 + 1.15 * s);
+      final hand = (elbow.$1 + 0.35 * s, elbow.$2 + math.sin(waveAngle) * fore, elbow.$3 + math.cos(waveAngle) * fore);
+      final lean = 0.8 * s * waveAmt;
+      final j = Map.of(pose.j);
+      j['elbowR'] = _mix(j['elbowR']!, elbow, waveAmt);
+      j['handR'] = _mix(j['handR']!, hand, waveAmt);
+      for (final k in const ['shoulder', 'neck', 'head', 'elbowL', 'handL']) {
+        final p = j[k]!;
+        final up = k == 'head' ? 1.0 : (k == 'neck' ? 0.85 : 0.7);
+        j[k] = (p.$1 + lean * up, p.$2, p.$3 - 0.15 * s * waveAmt * up);
+      }
+      j['elbowR'] = (j['elbowR']!.$1 + lean * 0.7, j['elbowR']!.$2, j['elbowR']!.$3);
+      j['handR'] = (j['handR']!.$1 + lean * 0.7, j['handR']!.$2, j['handR']!.$3);
+      pose = _Pose(j);
+    }
 
     (double, double, double) w((double, double, double) p) => (cam.px + fx * p.$1 + rx * p.$2, cam.py + fy * p.$1 + ry * p.$2, p.$3);
     (double, double, double) wl(double f, double r, double z) => w((f, r, z));
@@ -495,6 +532,29 @@ class Figure3DPainter extends CustomPainter {
     items.sort((a, b) => b.$1.compareTo(a.$1));
     for (final it in items) {
       it.$2();
+    }
+
+    // Motion lines beside the waving hand.
+    if (waveAmt > 0.15) {
+      final hp = pj('handR'), ep = pj('elbowR');
+      if (hp != null && ep != null) {
+        final v = hp - ep;
+        final r = v.distance;
+        final a0 = math.atan2(v.dy, v.dx);
+        // On the side the hand is moving away from (trailing it).
+        final behind = waveSpeed >= 0 ? -1.0 : 1.0;
+        final linePaint = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = math.max(0.8, lineW * 0.16)
+          ..color = contrast.withValues(alpha: 0.75 * ((waveAmt - 0.15) / 0.85).clamp(0.0, 1.0) * (0.45 + 0.55 * waveSpeed.abs()));
+        for (var k = 0; k < 3; k++) {
+          final rr = r * (0.82 + k * 0.2);
+          final span = 0.26 - k * 0.05;
+          final start = a0 + behind * (0.32 + k * 0.06);
+          canvas.drawArc(Rect.fromCircle(center: ep, radius: rr), behind > 0 ? start : start - span, span, false, linePaint);
+        }
+      }
     }
 
     // Floating notes always sit on top.

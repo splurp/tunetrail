@@ -9,6 +9,8 @@ import '../app.dart';
 import '../widgets/cards.dart';
 import '../widgets/profile_banner.dart';
 import '../widgets/showcase_strip.dart';
+import '../widgets/figure_portrait.dart';
+import '../widgets/stick_figure.dart';
 import 'admin_player_tools.dart';
 import 'collection_screen.dart';
 import 'favorite_artists_screen.dart';
@@ -210,7 +212,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           themeId: p.theme,
                           name: p.name,
                           subtitle: ['Level ${p.level}', if (p.isBot) 'NPC trader', if (joined != null) 'joined ${joined.month}/${joined.year}'].join(' · '),
+                          portrait: p.isBot ? null : FigurePortrait(look: FigureLook.fromJson(p.look), diameter: 112, name: p.name),
                         ),
+                        if (p.coins != null || p.bits != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Wrap(spacing: 8, children: [
+                              if (p.coins != null) CurrencyChip(icon: kCoinIcon, value: p.coins!, color: kCoinColor),
+                              if (p.bits != null) CurrencyChip(icon: kBitsIcon, value: p.bits!, color: kBitsColor),
+                            ]),
+                          ),
                         const SizedBox(height: 10),
                         if (!me && !p.isBot)
                           Row(

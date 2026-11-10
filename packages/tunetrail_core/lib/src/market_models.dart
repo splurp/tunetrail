@@ -13,7 +13,9 @@ class MarketPlayer {
     List<CardPayload>? editionShowcase,
     Set<String>? blocked,
     List<FavoriteArtist>? favoriteArtists,
+    Map<String, dynamic>? look,
   })  : favoriteArtists = favoriteArtists ?? [],
+        look = look ?? {},
         stats = stats ?? {},
         editionShowcase = editionShowcase ?? [],
         blocked = blocked ?? {};
@@ -37,6 +39,10 @@ class MarketPlayer {
   /// Shown on the player's profile.
   List<FavoriteArtist> favoriteArtists;
 
+  /// How their character looks (for their profile): figure colour and
+  /// equipped hat, shirt, backpack and pet ids.
+  Map<String, dynamic> look;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
@@ -49,6 +55,7 @@ class MarketPlayer {
         if (editionShowcase.isNotEmpty) 'editions': [for (final c in editionShowcase) c.toJson()],
         if (blocked.isNotEmpty) 'blocked': blocked.toList(),
         if (favoriteArtists.isNotEmpty) 'favArtists': [for (final a in favoriteArtists) a.toJson()],
+        if (look.isNotEmpty) 'look': look,
       };
   factory MarketPlayer.fromJson(Map<String, dynamic> j) => MarketPlayer(
         id: j['id'] as String,
@@ -62,6 +69,7 @@ class MarketPlayer {
         editionShowcase: [for (final c in (j['editions'] as List? ?? const [])) CardPayload.fromJson(c as Map<String, dynamic>)],
         blocked: {for (final x in (j['blocked'] as List? ?? const [])) x as String},
         favoriteArtists: [for (final a in (j['favArtists'] as List? ?? const [])) FavoriteArtist.fromJson(a as Map<String, dynamic>)],
+        look: (j['look'] as Map<String, dynamic>?) ?? {},
       );
 }
 

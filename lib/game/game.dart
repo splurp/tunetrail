@@ -478,7 +478,7 @@ class Game extends ChangeNotifier {
   void _scheduleProfileSync() {
     if (!_canPublish) return;
     final sig = '${profile.profileTheme}|${profile.level}|${profile.editionShowcase.join(',')}|${profile.totalCaught ~/ 10}|${profile.tradesCompleted}|'
-        '${profile.favoriteArtists.map((a) => a.id).join(',')}';
+        '${profile.favoriteArtists.map((a) => a.id).join(',')}|${profile.figureColor}|${profile.hat}|${profile.shirt}|${profile.backpack}|${profile.pet}';
     if (sig == _profileSig) return;
     _profileSync?.cancel();
     _profileSync = Timer(const Duration(seconds: 4), () async {
@@ -489,6 +489,13 @@ class Game extends ChangeNotifier {
           stats: _publicStats,
           editions: [for (final u in profile.editionShowcase) ?collection.byUid(u)?.toPayload()],
           favoriteArtists: profile.favoriteArtists,
+          look: {
+            'color': profile.figureColor,
+            'hat': ?profile.hat,
+            'shirt': ?profile.shirt,
+            'backpack': ?profile.backpack,
+            'pet': ?profile.pet,
+          },
         );
         _profileSig = sig;
       } catch (_) {}

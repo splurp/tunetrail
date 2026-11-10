@@ -46,7 +46,7 @@ abstract class MarketBackend {
 
   /// Null when [name] can be used, else why not.
   Future<String?> checkUsername(String name);
-  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions, List<FavoriteArtist>? favoriteArtists});
+  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions, List<FavoriteArtist>? favoriteArtists, Map<String, dynamic>? look});
   Future<void> removeShowcase();
   Future<void> uploadCollection(List<CardPayload> cards);
   Future<List<PlayerSummary>> searchPlayers(String query);
@@ -324,8 +324,8 @@ class LocalMarket extends MarketBackend {
   }
 
   @override
-  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions, List<FavoriteArtist>? favoriteArtists}) async =>
-      engine.setPublicProfile(playerId, theme: theme, level: level, stats: stats, editionShowcase: editions, favoriteArtists: favoriteArtists);
+  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions, List<FavoriteArtist>? favoriteArtists, Map<String, dynamic>? look}) async =>
+      engine.setPublicProfile(playerId, theme: theme, level: level, stats: stats, editionShowcase: editions, favoriteArtists: favoriteArtists, look: look);
   @override
   Future<void> removeShowcase() async => engine.removeShowcase(playerId);
   @override
@@ -535,13 +535,14 @@ class RemoteMarket extends MarketBackend {
   }
 
   @override
-  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions, List<FavoriteArtist>? favoriteArtists}) async =>
+  Future<void> setPublicProfile({String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editions, List<FavoriteArtist>? favoriteArtists, Map<String, dynamic>? look}) async =>
       _send('PUT', '/me/profile', body: {
         'theme': ?theme,
         'level': ?level,
         'stats': ?stats,
         if (editions != null) 'editions': [for (final c in editions) c.toJson()],
         if (favoriteArtists != null) 'favArtists': [for (final a in favoriteArtists) a.toJson()],
+        'look': ?look,
       });
   @override
   Future<void> removeShowcase() async => _send('POST', '/showcases/me/remove');

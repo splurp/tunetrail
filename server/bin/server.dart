@@ -338,6 +338,7 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}, Ec
           unawaited(catalog.ensureArtists(ids.take(200)).catchError((Object _) {}));
         }
         m.setPublicProfile(id,
+            look: b['look'] as Map<String, dynamic>?,
             theme: b['theme'] as String?,
             level: (b['level'] as num?)?.toInt(),
             stats: b['stats'] == null ? null : {for (final e in (b['stats'] as Map<String, dynamic>).entries) if (e.value is num) e.key: e.value as num},
@@ -368,7 +369,16 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}, Ec
         final q = req.url.queryParameters['q'] ?? '';
         return ok([for (final p in m.searchPlayers(q, excludeId: me)) p.toJson()]);
       }));
-  r.get('/players/<id>', (Request req, String id) => guard(() async => ok(m.publicProfile(id, viewerId: pid(req)).toJson())));
+  r.get('/players/<id>', (Request req, String id) => guard(() async {
+        final j = m.publicProfile(id, viewerId: pid(req)).toJson();
+        // Balances of players on the server economy are shown on profiles.
+        final a = econ?.accounts[id];
+        if (a != null && a.imported) {
+          j['coins'] = a.coins;
+          j['bits'] = a.bits;
+        }
+        return ok(j);
+      }));
   r.get('/players/<id>/collection', (Request req, String id) => guard(() async {
         pid(req);
         final q = req.url.queryParameters;

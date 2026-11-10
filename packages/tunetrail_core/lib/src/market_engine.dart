@@ -504,8 +504,17 @@ class MarketEngine {
 
   /// Updates [id]'s public profile details.
   void setPublicProfile(String id,
-      {String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editionShowcase, List<FavoriteArtist>? favoriteArtists}) {
+      {String? theme, int? level, Map<String, num>? stats, List<CardPayload>? editionShowcase, List<FavoriteArtist>? favoriteArtists, Map<String, dynamic>? look}) {
     final p = _player(id);
+    if (look != null) {
+      final id = RegExp(r'^[a-z]{2,10}_[a-z0-9_]{1,30}$');
+      String? item(Object? v) => v is String && id.hasMatch(v) ? v : null;
+      p.look = {
+        if (look['color'] is num) 'color': (look['color'] as num).toInt() & 0xFFFFFFFF,
+        for (final k in const ['hat', 'shirt', 'backpack', 'pet'])
+          if (item(look[k]) != null) k: item(look[k]),
+      };
+    }
     if (favoriteArtists != null) {
       if (favoriteArtists.length > 5000) throw MarketException('Too many favourite artists');
       p.favoriteArtists = favoriteArtists;
@@ -588,6 +597,7 @@ class MarketEngine {
       cardCount: collections[id]?.length ?? 0,
       blockedByMe: viewerId != null && (players[viewerId]?.blocked.contains(id) ?? false),
       isBot: p.isBot,
+      look: p.look,
     );
   }
 

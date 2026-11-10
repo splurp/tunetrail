@@ -128,8 +128,11 @@ class _PatternPainter extends CustomPainter {
 
 /// The header of a profile page: the player's name over their theme.
 class ProfileBanner extends StatelessWidget {
-  const ProfileBanner({super.key, required this.themeId, required this.name, this.subtitle, this.actions = const [], this.height = 132});
+  const ProfileBanner({super.key, required this.themeId, required this.name, this.subtitle, this.actions = const [], this.height = 132, this.portrait});
   final String themeId;
+
+  /// The character portrait on the right half (it may lean out of it).
+  final Widget? portrait;
   final String name;
   final String? subtitle;
   final List<Widget> actions;
@@ -140,12 +143,12 @@ class ProfileBanner extends StatelessWidget {
     final t = profileThemeById(themeId);
     final light = t.light;
     final fg = light ? Colors.black : Colors.white;
-    return SizedBox(
+    final banner = SizedBox(
       height: height,
       child: ProfileThemeBackground(
         theme: t,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          padding: EdgeInsets.fromLTRB(16, 12, portrait == null ? 12 : 12 + 128, 12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(mainAxisAlignment: MainAxisAlignment.end, children: actions),
             const Spacer(),
@@ -158,6 +161,13 @@ class ProfileBanner extends StatelessWidget {
         ),
       ),
     );
+    if (portrait == null) return banner;
+    // The portrait sits over the right half (outside the banner's clip, so
+    // the character can lean out of its circle).
+    return Stack(clipBehavior: Clip.none, children: [
+      banner,
+      Positioned(right: 14, top: (height - 112) / 2, width: 112, height: 112, child: portrait!),
+    ]);
   }
 }
 
