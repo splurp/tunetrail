@@ -38,8 +38,19 @@ if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
   exit 1
 }
 
+# Flutter needs Windows Developer Mode (symlinks) to build plugins.
+$dev = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -ErrorAction SilentlyContinue
+if (-not $dev -or $dev.AllowDevelopmentWithoutDevLicense -ne 1) {
+  Write-Host 'Turn on Windows Developer Mode first (Flutter needs it to build plugins):' -ForegroundColor Red
+  Write-Host '  Settings > System > For developers > Developer Mode  (opening it now)' -ForegroundColor Red
+  Start-Process 'ms-settings:developers'
+  exit 1
+}
+
 flutter pub get
+if ($LASTEXITCODE -ne 0) { Write-Host 'flutter pub get failed - see the messages above.' -ForegroundColor Red; exit 1 }
 flutter build windows --release --no-tree-shake-icons @defines
+if ($LASTEXITCODE -ne 0) { Write-Host 'The build failed - see the messages above.' -ForegroundColor Red; exit 1 }
 $out = Join-Path $root 'build\windows\x64\runner\Release'
 $dest = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Tunetrail-ADMIN'
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }

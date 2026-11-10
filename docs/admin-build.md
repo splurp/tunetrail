@@ -14,7 +14,9 @@ listed in `ADMINS` in the server's `.env`.
    `C:\src\flutter`, then add `C:\src\flutter\bin` to your PATH
    (Start → "Edit the system environment variables" → Environment Variables →
    Path → Edit → New). Open a new PowerShell and run `flutter doctor`.
-4. Get the code: `git clone https://github.com/splurp/tunetrail.git` then
+4. Turn on **Developer Mode** (Settings → System → For developers; on Windows 10:
+   Update & Security → For developers). Flutter needs it to build plugins.
+5. Get the code: `git clone https://github.com/splurp/tunetrail.git` then
    `cd tunetrail` and `git checkout ccr-3946c635-1vgat4`.
 
 ## Each time
