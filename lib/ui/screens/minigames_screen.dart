@@ -63,6 +63,16 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
           ),
           const SizedBox(height: 12),
           _GameCard(
+            id: 'backwards',
+            icon: Icons.fast_rewind_rounded,
+            title: 'Backwards Guesser',
+            body: 'Name a huge hit played in reverse. Each miss (or skip) plays a longer clip: 3 s → 5 → 10 → 20 → 30 s.',
+            rewards: 'Win up to 5 bits per game!',
+            open: data == null ? null : () => SongGuesserScreen(data: data, backwards: true),
+            onReturn: () => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          _GameCard(
             id: 'artist',
             icon: Icons.person_search,
             title: 'Artist Guesser',
@@ -75,20 +85,10 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
           _GameCard(
             id: 'album',
             icon: Icons.album,
-            title: 'Art Guesser',
+            title: 'Artdentify',
             body: 'Name the album from its cover art.',
             rewards: 'Win up to 3 bits per game!',
             open: data == null || pool == 0 ? null : () => AlbumGuesserScreen(data: data),
-            onReturn: () => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-          _GameCard(
-            id: 'trivia',
-            icon: Icons.quiz_outlined,
-            title: 'Trivia',
-            body: '3 multiple-choice questions about popular artists${g.profile.favoriteArtists.isEmpty ? '' : ' and your favourites'}: hits, albums, debut and hometown.',
-            rewards: 'Win up to 3 bits per game!',
-            open: data == null ? null : () => TriviaScreen(data: data),
             onReturn: () => setState(() {}),
           ),
           const SizedBox(height: 12),
@@ -103,12 +103,12 @@ class _MinigamesScreenState extends State<MinigamesScreen> {
           ),
           const SizedBox(height: 12),
           _GameCard(
-            id: 'backwards',
-            icon: Icons.fast_rewind_rounded,
-            title: 'Backwards',
-            body: 'Name a huge hit played in reverse. Each miss (or skip) plays a longer clip: 3 s → 5 → 10 → 20 → 30 s.',
-            rewards: 'Win up to 5 bits per game!',
-            open: data == null ? null : () => SongGuesserScreen(data: data, backwards: true),
+            id: 'trivia',
+            icon: Icons.quiz_outlined,
+            title: 'Trivia',
+            body: '3 multiple-choice questions about popular artists${g.profile.favoriteArtists.isEmpty ? '' : ' and your favourites'}: hits, albums, debut and hometown.',
+            rewards: 'Win up to 3 bits per game!',
+            open: data == null ? null : () => TriviaScreen(data: data),
             onReturn: () => setState(() {}),
           ),
           const SizedBox(height: 8),
@@ -548,7 +548,7 @@ class _SongGuesserScreenState extends State<SongGuesserScreen> {
     final s = _song;
     final done = _solved || _gaveUp;
     return Scaffold(
-      appBar: AppBar(title: Text(widget.backwards ? 'Backwards' : 'Song Guesser')),
+      appBar: AppBar(title: Text(widget.backwards ? 'Backwards Guesser' : 'Song Guesser')),
       body: ContentWidth(
         maxWidth: 720,
         child: _loading
@@ -849,7 +849,7 @@ class _ArtistGuesserScreenState extends State<ArtistGuesserScreen> {
 }
 
 // ======================================================================
-/// Art Guesser: name the album from its cover. 3 / 2 / 1 bits for
+/// Artdentify: name the album from its cover. 3 / 2 / 1 bits for
 /// the first three tries, then unlimited tries without a reward.
 class AlbumGuesserScreen extends StatefulWidget {
   const AlbumGuesserScreen({super.key, required this.data});
@@ -957,7 +957,7 @@ class _AlbumGuesserScreenState extends State<AlbumGuesserScreen> {
     final wrong = _guesses.length;
     final done = _solved || _gaveUp;
     return Scaffold(
-      appBar: AppBar(title: const Text('Art Guesser')),
+      appBar: AppBar(title: const Text('Artdentify')),
       body: ContentWidth(
         maxWidth: 720,
         child: _loading
