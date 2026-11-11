@@ -50,7 +50,7 @@ class CellTerrain {
 /// something (see [FeatureKind.nest] and the rewards below).
 enum FeatureKind {
   bush(Terrain.grass, 'Bush', 1),
-  rocks(Terrain.rock, 'Rock pile', 0.25),
+  rocks(Terrain.rock, 'Rock pile', 1),
   lilypad(Terrain.water, 'Lily pad', 0.5),
   sapling(Terrain.wood, 'Sapling', 0.25),
   sandcastle(Terrain.sand, 'Sand castle', 0.1),

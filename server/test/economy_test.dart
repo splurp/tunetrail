@@ -210,8 +210,8 @@ void main() {
       final bushes = count(Terrain.grass), pads = count(Terrain.water), rocks = count(Terrain.rock), grates = count(Terrain.street);
       expect(count(Terrain.urban), 0); // grates are only in the street
       expect(bushes, greaterThan(pads));
-      expect(pads, greaterThan(rocks));
-      expect(rocks, greaterThan(grates));
+      expect(rocks, greaterThan(pads)); // rock piles: as common as bushes
+      expect(pads, greaterThan(grates));
       // Spacing holds within and across cells.
       for (final t in [Terrain.grass, Terrain.water, Terrain.street]) {
         final fs = [
