@@ -203,9 +203,10 @@ const double _srcTailFade = 0.15;
 const double _songAiw = 6.542;
 const double _songDownbeat = 6.664; // the beat that hook leads into
 const double _songFrom = _songAiw - 0.1; // a hair before "And"
-// Kanye's last word ends about 23.0; full volume to 23.3, then a quick fade.
+// Kanye's last word comes on the bar line at 24.221 (vocals 24.0–24.9):
+// full volume to 25.0, then a quick fade.
 const double _songFade = 0.4;
-const double _songTo = 23.3 + _songFade;
+const double _songTo = 25.0 + _songFade;
 // I Wonder's downbeat on Labi's 16th beat after his.
 const double _cut = (_srcDownbeat + 16 * _srcBeat - _srcFrom) - (_songDownbeat - _songFrom);
 const double _songEnd = _cut + (_songTo - _songFrom);
@@ -223,12 +224,12 @@ final _iWonderLines = <(int, double, double)>[
   (4, _cut, _song(7.9)),
   (5, _song(7.9), _song(10.3)),
   // Kanye's later lines sit on I Wonder's bar lines (downbeats 16.697,
-  // 19.205, 21.713); his last word is at about 22.2–23.0.
+  // 19.205, 21.713, 24.221); his last word is at about 24.0–24.9.
   (6, _song(10.3), _song(16.9)),
   (7, _song(16.9), _song(19.2)),
-  (8, _song(19.2), _song(22.2)),
-  (9, _song(22.2), _song(23.3)),
-  (10, _song(23.3), _songEnd),
+  (8, _song(19.2), _song(24.0)),
+  (9, _song(24.0), _song(25.0)),
+  (10, _song(25.0), _songEnd),
 ];
 
 final _curated = <SampleInfo>[
