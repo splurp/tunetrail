@@ -997,7 +997,9 @@ class _Hud extends StatelessWidget {
     final frac = need == 0 ? 1.0 : ((p.xp - from) / need).clamp(0.0, 1.0);
     final zone = g.zoneHere.active;
     final battle = g.world.battles.where((b) => !b.joined && b.endAt - g.world.serverNow > 8000).firstOrNull;
-    final status = g.findingSongs
+    final status = !g.serverReachable && g.spawns.isEmpty
+        ? 'Can\'t reach the game server — retrying…'
+        : g.findingSongs
         ? 'Finding songs nearby…'
         : (g.mapData.tiles.isEmpty && g.mapData.isLoading)
         ? 'Loading map…'

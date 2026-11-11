@@ -222,7 +222,9 @@ class Game extends ChangeNotifier {
         if (PlayerProfile.builtInServer.isEmpty) {
           toast('Market server unreachable — using local market');
         } else {
-          return; // Stay online; requests retry as the player uses the market.
+          // Stay online and keep trying (the server may be restarting).
+          _serverUnreachable();
+          return;
         }
       }
       if (PlayerProfile.builtInServer.isNotEmpty) return;
@@ -247,6 +249,33 @@ class Game extends ChangeNotifier {
   Future<void> report(ReportKind kind, String targetId, String label, String reason, String details, {CardPayload? card}) =>
       market.report(kind, targetId, label, reason, details, card: card);
 
+  /// False while the game can't reach its server (it keeps retrying).
+  bool serverReachable = true;
+  Timer? _reconnect;
+  int _reconnectTries = 0;
+
+  /// The server didn't answer: try again shortly (10 s, backing off to a
+  /// minute). Without this a game opened while the server was restarting
+  /// stayed offline — no songs, no admin tools — until it was restarted.
+  void _serverUnreachable() {
+    serverReachable = false;
+    notifyListeners();
+    if (_reconnect?.isActive == true) return;
+    final wait = Duration(seconds: math.min(60, 10 * (1 + _reconnectTries)));
+    _reconnectTries++;
+    _reconnect = Timer(wait, () async {
+      final m = market;
+      if (m is! RemoteMarket) return;
+      try {
+        await m.register(profile.playerId, profile.name);
+      } catch (_) {
+        _serverUnreachable();
+        return;
+      }
+      await refreshAccount();
+    });
+  }
+
   /// Account details from the server: admin flag and unread messages.
   Future<void> refreshAccount() async {
     unawaited(refreshBlockedSongs());
@@ -254,7 +283,13 @@ class Game extends ChangeNotifier {
     if (m is! RemoteMarket || (profile.authToken.isEmpty && onlineAccounts)) return;
     try {
       final j = await m.me();
+      serverReachable = true;
+      _reconnectTries = 0;
       profile.isAdmin = j['admin'] as bool? ?? false;
+      // The joystick (admin builds) depends on being an admin, which is only
+      // known now: a joystick switched on before launch works straight away.
+      final joy = kAdminBuild && profile.debugEnabled && profile.joystickEnabled;
+      if (joy != location.joystickMode) location.setJoystickMode(joy);
       unreadMessages.value = (j['unread'] as num?)?.toInt() ?? unreadMessages.value;
       profile.changed();
       _serverHasEconomy = j['economy'] == true;
@@ -263,7 +298,10 @@ class Game extends ChangeNotifier {
       } else {
         _refreshSpawns(force: true);
       }
-    } catch (_) {}
+    } catch (_) {
+      _serverUnreachable();
+      return;
+    }
     await registerPush();
   }
 
@@ -1939,6 +1977,7 @@ class Game extends ChangeNotifier {
   void dispose() {
     _exitListener?.dispose();
     _tick?.cancel();
+    _reconnect?.cancel();
     _inboxTimer?.cancel();
     _collectionSync?.cancel();
     _profileSync?.cancel();

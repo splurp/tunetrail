@@ -7,6 +7,10 @@ import 'package:postgres/postgres.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 /// Where the server keeps its state between restarts.
+/// Each write goes through its own temporary file (two saves of one
+/// account at once used to collide on a shared one).
+int _tmpN = 0;
+
 abstract class Store {
   Future<Map<String, dynamic>?> load();
   Future<void> save(Map<String, dynamic> state);
@@ -58,7 +62,7 @@ class FileStore implements Store {
 
   @override
   Future<void> save(Map<String, dynamic> state) async {
-    final tmp = File('$path.tmp');
+    final tmp = File('$path.${_tmpN++}.tmp');
     await tmp.writeAsString(jsonEncode(state));
     await tmp.rename(path);
   }
@@ -123,7 +127,7 @@ class FileStore implements Store {
       {Map<int, CardPayload?> changed = const {}, List<CardPayload>? allCards, required List<CardPayload> Function() currentCards}) async {
     await _accounts.create(recursive: true);
     final name = sha256.convert(utf8.encode(id)).toString();
-    final f = File('${_accounts.path}/$name.json'), tmp = File('${f.path}.tmp');
+    final f = File('${_accounts.path}/$name.json'), tmp = File('${f.path}.${_tmpN++}.tmp');
     await tmp.writeAsString(jsonEncode({'data': data, 'cards': [for (final c in allCards ?? currentCards()) c.toJson()]}));
     await tmp.rename(f.path);
   }
@@ -149,7 +153,7 @@ class FileStore implements Store {
     await _collections.create(recursive: true);
     // File names come from a hash: player ids never become paths.
     final name = sha256.convert(utf8.encode(playerId)).toString();
-    final f = File('${_collections.path}/$name.json'), tmp = File('${f.path}.tmp');
+    final f = File('${_collections.path}/$name.json'), tmp = File('${f.path}.${_tmpN++}.tmp');
     await tmp.writeAsString(jsonEncode({'id': playerId, 'cards': cards}));
     await tmp.rename(f.path);
   }
