@@ -81,6 +81,21 @@ abstract final class FeatureMeshes {
     return hsl.withLightness(l.clamp(0.0, 1.0)).toColor();
   }
 
+  /// Whether a theme is a light one (its ground is light).
+  static bool lightTheme(MapPalette p) => HSLColor.fromColor(p.ground).lightness > 0.5;
+
+  /// The glow of features with something to give: the theme's accent on
+  /// dark themes, a dark shade of it on light ones (a bright glow would
+  /// vanish into a light ground).
+  static Color glowColor(MapPalette p) {
+    if (!lightTheme(p)) return p.accent;
+    final a = HSLColor.fromColor(p.accent);
+    return a.withLightness((a.lightness * 0.45).clamp(0.12, 0.32)).withSaturation((a.saturation + 0.15).clamp(0.0, 1.0)).toColor();
+  }
+
+  /// Extra scale per kind (saplings are drawn twice the mesh's size).
+  static double sizeOf(FeatureKind k) => k == FeatureKind.sapling ? 2.0 : 1.0;
+
   static FeatureMesh of(FeatureKind k, int variant, Color c) {
     final v = variant % variants;
     final key = Object.hash(k, v, c.toARGB32());
@@ -214,11 +229,11 @@ class FeaturesPainter extends CustomPainter {
       if (alpha <= 0.02) continue;
       var c = colors[f.kind] ??= FeatureMeshes.colorFor(f.kind, palette);
       // The glowing ones are a touch brighter.
-      if (f.glow) c = Color.lerp(c, palette.accent, 0.35)!;
+      if (f.glow) c = Color.lerp(c, FeatureMeshes.glowColor(palette), 0.35)!;
       final variant = f.feature.variant;
       final mesh = FeatureMeshes.of(f.kind, variant, c);
       final yaw = (variant % 628) / 100.0;
-      final scale = 0.85 + ((variant >> 8) % 100) / 100 * 0.4;
+      final scale = (0.85 + ((variant >> 8) % 100) / 100 * 0.4) * FeatureMeshes.sizeOf(f.kind);
       final cy = math.cos(yaw), sy = math.sin(yaw);
       _grow(tris + mesh.n);
       final v = mesh.v, nm = mesh.normal;

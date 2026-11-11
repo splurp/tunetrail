@@ -133,6 +133,22 @@ class WorldState extends ChangeNotifier {
   (double, double)? _place(MapData map, WorldFeature f) {
     var (x, y) = map.toWorld(f.lat, f.lng);
     final margin = f.kind == FeatureKind.grate ? 5.0 : 7.0;
+    if (f.kind == FeatureKind.lilypad) {
+      // Lily pads float wholly on water: the map's zone squares are ~28 m,
+      // so on a thin lake or river the spot can be on the bank — move the
+      // pad onto the water nearby, or leave it out.
+      bool afloat(double px, double py) =>
+          map.inWater(px, py) && map.inWater(px + 6, py) && map.inWater(px - 6, py) && map.inWater(px, py + 6) && map.inWater(px, py - 6);
+      if (afloat(x, y)) return (x, y);
+      for (final r in const [8.0, 16.0, 24.0]) {
+        for (var k = 0; k < 8; k++) {
+          final a = (f.variant % 8 + k) * math.pi / 4;
+          final nx = x + math.cos(a) * r, ny = y + math.sin(a) * r;
+          if (afloat(nx, ny)) return (nx, ny);
+        }
+      }
+      return null;
+    }
     if (f.kind == FeatureKind.grate) {
       // Sewer grates are only ever in the street: on the road's centre
       // line, or not at all.

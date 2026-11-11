@@ -317,12 +317,14 @@ class _AdminToolsState extends State<_AdminTools> {
           value: _progress['perfect'] == true,
           onChanged: _busy || _progress.isEmpty ? null : _perfect,
         ),
-        const Divider(height: 32),
-        const SectionLabel('Teleport'),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          OutlinedButton.icon(onPressed: _busy ? null : _goTo, icon: const Icon(Icons.near_me_outlined), label: Text('Go to ${widget.name}')),
-          OutlinedButton.icon(onPressed: _busy ? null : _bring, icon: const Icon(Icons.call_received), label: Text('Bring ${widget.name} to me')),
-        ]),
+        if (widget.playerId != GameScope.read(context).profile.playerId) ...[
+          const Divider(height: 32),
+          const SectionLabel('Teleport'),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            OutlinedButton.icon(onPressed: _busy ? null : _goTo, icon: const Icon(Icons.near_me_outlined), label: Text('Go to ${widget.name}')),
+            OutlinedButton.icon(onPressed: _busy ? null : _bring, icon: const Icon(Icons.call_received), label: Text('Bring ${widget.name} to me')),
+          ]),
+        ],
         const Divider(height: 32),
         const SectionLabel('DJ battle'),
         const Text('A DJ turns up about 60 m from where this player last was, for half an hour. Only they see it; players nearby can join the battle.',

@@ -11,6 +11,7 @@ import '../../data/models.dart';
 import '../../game/store_catalog.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
+import 'admin_player_tools.dart';
 
 /// Developer tools: balances, free purchases, movement overrides and
 /// stress tests.
@@ -32,6 +33,14 @@ class _DebugScreenState extends State<DebugScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Debug menu')),
       body: ContentWidth(maxWidth: 900, child: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
+        if (g.serverEconomy && p.isAdmin)
+          ListTile(
+            leading: const Icon(Icons.admin_panel_settings_outlined, color: kAccent),
+            title: const Text('Admin tools for my account'),
+            subtitle: const Text('XP and bonuses, perfect ring taps, teleporting, summoning a DJ, gifts and spawns — the same tools as on other players\' profiles'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => showAdminPlayerTools(context, p.playerId, p.name),
+          ),
         const _H('Balances'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),

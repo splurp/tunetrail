@@ -657,7 +657,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   child: ValueListenableBuilder<double>(
                     valueListenable: _clock,
                     builder: (context, t, _) => CustomPaint(
-                      painter: FeatureGlowPainter(camera: _cam, features: g.world.features, color: theme.accent, time: t),
+                      painter: FeatureGlowPainter(camera: _cam, features: g.world.features, color: FeatureMeshes.glowColor(theme.palette), time: t),
                     ),
                   ),
                 ),

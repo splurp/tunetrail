@@ -978,6 +978,7 @@ class Game extends ChangeNotifier {
   bool get findingSongs => spawns.isEmpty && (_awaitingServerSpawns || _spawnFetching || (!serverEconomy && catalog.size < kMinLocalCatalog));
 
   bool _spawnFetching = false;
+  DateTime _lastSpawnFetch = DateTime.fromMillisecondsSinceEpoch(0);
   bool _spawnFetchAgain = false;
 
   /// Spawns that turned out to have no live footage (their Live edition is
@@ -1006,6 +1007,17 @@ class Game extends ChangeNotifier {
       _spawnFetchAgain = true;
       return;
     }
+    // At most one request every two seconds (walking fast — or a joystick
+    // at 50× — would otherwise ask several times a second).
+    final wait = 2000 - DateTime.now().difference(_lastSpawnFetch).inMilliseconds;
+    if (wait > 0) {
+      _spawnFetchAgain = true;
+      _spawnFetching = true;
+      await Future<void>.delayed(Duration(milliseconds: wait));
+      _spawnFetching = false;
+      _spawnFetchAgain = false;
+    }
+    _lastSpawnFetch = DateTime.now();
     _spawnFetching = true;
     try {
       final pos = location.position;

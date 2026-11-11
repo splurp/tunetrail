@@ -266,10 +266,15 @@ class SongCardView extends StatelessWidget {
     return Container(
       width: width,
       height: h,
+      // The border is drawn over the video, so it isn't hidden at the
+      // rounded corners.
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(width * 0.07),
+        border: Border.all(color: c.withValues(alpha: 0.9), width: 1.4),
+      ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(width * 0.07),
         color: Colors.black,
-        border: Border.all(color: c.withValues(alpha: 0.9), width: 1.4),
         boxShadow: [
           if (glow) BoxShadow(color: c.withValues(alpha: 0.28), blurRadius: width * 0.14),
           const BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 10)),

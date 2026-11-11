@@ -186,19 +186,24 @@ class SongPool {
     final ids = this.songs.keys.toList()..sort();
     for (final id in ids) {
       final s = this.songs[id]!;
-      _pools.putIfAbsent(s.genreId, () => List.generate(5, (_) => <int>[]))[rarities[id]!.index].add(id);
+      _pools.putIfAbsent(s.genreId, () => List.generate(5, (_) => _Bucket()))[rarities[id]!.index].add(id, s.artistId);
+    }
+    for (final g in _pools.values) {
+      for (final b in g) {
+        b.seal();
+      }
     }
   }
 
   final Map<int, SongInfo> songs = {};
   late final Map<int, Rarity> rarities;
-  final Map<int, List<List<int>>> _pools = {};
+  final Map<int, List<_Bucket>> _pools = {};
   final Map<int, List<SongInfo>> _byArtist = {};
 
   int get size => songs.length;
   Rarity rarityOf(int songId) => rarities[songId] ?? Rarity.common;
 
-  List<int>? _nearest(int genre, int r) {
+  _Bucket? _nearest(int genre, int r) {
     final pools = _pools[genre];
     if (pools == null) return null;
     for (var d = 0; d < 5; d++) {
@@ -235,7 +240,7 @@ class SongPool {
       pool = _nearest(any[rng.nextInt(any.length)], r);
     }
     if (pool == null || pool.isEmpty) return null;
-    return songs[pool[rng.nextInt(pool.length)]];
+    return songs[pool.pick(rng)];
   }
 
   /// A song by one of [favorites] of at least [min] rarity.
@@ -255,7 +260,7 @@ class SongPool {
   Iterable<MapEntry<int, List<SongInfo>>> artistsWithAtLeast(int min) => _byArtist.entries.where((e) => e.value.length >= min);
 
   /// Songs in a genre (all rarities).
-  int genreSize(int genreId) => _pools[genreId]?.fold<int>(0, (n, p) => n + p.length) ?? 0;
+  int genreSize(int genreId) => _pools[genreId]?.fold<int>(0, (n, p) => n + p.ids.length) ?? 0;
 
   /// Favourite artists' songs turn up [boost]× as often: returns a forced
   /// favourite pick with the right probability, else null.
@@ -270,6 +275,50 @@ class SongPool {
     final atRarity = [for (final s in favSongs) if (rarityOf(s.id) == rarity) s];
     final pick = atRarity.isNotEmpty ? atRarity : favSongs;
     return pick[rng.nextInt(pick.length)];
+  }
+}
+
+/// The songs of one genre and rarity, grouped by artist. A pick chooses
+/// the artist first (weighted by the square root of how many songs they
+/// have here), then one of their songs — so an artist with a hundred songs
+/// in the catalogue (a favourite someone added, a blind box) turns up ten
+/// times as often as one with a single song, not a hundred.
+class _Bucket {
+  final List<int> ids = [];
+  final Map<int, List<int>> _byArtist = {};
+  late final List<List<int>> _artists;
+  late final List<double> _cum;
+
+  bool get isEmpty => ids.isEmpty;
+  bool get isNotEmpty => ids.isNotEmpty;
+
+  void add(int id, int artistId) {
+    ids.add(id);
+    _byArtist.putIfAbsent(artistId, () => []).add(id);
+  }
+
+  void seal() {
+    final keys = _byArtist.keys.toList()..sort();
+    _artists = [for (final k in keys) _byArtist[k]!];
+    var t = 0.0;
+    _cum = [
+      for (final a in _artists) t += math.sqrt(a.length),
+    ];
+  }
+
+  int pick(Rng rng) {
+    final roll = rng.nextDouble() * _cum.last;
+    var lo = 0, hi = _cum.length - 1;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (_cum[mid] > roll) {
+        hi = mid;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    final a = _artists[lo];
+    return a[rng.nextInt(a.length)];
   }
 }
 

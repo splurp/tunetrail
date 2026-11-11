@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show PointMode;
 
 import 'package:flutter/material.dart';
 
@@ -14,13 +15,16 @@ class ProfileThemeBackground extends StatelessWidget {
   final double radius;
 
   @override
-  Widget build(BuildContext context) => ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: CustomPaint(
-          painter: _PatternPainter(theme),
-          child: child,
-        ),
-      );
+  // The pattern is painted once and kept (its own layer): without that,
+  // anything animating on top — a Canvas video, shiny glints — repainted
+  // thousands of dots every frame (another player's profile at ~30 FPS).
+  Widget build(BuildContext context) {
+    final bg = RepaintBoundary(child: CustomPaint(painter: _PatternPainter(theme), size: Size.infinite));
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: child == null ? bg : Stack(children: [Positioned.fill(child: bg), child!]),
+    );
+  }
 }
 
 class _PatternPainter extends CustomPainter {
@@ -41,11 +45,18 @@ class _PatternPainter extends CustomPainter {
       case ProfilePattern.none:
         break;
       case ProfilePattern.dots:
-        for (var y = 8.0; y < size.height; y += 16) {
-          for (var x = (y ~/ 16).isEven ? 8.0 : 16.0; x < size.width; x += 16) {
-            canvas.drawCircle(Offset(x, y), 1.8, fill);
-          }
-        }
+        // One draw call for all of them.
+        final pts = <Offset>[
+          for (var y = 8.0; y < size.height; y += 16)
+            for (var x = (y ~/ 16).isEven ? 8.0 : 16.0; x < size.width; x += 16) Offset(x, y),
+        ];
+        canvas.drawPoints(
+            PointMode.points,
+            pts,
+            Paint()
+              ..color = fill.color
+              ..strokeWidth = 3.6
+              ..strokeCap = StrokeCap.round);
       case ProfilePattern.stripes:
         p.strokeWidth = 10;
         for (var x = -size.height; x < size.width; x += 28) {

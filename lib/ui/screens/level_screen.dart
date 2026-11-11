@@ -172,7 +172,7 @@ class LevelScreen extends StatelessWidget {
             '+20 XP for Rares',
             '+50 XP for Epics',
             '+100 XP for Legendaries',
-            'Shinies: 5× the XP of their rarity',
+            '+25–500 XP for Shiny songs (5× the XP of their rarity)',
             '+1,000 XP for Canvas editions',
             '+2,000 XP for Sample and Live editions',
             '+$kTradeXp XP for each completed trade',

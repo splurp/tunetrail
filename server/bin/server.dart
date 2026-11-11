@@ -670,19 +670,27 @@ const _corsHeaders = {
   'access-control-allow-headers': 'content-type, authorization, x-player-id, x-player-name',
 };
 
-/// Simple per-address limit (120 requests a minute) against floods.
+/// Limits against floods: 300 requests a minute per player (by sign-in
+/// token or player id), and 1,200 per network address (players at home on
+/// one connection share an address).
 Middleware _rateLimit() {
-  final hits = <String, (int, int)>{}; // address → (window start ms, count)
+  final hits = <String, (int, int)>{}; // key → (window start ms, count)
+  bool over(String key, int limit, int now) {
+    final (start, n) = hits[key] ?? (now, 0);
+    final fresh = now - start > 60000;
+    final count = fresh ? 1 : n + 1;
+    hits[key] = (fresh ? now : start, count);
+    return count > limit;
+  }
+
   return (inner) => (req) async {
         final info = req.context['shelf.io.connection_info'] as HttpConnectionInfo?;
         final ip = req.headers['x-forwarded-for']?.split(',').first.trim() ?? info?.remoteAddress.address ?? '?';
+        final who = req.headers['authorization'] ?? req.headers['x-player-id'];
         final now = DateTime.now().millisecondsSinceEpoch;
-        final (start, n) = hits[ip] ?? (now, 0);
-        final fresh = now - start > 60000;
-        final count = fresh ? 1 : n + 1;
-        hits[ip] = (fresh ? now : start, count);
         if (hits.length > 50000) hits.removeWhere((_, v) => now - v.$1 > 60000);
-        if (count > 120) return Response(429, body: jsonEncode({'error': 'Too many requests — slow down'}));
+        final tooMany = over('ip:$ip', 1200, now) | (who != null && over('p:$who', 300, now));
+        if (tooMany) return Response(429, body: jsonEncode({'error': 'Too many requests — slow down'}));
         return inner(req);
       };
 }

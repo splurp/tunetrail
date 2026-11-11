@@ -233,6 +233,28 @@ class MapData extends ChangeNotifier {
     return false;
   }
 
+  /// Whether a world point lies on water (a river, lake or sea), by the
+  /// map's actual water shapes.
+  bool inWater(double x, double y) {
+    final t = tileAtWorld(x, y);
+    if (t == null) return false;
+    final tris = t.layers[GroundLayer.water], buckets = t.buckets[GroundLayer.water];
+    if (tris == null || buckets == null) return false;
+    for (var bi = 0; bi + 5 < buckets.length; bi += 6) {
+      if (x < buckets[bi + 2] || y < buckets[bi + 3] || x > buckets[bi + 4] || y > buckets[bi + 5]) continue;
+      final end = buckets[bi + 1].toInt();
+      for (var i = buckets[bi].toInt(); i + 6 <= end && i + 6 <= tris.length; i += 6) {
+        final ax = tris[i], ay = tris[i + 1], bx = tris[i + 2], by = tris[i + 3], cx = tris[i + 4], cy = tris[i + 5];
+        final d1 = (x - bx) * (ay - by) - (ax - bx) * (y - by);
+        final d2 = (x - cx) * (by - cy) - (bx - cx) * (y - cy);
+        final d3 = (x - ax) * (cy - ay) - (cx - ax) * (y - ay);
+        final neg = d1 < 0 || d2 < 0 || d3 < 0, pos = d1 > 0 || d2 > 0 || d3 > 0;
+        if (!(neg && pos)) return true;
+      }
+    }
+    return false;
+  }
+
   /// The nearest point on a road to a world point, with the road's
   /// direction there (unit vector), within [within] metres.
   (double, double, double, double)? nearestRoad(double x, double y, {double within = 45}) {

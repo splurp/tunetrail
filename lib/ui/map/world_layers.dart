@@ -120,7 +120,7 @@ class WorldTapLayer extends StatelessWidget {
 
         for (final f in game.world.features) {
           if (!f.glow) continue;
-          target(ValueKey('f${f.id}'), f.x, f.y, 9, 52, () => onFeature(f));
+          target(ValueKey('f${f.id}'), f.x, f.y, f.kind == FeatureKind.sapling ? 20 : 9, 52, () => onFeature(f));
         }
         for (final dj in game.world.djs) {
           final (x, y) = game.world.djPosition(dj);
