@@ -33,6 +33,10 @@ abstract class _Voice {
   Future<double?> position();
   void setVolume(double v);
   Future<void> seek(double secs);
+
+  /// Stops a clip that has finished. Muting isn't enough: Android's screen
+  /// recorder captures a media player at full volume whatever it's set to.
+  Future<void> pause() async {}
   Future<void> dispose();
 }
 
@@ -93,6 +97,8 @@ class _MediaVoice extends _Voice {
   void setVolume(double v) => c.setVolume(v);
   @override
   Future<void> seek(double secs) => c.seekTo(Duration(microseconds: (secs * 1e6).round()));
+  @override
+  Future<void> pause() => c.pause();
   @override
   Future<void> dispose() async {
     await c.pause();
@@ -168,7 +174,7 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
         final v = await _voiceFor(s, c.track);
         if (v == null) throw StateError('preview unavailable');
         _voices.add(v);
-        await v.prepare(c.from + (c.track == SampleTrack.source ? s.sourceShift : s.songShift) - _preroll(c, v));
+        await v.prepare(c.from + (c.track == SampleTrack.source ? s.sourceShift : s.songShift) - _preroll(c, v) + _lead(v));
         prepared.add((c, v));
       }
     } catch (e) {
@@ -195,7 +201,7 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
     }
 
     for (final (c, v) in prepared) {
-      final shift = c.track == SampleTrack.source ? s.sourceShift : s.songShift;
+      final shift = (c.track == SampleTrack.source ? s.sourceShift : s.songShift) + _lead(v);
       // Platform media players take a moment to get going after play():
       // they start early, muted, and the sync check (and any seek) happens
       // during that silent lead-in, so the audible start has no hitch.
@@ -214,7 +220,10 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
       });
       at(c.at, () => _fade(v, 0, c.volume, c.fadeIn));
       at(c.end - c.fadeOut, () => _fade(v, c.volume, 0, c.fadeOut));
-      at(c.end + 0.05, () => v.setVolume(0));
+      at(c.end + 0.05, () {
+        v.setVolume(0);
+        if (v is _MediaVoice) v.pause();
+      });
     }
     at(s.length + 0.2, stop);
 
@@ -246,6 +255,14 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
       value = SamplePlayback(songId: s.song.id, stage: stage, stages: s.stages, sourcePos: srcPos, songPos: songPos);
     });
   }
+
+  /// How far ahead of its reported position a media-player voice plays so
+  /// it's heard in time with the audio engine. Android's media player
+  /// reports positions about 90 ms before the audio comes out (measured
+  /// from a screen recording: Labi Siffre landed 97 ms after I Wonder);
+  /// elsewhere the two agree.
+  static final double _androidMediaLead = defaultTargetPlatform == TargetPlatform.android && !kIsWeb ? 0.09 : 0;
+  static double _lead(_Voice v) => v is _MediaVoice ? _androidMediaLead : 0;
 
   /// Silent lead-in before a clip: media-player voices need one (their
   /// start latency varies); engine voices start sample-accurately.
