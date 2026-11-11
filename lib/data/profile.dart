@@ -210,6 +210,13 @@ class PlayerProfile extends ChangeNotifier {
   /// Whether nearby players see this player on their map.
   bool showOnMap = true;
 
+  /// Admin testing: every ring tap is perfect (set by an admin, from the
+  /// server).
+  bool perfectRing = false;
+
+  /// The last admin teleport already carried out (its time).
+  int teleportDoneAt = 0;
+
   /// Bonus choices already offered in a pop-up (so it shows once per level).
   int bonusPromptedAt = 0;
 
@@ -318,6 +325,8 @@ class PlayerProfile extends ChangeNotifier {
         'bonuses': bonuses.toJson(),
         'treasure': ?treasure,
         'showOnMap': showOnMap,
+        'perfectRing': perfectRing,
+        'tpDone': teleportDoneAt,
         'bonusPrompt': bonusPromptedAt,
       };
 
@@ -330,6 +339,8 @@ class PlayerProfile extends ChangeNotifier {
     bonuses = Bonuses.fromJson(j['bonuses'] as Map<String, dynamic>?);
     treasure = j['treasure'] as Map<String, dynamic>?;
     showOnMap = j['showOnMap'] as bool? ?? true;
+    perfectRing = j['perfectRing'] as bool? ?? false;
+    teleportDoneAt = (j['tpDone'] as num?)?.toInt() ?? 0;
     bonusPromptedAt = (j['bonusPrompt'] as num?)?.toInt() ?? 0;
     beatOffsetMs = (j['beatOffset'] as num?)?.toInt() ?? 0;
     soundEffects = j['sfx'] as bool? ?? true;

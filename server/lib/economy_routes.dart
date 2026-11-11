@@ -148,11 +148,26 @@ void addEconomyRoutes(
         final id = admin(req);
         return ok({'dj': e.adminSummonDj(id, Uri.decodeComponent(player))});
       }));
+  r.post('/admin/players/<player>/perfect', (Request req, String player) => guard(() async {
+        final id = admin(req);
+        final b = await body(req);
+        e.adminPerfectRing(id, Uri.decodeComponent(player), b['on'] == true);
+        return ok({'ok': true});
+      }));
+  r.post('/admin/players/<player>/goto', (Request req, String player) => guard(() async {
+        final id = admin(req);
+        return ok(e.adminWhereIs(id, Uri.decodeComponent(player)));
+      }));
+  r.post('/admin/players/<player>/bring', (Request req, String player) => guard(() async {
+        final id = admin(req);
+        e.adminBringPlayer(id, Uri.decodeComponent(player));
+        return ok({'ok': true});
+      }));
   r.get('/admin/players/<player>/progress', (Request req, String player) => guard(() async {
         admin(req);
         final a = e.accounts[Uri.decodeComponent(player)];
         if (a == null) return ok(const {});
-        return ok({'xp': a.xp, 'level': a.level, 'bonuses': a.bonuses.toJson()});
+        return ok({'xp': a.xp, 'level': a.level, 'bonuses': a.bonuses.toJson(), 'perfect': a.perfectRing});
       }));
   r.post('/spawns/<sid>/buy', (Request req, String sid) => guard(() async {
         final id = pid(req);

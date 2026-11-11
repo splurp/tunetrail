@@ -6,7 +6,20 @@ import 'song_catalog.dart';
 // ===================================================================== terrain
 /// What kind of ground a square of a spawn cell is, for the small features
 /// that stand on it.
-enum Terrain { unknown, water, grass, rock, wood, sand, urban }
+enum Terrain {
+  unknown,
+  water,
+  grass,
+  rock,
+  wood,
+  sand,
+
+  /// Built-up ground away from the street (yards, lots, blocks).
+  urban,
+
+  /// A street in a built-up area (where sewer grates go).
+  street,
+}
 
 /// The terrain of one spawn cell: the same 8×8 grid of ~25 m squares as
 /// [CellGround], read by the game from its map data.
@@ -36,16 +49,20 @@ class CellTerrain {
 /// Small things standing around the map. A few of them glow: those do
 /// something (see [FeatureKind.nest] and the rewards below).
 enum FeatureKind {
-  bush(Terrain.grass, 'Bush'),
-  rocks(Terrain.rock, 'Rock pile'),
-  lilypad(Terrain.water, 'Lily pad'),
-  sapling(Terrain.wood, 'Sapling'),
-  sandcastle(Terrain.sand, 'Sand castle'),
-  grate(Terrain.urban, 'Sewer grate');
+  bush(Terrain.grass, 'Bush', 1),
+  rocks(Terrain.rock, 'Rock pile', 0.25),
+  lilypad(Terrain.water, 'Lily pad', 0.5),
+  sapling(Terrain.wood, 'Sapling', 0.25),
+  sandcastle(Terrain.sand, 'Sand castle', 0.1),
+  grate(Terrain.street, 'Sewer grate', 0.1);
 
-  const FeatureKind(this.terrain, this.label);
+  const FeatureKind(this.terrain, this.label, this.density);
   final Terrain terrain;
   final String label;
+
+  /// How often it turns up compared with a bush (the most common): of
+  /// the spots spaced out for features, the share this kind keeps.
+  final double density;
 
   /// A glowing bush or sapling is a nest: songs spawn three times as often
   /// around it.
@@ -85,8 +102,11 @@ class WorldFeature {
 /// the place and its terrain (so they never move); which of them glow
 /// changes every day and is the server's secret.
 abstract final class WorldFeatures {
-  /// Share of squares that have a feature (about 13 per ~200 m cell).
-  static const double density = 0.2;
+  /// Features stand at least this far apart.
+  static const double minSpacing = 100;
+
+  /// Share of ~25 m squares that are a candidate spot (before spacing).
+  static const double candidateDensity = 0.2;
 
   /// 1 in [glowOdds] features glows on a given day.
   static const int glowOdds = 20;
@@ -96,14 +116,15 @@ abstract final class WorldFeatures {
 
   static const int _salt = 0x7ea7;
 
-  static List<WorldFeature> inCell(int cx, int cy, CellTerrain terrain) {
+  /// Where features could stand in a cell (before spacing them out).
+  static List<WorldFeature> candidates(int cx, int cy, CellTerrain terrain) {
     final out = <WorldFeature>[];
     final lngDeg = WorldSpawner.lngDegForRow(cy);
     for (var sq = 0; sq < CellTerrain.n * CellTerrain.n; sq++) {
       final kind = FeatureKind.on(terrain.squares[sq]);
       if (kind == null) continue;
       final r = Rng(hashInts([_salt, cx, cy, sq]));
-      if (r.nextDouble() >= density) continue;
+      if (r.nextDouble() >= candidateDensity) continue;
       final row = sq ~/ CellTerrain.n, col = sq % CellTerrain.n;
       // Near the middle of its square (what the map says the square is).
       final fy = (row + 0.5 + (r.nextDouble() - 0.5) * 0.7) / CellTerrain.n;
@@ -111,6 +132,52 @@ abstract final class WorldFeatures {
       out.add(WorldFeature(cx, cy, sq, kind, (cy + fy) * WorldSpawner.cellDeg, (cx + fx) * lngDeg));
     }
     return out;
+  }
+
+  static int _priority(WorldFeature f) => hashInts([_salt, f.cx, f.cy, f.square, 0x5ace]) & 0x7fffffff;
+
+  static double _metres(double lat1, double lng1, double lat2, double lng2) {
+    final dy = (lat2 - lat1) * 111132.95, dx = (lng2 - lng1) * 111319.49 * math.cos(lat1 * math.pi / 180);
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  /// The features of a cell, at least [minSpacing] apart from each other
+  /// and from those of the cells around it. A candidate stands if no
+  /// candidate within [minSpacing] outranks it (a fixed random rank), so
+  /// the answer is the same whoever works it out. [terrainOf] gives the
+  /// terrain of a cell (null where it isn't known: no candidates there).
+  static List<WorldFeature> inCell(int cx, int cy, CellTerrain? Function(int cx, int cy) terrainOf) {
+    final own = terrainOf(cx, cy);
+    if (own == null) return const [];
+    final mine = candidates(cx, cy, own);
+    if (mine.isEmpty) return const [];
+    final near = <WorldFeature>[...mine];
+    final (_, lng0) = WorldSpawner.cellCenter(cx, cy);
+    for (var dy = -1; dy <= 1; dy++) {
+      // Rows have different cell widths: find each row's neighbours by
+      // position, not by index.
+      final row = cy + dy;
+      final rcx = (lng0 / WorldSpawner.lngDegForRow(row)).floor();
+      for (var dx = -1; dx <= 1; dx++) {
+        final ox = rcx + dx;
+        if (ox == cx && row == cy) continue;
+        final t = terrainOf(ox, row);
+        if (t != null) near.addAll(candidates(ox, row, t));
+      }
+    }
+    return [
+      for (final f in mine)
+        // Spaced out first (over every kind), then thinned by kind — so
+        // spacing holds and rarer kinds stay rarer.
+        if (!near.any((o) => o.id != f.id && _outranks(o, f) && _metres(f.lat, f.lng, o.lat, o.lng) < minSpacing) &&
+            Rng(hashInts([_salt, f.cx, f.cy, f.square, 0x7417])).nextDouble() < f.kind.density)
+          f,
+    ];
+  }
+
+  static bool _outranks(WorldFeature a, WorldFeature b) {
+    final pa = _priority(a), pb = _priority(b);
+    return pa != pb ? pa > pb : a.id.compareTo(b.id) > 0;
   }
 
   /// Whether the feature in [square] of a cell glows on [day].
@@ -224,9 +291,43 @@ class DjNpc {
       );
 }
 
-/// Where the day's DJs stand: about one cell in [cellOdds], beside a road.
+/// Where the day's DJs stand: beside a road, never within [minSpacing] of
+/// each other.
 abstract final class WorldDjs {
   static const int cellOdds = 14;
+
+  /// DJs stand at least this far apart.
+  static const double minSpacing = 1000;
+
+  /// A DJ's spot is within ~130 m of its cell's middle, so cells whose
+  /// middles are this close could put two DJs too close together.
+  static const double _clearance = minSpacing + 260;
+
+  static bool _candidate(int seed, int cx, int cy, int day) => Rng(hashInts([seed, cx, cy, day, 0xd1])).nextInt(cellOdds) == 0;
+  static int _rank(int seed, int cx, int cy, int day) => hashInts([seed, cx, cy, day, 0xd3]) & 0x7fffffff;
+
+  /// Whether a cell may have a DJ today: it's a candidate, and no candidate
+  /// cell nearby outranks it.
+  static bool _stands(int seed, int cx, int cy, int day) {
+    if (!_candidate(seed, cx, cy, day)) return false;
+    final (lat, lng) = WorldSpawner.cellCenter(cx, cy);
+    final mine = _rank(seed, cx, cy, day);
+    final reach = (_clearance / 200).ceil() + 1;
+    for (var dy = -reach; dy <= reach; dy++) {
+      final row = cy + dy;
+      final rcx = (lng / WorldSpawner.lngDegForRow(row)).floor();
+      for (var dx = -reach; dx <= reach; dx++) {
+        final ox = rcx + dx;
+        if (ox == cx && row == cy) continue;
+        if (!_candidate(seed, ox, row, day)) continue;
+        final (olat, olng) = WorldSpawner.cellCenter(ox, row);
+        if (WorldFeatures._metres(lat, lng, olat, olng) >= _clearance) continue;
+        final r = _rank(seed, ox, row, day);
+        if (r > mine || (r == mine && (ox, row).hashCode > (cx, cy).hashCode)) return false;
+      }
+    }
+    return true;
+  }
 
   static const _names = [
     'Spinz', 'Echo', 'Crate', 'Wobble', 'Fader', 'Vinyl', 'Loop', 'Sub', 'Treble', 'Scratch', 'Nova', 'Pulse', 'Reverb', 'Static', 'Groove',
@@ -263,8 +364,8 @@ abstract final class WorldDjs {
   /// square of [ground]).
   static DjNpc? inCell(int seed, int cx, int cy, int day, CellGround ground, List<SongInfo> playable, {int expiresAt = 0}) {
     if (playable.isEmpty) return null;
-    final r = Rng(hashInts([seed, cx, cy, day, 0xd1]));
-    if (r.nextInt(cellOdds) != 0) return null;
+    if (!_stands(seed, cx, cy, day)) return null;
+    final r = Rng(hashInts([seed, cx, cy, day, 0xd1]))..nextInt(cellOdds);
     final built = [for (var i = 0; i < ground.squares.length; i++) if (ground.squares[i] == CellGround.built) i];
     if (built.isEmpty) return null;
     final sq = built[r.nextInt(built.length)];

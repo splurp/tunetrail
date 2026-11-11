@@ -66,7 +66,19 @@ abstract final class FeatureMeshes {
       FeatureKind.grate => p.roadMinor,
     };
     final light = HSLColor.fromColor(p.ground).lightness > 0.5;
-    return Color.lerp(base, light ? const Color(0xFF000000) : const Color(0xFFFFFFFF), 0.5)!;
+    var hsl = HSLColor.fromColor(base);
+    // The theme's own colour: the ground's hue where it has one, else the
+    // theme's accent (dark themes' grounds are near-black greys, which
+    // would make every feature plain grey).
+    if (hsl.saturation < 0.18) {
+      final a = HSLColor.fromColor(p.accent);
+      hsl = hsl.withHue(a.hue).withSaturation((a.saturation * 0.55).clamp(0.25, 0.6));
+    } else {
+      hsl = hsl.withSaturation(hsl.saturation.clamp(0.3, 0.85));
+    }
+    // Half-way to black on light themes, half-way to white on dark ones.
+    final l = light ? hsl.lightness * 0.5 : hsl.lightness + (1 - hsl.lightness) * 0.5;
+    return hsl.withLightness(l.clamp(0.0, 1.0)).toColor();
   }
 
   static FeatureMesh of(FeatureKind k, int variant, Color c) {

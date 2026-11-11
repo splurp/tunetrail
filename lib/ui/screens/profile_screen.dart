@@ -332,7 +332,7 @@ class _EditionShowcase extends StatelessWidget {
                         : GestureDetector(
                             onTap: add,
                             child: Container(
-                              height: w * 1.48,
+                              height: w * kCardAspect,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(w * 0.07),
                                 border: Border.all(color: Colors.white24),

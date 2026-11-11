@@ -166,12 +166,23 @@ class LevelScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           const SectionLabel('Earning XP'),
-          const Text(
-            'Catching songs: 5 Common · 10 Uncommon · 20 Rare · 50 Epic · 100 Legendary (Shinies ×5)\n'
-            'Canvas editions: 1,000 · Sample and Live editions: 2,000\n'
-            'Completed trades: $kTradeXp each · Minigames: 5 per bit won · Winning a DJ battle: $kDjBattleXp',
-            style: TextStyle(color: kTextSecondary, fontSize: 13, height: 1.5),
-          ),
+          for (final line in const [
+            '+5 XP for Commons',
+            '+10 XP for Uncommons',
+            '+20 XP for Rares',
+            '+50 XP for Epics',
+            '+100 XP for Legendaries',
+            'Shinies: 5× the XP of their rarity',
+            '+1,000 XP for Canvas editions',
+            '+2,000 XP for Sample and Live editions',
+            '+$kTradeXp XP for each completed trade',
+            '+5 XP for each bit won in minigames',
+            '+$kDjBattleXp XP for winning a DJ battle',
+          ])
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(line, style: const TextStyle(color: kTextSecondary, fontSize: 13)),
+            ),
         ]),
       ),
     );

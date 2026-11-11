@@ -94,6 +94,11 @@ class WorldState extends ChangeNotifier {
     return _terrainCache[key] = CellTerrain(squares).encode();
   }
 
+  CellTerrain? _terrain(int cx, int cy) {
+    final code = terrainOf(cx, cy);
+    return code == null ? null : CellTerrain.parse(code);
+  }
+
   /// The cells around the player, as the spawner counts them.
   List<(int, int)> _cells() {
     final p = g.location.position;
@@ -112,10 +117,7 @@ class WorldState extends ChangeNotifier {
     final map = g.mapData;
     final out = <MapFeature>[];
     for (final (cx, cy) in _cells()) {
-      final code = terrainOf(cx, cy);
-      final terrain = code == null ? null : CellTerrain.parse(code);
-      if (terrain == null) continue;
-      for (final f in WorldFeatures.inCell(cx, cy, terrain)) {
+      for (final f in WorldFeatures.inCell(cx, cy, _terrain)) {
         final placed = _place(map, f);
         if (placed == null) continue;
         out.add(MapFeature(f, placed.$1, placed.$2)..glow = _glow.contains(f.id));
@@ -132,11 +134,11 @@ class WorldState extends ChangeNotifier {
     var (x, y) = map.toWorld(f.lat, f.lng);
     final margin = f.kind == FeatureKind.grate ? 5.0 : 7.0;
     if (f.kind == FeatureKind.grate) {
-      final road = map.nearestRoad(x, y, within: 40);
-      if (road != null) {
-        x = road.$1;
-        y = road.$2;
-      }
+      // Sewer grates are only ever in the street: on the road's centre
+      // line, or not at all.
+      final road = map.nearestRoad(x, y, within: 30);
+      if (road == null) return null;
+      return (road.$1, road.$2);
     }
     if (!map.insideBuilding(x, y, margin: margin)) return (x, y);
     for (final r in const [14.0, 26.0, 38.0]) {

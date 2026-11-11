@@ -18,12 +18,18 @@ Color rarityColor(Rarity r) => Color(r.argb);
 /// glint, so thousands of shiny cards cost one ticker, not one each.
 final ValueNotifier<double> glintClock = ValueNotifier(0);
 
+/// Height of a big card for its width (every edition).
+const double kCardAspect = 1.5;
+
 /// Diagonal light sweep painted over a child (the "shiny" glint).
 class Glint extends StatelessWidget {
-  const Glint({super.key, required this.child, this.enabled = true, this.strength = 0.65});
+  const Glint({super.key, required this.child, this.enabled = true, this.strength = 0.65, this.radius = 0});
   final Widget child;
   final bool enabled;
   final double strength;
+
+  /// Corner radius of the child: the sweep stays inside its rounded corners.
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +41,10 @@ class Glint extends StatelessWidget {
           child: RepaintBoundary(
             child: ValueListenableBuilder<double>(
               valueListenable: glintClock,
-              builder: (context, t, _) => CustomPaint(painter: _GlintPainter(t, strength)),
+              builder: (context, t, _) => ClipRRect(
+                borderRadius: BorderRadius.circular(radius),
+                child: CustomPaint(painter: _GlintPainter(t, strength), size: Size.infinite),
+              ),
             ),
           ),
         ),
@@ -186,6 +195,9 @@ class SongCardView extends StatelessWidget {
     if (sample != null) return _canvas(context, c, sample: sample);
     final card = Container(
       width: width,
+      // The same height as a Canvas / Live / Sample card (side by side in a
+      // showcase they line up), whatever the length of the title.
+      height: footer == null ? width * kCardAspect : null,
       padding: EdgeInsets.all(width * 0.045),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(width * 0.07),
@@ -221,7 +233,7 @@ class SongCardView extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: width * 0.072, fontWeight: FontWeight.w700, color: kTextPrimary, height: 1.15)),
-        SizedBox(height: width * 0.015),
+        if (footer == null) const Spacer() else SizedBox(height: width * 0.015),
         Row(children: [
           if (song.artistPicMd5.isNotEmpty) ...[
             Art(artistPicUrl(song.artistPicMd5, size: 56), size: width * 0.075, circle: true),
@@ -240,7 +252,7 @@ class SongCardView extends StatelessWidget {
         ?footer,
       ]),
     );
-    return Glint(enabled: shiny, child: card);
+    return Glint(enabled: shiny, radius: width * 0.07, child: card);
   }
 
   /// Canvas edition: the music video (or, without one, the cover art)
@@ -250,7 +262,7 @@ class SongCardView extends StatelessWidget {
   /// behind, the two waveforms filling the card's height.
   Widget _canvas(BuildContext context, Color c, {SampleInfo? sample}) {
     const glow = true;
-    final h = width * 1.48;
+    final h = width * kCardAspect;
     return Container(
       width: width,
       height: h,
@@ -387,7 +399,7 @@ class CardTile extends StatelessWidget {
         ),
       ]),
     );
-    if (shiny) tile = Glint(strength: 0.4, child: tile);
+    if (shiny) tile = Glint(strength: 0.4, radius: 12, child: tile);
     return GestureDetector(onTap: onTap, onLongPress: onLongPress, child: tile);
   }
 }
@@ -414,7 +426,7 @@ class CardRow extends StatelessWidget {
         color: selected ? kAccentDim : null,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         child: Row(children: [
-          Glint(enabled: shiny && edition == Edition.standard, strength: 0.4, child: Art(song.cover(56), size: 44, radius: 8)),
+          Glint(enabled: shiny && edition == Edition.standard, strength: 0.4, radius: 8, child: Art(song.cover(56), size: 44, radius: 8)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [

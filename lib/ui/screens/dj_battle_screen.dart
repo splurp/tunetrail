@@ -190,12 +190,14 @@ class _DjBattleScreenState extends State<DjBattleScreen> with SingleTickerProvid
     final pos = _beatPos;
     final beat = pos.round();
     final diff = (pos - beat).abs();
-    final acc = EncounterScreen.accuracyOf(diff);
+    final acc = _g?.profile.perfectRing == true ? 100 : EncounterScreen.accuracyOf(diff);
     HapticFeedback.lightImpact();
     // One tap per beat counts: the first.
     if (_taps.containsKey(beat)) return;
     _taps[beat] = acc;
-    _pops.add(_Pop('$acc%', _time.value, 0, acc >= 90 ? kAccent : (acc >= 60 ? Colors.white : const Color(0xFFE5737A)), fromDj: false));
+    // Out of the ring, to alternate sides (as the DJ's come out of its head).
+    _pops.add(_Pop('$acc%', _time.value, _taps.length.isEven ? 1 : -1, acc >= 90 ? kAccent : (acc >= 60 ? Colors.white : const Color(0xFFE5737A)),
+        fromDj: false));
     setState(() {});
   }
 
@@ -209,6 +211,8 @@ class _DjBattleScreenState extends State<DjBattleScreen> with SingleTickerProvid
   double get _myAccuracy {
     final n = _beatsSoFar;
     if (n == 0) return 0;
+    // Admin testing: perfect taps on every beat, tapped or not.
+    if (_g?.profile.perfectRing == true) return 100;
     final first = _firstBeat!, last = _lastBeat ?? _beatPos.floor();
     var sum = 0;
     _taps.forEach((b, a) {
@@ -345,13 +349,19 @@ class _DjBattleScreenState extends State<DjBattleScreen> with SingleTickerProvid
                 SizedBox(
                   width: ringSize,
                   height: ringSize,
-                  child: Stack(alignment: Alignment.center, children: [
+                  child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
                     ClipOval(child: Art(song.cover(250), size: ringSize * 0.62, radius: 0)),
                     if (_ringOn && _phaseName != 'scoring')
                       ValueListenableBuilder<double>(
                         valueListenable: _time,
                         builder: (_, _, _) => CustomPaint(size: Size.square(ringSize), painter: _RingPainter(_cycle, live)),
                       ),
+                    IgnorePointer(
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: _time,
+                        builder: (_, t, _) => CustomPaint(size: Size.square(ringSize), painter: _RingPopsPainter(_pops, t)),
+                      ),
+                    ),
                   ]),
                 ),
                 const SizedBox(height: 14),
@@ -563,32 +573,55 @@ class _ScenePainter extends CustomPainter {
     if (head == null) return;
     // Head position on screen after the scene transform.
     final hx = size.width / 2 + (head.dx - g.dx) * k, hy = ringTop - 20 + (head.dy - g.dy) * k;
+    final spread = (size.width / 420).clamp(0.8, 1.6);
     for (final p in pops) {
-      final age = time - p.born;
-      if (age < 0 || age > 1.9) continue;
-      // Out sideways first, then slowly up, fading.
-      final out = Curves.easeOutCubic.transform((age / 0.28).clamp(0.0, 1.0));
-      final rise = ((age - 0.2) / 1.7).clamp(0.0, 1.0);
-      final alpha = (1 - ((age - 0.9) / 1.0).clamp(0.0, 1.0)) * (age / 0.08).clamp(0.0, 1.0);
-      final at = p.fromDj
-          ? Offset(hx + p.side * (26 + 64 * out) * (size.width / 420).clamp(0.8, 1.6), hy - 6 - rise * 70)
-          : Offset(size.width / 2, ringTop + 56 - rise * 26);
-      final tp = TextPainter(
-        text: TextSpan(
-          text: p.text,
-          style: TextStyle(
-            fontSize: p.fromDj ? 26 : 20,
-            fontWeight: FontWeight.w900,
-            color: p.color.withValues(alpha: alpha),
-            shadows: [Shadow(color: Colors.black.withValues(alpha: 0.55 * alpha), offset: const Offset(0, 2), blurRadius: 4)],
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, at - Offset(tp.width / 2, tp.height / 2));
+      if (p.fromDj) _drawPop(canvas, p, time, Offset(hx, hy - 6), 26 * spread, 64 * spread, 70, 26);
     }
   }
 
   @override
   bool shouldRepaint(_ScenePainter old) => true;
+}
+
+/// Draws an accuracy number popping out of [from]: sideways first (from
+/// [near] to [near] + [far] pixels out), then slowly rising [rise] pixels
+/// as it fades.
+void _drawPop(Canvas canvas, _Pop p, double time, Offset from, double near, double far, double rise, double fontSize) {
+  final age = time - p.born;
+  if (age < 0 || age > 1.9) return;
+  final out = Curves.easeOutCubic.transform((age / 0.28).clamp(0.0, 1.0));
+  final up = ((age - 0.2) / 1.7).clamp(0.0, 1.0);
+  final alpha = (1 - ((age - 0.9) / 1.0).clamp(0.0, 1.0)) * (age / 0.08).clamp(0.0, 1.0);
+  final at = Offset(from.dx + p.side * (near + far * out), from.dy - up * rise);
+  final tp = TextPainter(
+    text: TextSpan(
+      text: p.text,
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w900,
+        color: p.color.withValues(alpha: alpha),
+        shadows: [Shadow(color: Colors.black.withValues(alpha: 0.55 * alpha), offset: const Offset(0, 2), blurRadius: 4)],
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  tp.paint(canvas, at - Offset(tp.width / 2, tp.height / 2));
+}
+
+/// The player's own accuracy, popping out of the song ring.
+class _RingPopsPainter extends CustomPainter {
+  _RingPopsPainter(this.pops, this.time);
+  final List<_Pop> pops;
+  final double time;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = size.width / 2;
+    for (final p in pops) {
+      if (!p.fromDj) _drawPop(canvas, p, time, size.center(Offset.zero), r * 0.35, r * 0.75 + 34, 70, 24);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RingPopsPainter old) => true;
 }

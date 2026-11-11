@@ -280,7 +280,8 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     // Timing error as a fraction of a beat (to the nearest beat).
     final u = _cycleNow;
     final diff = math.min(u, 1 - u);
-    final acc = accuracyFor(diff);
+    // Admins can turn on perfect taps for a player (testing).
+    final acc = _game?.profile.perfectRing == true ? 100 : accuracyFor(diff);
     final hit = acc == 100
         ? _Hit.perfect
         : acc >= 80

@@ -189,16 +189,46 @@ void main() {
       expect(econ.account('p2').xp, kTradeXp);
     });
 
-    test('features follow the terrain; about one in twenty glows, and a used one stops glowing', () {
-      econ.spawnsAround('p1', lat, lng, grounds: built(lat, lng), terrains: terrainAll(Terrain.urban));
-      final all = [
-        for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng)) ...WorldFeatures.inCell(cx, cy, CellTerrain(List.filled(64, Terrain.urban))),
-      ];
-      expect(all.every((f) => f.kind == FeatureKind.grate), true);
-      expect(all.length, inInclusiveRange(200, 450)); // ~13 a cell
-      final g = glow('p1');
-      expect(g.length, inInclusiveRange(3, 40));
+    /// Moves on a day at a time until at least [min] features glow
+    /// around the player on ground that's all [t].
+    List<Map<String, dynamic>> glowingDay(String id, Terrain t, {int min = 1}) {
+      for (var i = 0; i < 400; i++) {
+        econ.spawnsAround(id, lat, lng, grounds: built(lat, lng), terrains: terrainAll(t));
+        final g = glow(id);
+        if (g.length >= min) return g;
+        clock += 24 * 3600 * 1000;
+      }
+      fail('nothing glowed');
+    }
+
+    CellTerrain? all(Terrain t, int cx, int cy) => CellTerrain(List.filled(64, t));
+
+    test('features follow the terrain, rarer kinds rarer, at least 100 m apart', () {
+      int count(Terrain t) => [
+            for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng)) ...WorldFeatures.inCell(cx, cy, (x, y) => all(t, x, y)),
+          ].length;
+      final bushes = count(Terrain.grass), pads = count(Terrain.water), rocks = count(Terrain.rock), grates = count(Terrain.street);
+      expect(count(Terrain.urban), 0); // grates are only in the street
+      expect(bushes, greaterThan(pads));
+      expect(pads, greaterThan(rocks));
+      expect(rocks, greaterThan(grates));
+      // Spacing holds within and across cells.
+      for (final t in [Terrain.grass, Terrain.water, Terrain.street]) {
+        final fs = [
+          for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng)) ...WorldFeatures.inCell(cx, cy, (x, y) => all(t, x, y)),
+        ];
+        for (var i = 0; i < fs.length; i++) {
+          for (var j = i + 1; j < fs.length; j++) {
+            expect(distanceMeters(fs[i].lat, fs[i].lng, fs[j].lat, fs[j].lng), greaterThanOrEqualTo(WorldFeatures.minSpacing - 1));
+          }
+        }
+      }
+    });
+
+    test('a glowing sewer grate pays coins once; out of range or not glowing: nothing', () {
+      final g = glowingDay('p1', Terrain.street);
       final f = g.first;
+      expect(f['kind'], 'grate');
       // Too far away: nothing (and nothing is used up).
       expect(() => econ.claimFeature('p1', f['id'] as String, (f['lat'] as double) + 0.01, f['lng'] as double), throwsA(isA<MarketException>()));
       clock += 600000;
@@ -209,24 +239,29 @@ void main() {
       expect(glow('p1').any((x) => x['id'] == f['id']), false);
       expect(() => econ.claimFeature('p1', f['id'] as String, f['lat'] as double, f['lng'] as double), throwsA(isA<MarketException>()));
       // One that doesn't glow gives nothing.
-      final dull = all.firstWhere((x) => !g.any((y) => y['id'] == x.id));
+      final (cx, cy) = WorldSpawner.cellOf(f['lat'] as double, f['lng'] as double);
+      final dull = [
+        for (final (x, y) in WorldSpawner.cellsAround(lat, lng)) ...WorldFeatures.inCell(x, y, (a, b) => all(Terrain.street, a, b)),
+      ].firstWhere((x) => x.id != f['id'] && !g.any((y) => y['id'] == x.id));
+      expect(cx, isNotNull);
       expect(() => econ.claimFeature('p1', dull.id, dull.lat, dull.lng), throwsA(isA<MarketException>()));
     });
 
     test('lily pads and rock piles give an Epic or Legendary song', () {
-      econ.spawnsAround('p1', lat, lng, grounds: built(lat, lng), terrains: terrainAll(Terrain.rock));
-      final f = glow('p1').first;
-      expect(f['kind'], 'rocks');
-      final r = econ.claimFeature('p1', f['id'] as String, f['lat'] as double, f['lng'] as double);
-      final c = CardPayload.fromJson(r['card'] as Map<String, dynamic>);
-      expect(c.rarity.index, greaterThanOrEqualTo(Rarity.epic.index));
-      expect(econ.account('p1').cards.values.any((x) => x.songId == c.songId), true);
+      for (final t in [Terrain.rock, Terrain.water]) {
+        final f = glowingDay('p1', t).first;
+        expect(f['kind'], t == Terrain.rock ? 'rocks' : 'lilypad');
+        final r = econ.claimFeature('p1', f['id'] as String, f['lat'] as double, f['lng'] as double);
+        final c = CardPayload.fromJson(r['card'] as Map<String, dynamic>);
+        expect(c.rarity.index, greaterThanOrEqualTo(Rarity.epic.index));
+        expect(econ.account('p1').cards.values.any((x) => x.songId == c.songId) || r['dup'] != null, true);
+        clock += 24 * 3600 * 1000;
+      }
       expect(econ.account('p1').xp, greaterThan(0));
     });
 
     test('a sand castle gives a treasure map; digging at the X pays bits; straying loses the map', () {
-      econ.spawnsAround('p1', lat, lng, grounds: built(lat, lng), terrains: terrainAll(Terrain.sand));
-      final g = glow('p1');
+      final g = glowingDay('p1', Terrain.sand, min: 2);
       final f = g.first;
       econ.claimFeature('p1', f['id'] as String, f['lat'] as double, f['lng'] as double);
       final tr = econ.account('p1').treasure!;
@@ -254,13 +289,33 @@ void main() {
     });
 
     test('glowing bushes are nests: more songs around them', () {
+      final g = glowingDay('p1', Terrain.grass);
+      expect(g.every((f) => f['kind'] == 'bush'), true);
+      final nests = econ.spawnsAround('p1', lat, lng, grounds: built(lat, lng), terrains: terrainAll(Terrain.grass)).length;
       final plain = econ.spawnsAround('p2', lat, lng, grounds: built(lat, lng)).length;
-      final nests = econ.spawnsAround('p1', lat, lng, grounds: built(lat, lng), terrains: terrainAll(Terrain.grass));
-      expect(glow('p1').every((f) => f['kind'] == 'bush'), true);
-      expect(nests.length, greaterThan(plain + glow('p1').length));
+      expect(nests, greaterThan(plain));
       // Bushes aren't tapped for anything.
-      final f = glow('p1').first;
+      final f = g.first;
       expect(() => econ.claimFeature('p1', f['id'] as String, f['lat'] as double, f['lng'] as double), throwsA(isA<MarketException>()));
+    });
+
+    test('DJs stand at least 1 km apart', () {
+      final songs = [for (var i = 0; i < 20; i++) SongInfo(id: 9000 + i, title: 'Hit $i', artistId: 1, artistName: 'A', rank: 900000)];
+      final ground = CellGround(List.filled(64, CellGround.built));
+      final djs = <DjNpc>[];
+      final (cx0, cy0) = WorldSpawner.cellOf(lat, lng);
+      for (var dy = -25; dy <= 25; dy++) {
+        for (var dx = -25; dx <= 25; dx++) {
+          final dj = WorldDjs.inCell(42, cx0 + dx, cy0 + dy, 20000, ground, songs);
+          if (dj != null) djs.add(dj);
+        }
+      }
+      expect(djs.length, greaterThan(3));
+      for (var i = 0; i < djs.length; i++) {
+        for (var j = i + 1; j < djs.length; j++) {
+          expect(distanceMeters(djs[i].lat, djs[i].lng, djs[j].lat, djs[j].lng), greaterThanOrEqualTo(WorldDjs.minSpacing));
+        }
+      }
     });
 
     test('players near each other see each other for a minute; hidden and blocked ones are not shown', () {
@@ -331,6 +386,25 @@ void main() {
       final after = econ.battleState('p1', b['id'] as String);
       expect(after['done'], true);
       expect(after['won'], false);
+    });
+
+    test('admins: perfect ring taps, go to a player, bring a player over', () {
+      econ.admins.add('p2');
+      econ.adminPerfectRing('p2', 'p1', true);
+      expect(econ.sync(econ.account('p1'), null)['perfect'], true);
+      econ.presence('p1', lat, lng);
+      econ.presence('p2', lat + 0.2, lng); // ~22 km away
+      final at = econ.adminWhereIs('p2', 'p1');
+      expect(at['lat'], lat);
+      econ.adminBringPlayer('p2', 'p1');
+      final tp = econ.sync(econ.account('p1'), null)['teleport'] as Map<String, dynamic>;
+      expect(tp['lat'], lat + 0.2);
+      // Their game moves them: no impossible-travel flag, and the move is done.
+      clock += 5000;
+      econ.presence('p1', lat + 0.2, lng);
+      expect(econ.account('p1').flags.where((f) => f.kind == 'impossible_travel'), isEmpty);
+      expect(econ.account('p1').teleport, isNull);
+      expect(() => econ.adminBringPlayer('p1', 'p2'), throwsA(isA<MarketException>())); // admins only
     });
 
     test('admins add and remove XP and bonuses', () {

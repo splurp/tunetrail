@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/models.dart';
@@ -154,6 +155,25 @@ class _AdminToolsState extends State<_AdminTools> {
         return delta > 0 ? 'Added a ${b.label} bonus to ${widget.name}' : 'Removed a ${b.label} bonus from ${widget.name}';
       });
 
+  Future<void> _perfect(bool on) => _run((m) async {
+        await m.send('POST', '/admin/players/$_pid/perfect', body: {'on': on});
+        setState(() => _progress = {..._progress, 'perfect': on});
+        return on ? 'Every ring tap ${widget.name} makes is now perfect' : 'Perfect ring taps are off for ${widget.name}';
+      });
+
+  Future<void> _goTo() => _run((m) async {
+        final g = GameScope.read(context);
+        final j = await m.send('POST', '/admin/players/$_pid/goto') as Map<String, dynamic>;
+        g.location.pinTo(LatLng((j['lat'] as num).toDouble(), (j['lng'] as num).toDouble()));
+        g.refreshWorld();
+        return 'Moved you to ${widget.name}';
+      });
+
+  Future<void> _bring() => _run((m) async {
+        await m.send('POST', '/admin/players/$_pid/bring');
+        return '${widget.name} will be moved to you the next time their game checks in (within seconds while they play)';
+      });
+
   Future<void> _summonDj() => _run((m) async {
         final g = GameScope.read(context);
         final j = await m.send('POST', '/admin/players/$_pid/dj') as Map<String, dynamic>;
@@ -290,6 +310,19 @@ class _AdminToolsState extends State<_AdminTools> {
             IconButton(tooltip: 'Remove one', onPressed: _busy || _bonusCount(b) <= 0 ? null : () => _bonus(b, -1), icon: const Icon(Icons.remove_circle_outline)),
             IconButton(tooltip: 'Add one', onPressed: _busy ? null : () => _bonus(b, 1), icon: const Icon(Icons.add_circle_outline)),
           ]),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Perfect ring taps'),
+          subtitle: const Text("Every catch-ring tap counts as 100%, and every beat of a DJ battle (for testing)", style: TextStyle(fontSize: 12)),
+          value: _progress['perfect'] == true,
+          onChanged: _busy || _progress.isEmpty ? null : _perfect,
+        ),
+        const Divider(height: 32),
+        const SectionLabel('Teleport'),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          OutlinedButton.icon(onPressed: _busy ? null : _goTo, icon: const Icon(Icons.near_me_outlined), label: Text('Go to ${widget.name}')),
+          OutlinedButton.icon(onPressed: _busy ? null : _bring, icon: const Icon(Icons.call_received), label: Text('Bring ${widget.name} to me')),
+        ]),
         const Divider(height: 32),
         const SectionLabel('DJ battle'),
         const Text('A DJ turns up about 60 m from where this player last was, for half an hour. Only they see it; players nearby can join the battle.',

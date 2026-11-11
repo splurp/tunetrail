@@ -68,8 +68,31 @@ class LocationService extends ChangeNotifier {
     }
   }
 
+  /// Held at a spot an admin moved the player to: GPS fixes are noted but
+  /// don't move them until [unpin].
+  bool pinned = false;
+  LatLng? _lastGps;
+
+  /// Moves the player and holds them there (an admin teleport).
+  void pinTo(LatLng p) {
+    pinned = true;
+    teleport(p);
+  }
+
+  /// Back to where GPS says the player is.
+  void unpin() {
+    pinned = false;
+    final g = _lastGps;
+    if (g != null && !joystickMode) {
+      position = g;
+      source = LocationSource.gps;
+    }
+    notifyListeners();
+  }
+
   void _onGps(Position p) {
-    if (joystickMode) return;
+    _lastGps = LatLng(p.latitude, p.longitude);
+    if (joystickMode || pinned) return;
     final next = LatLng(p.latitude, p.longitude);
     final d = const Distance().as(LengthUnit.Meter, position, next);
     if (source == LocationSource.gps && d < 200) onTravel?.call(d);

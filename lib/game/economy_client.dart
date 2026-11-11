@@ -42,6 +42,17 @@ class EconomyClient {
     if (a['bonuses'] is Map<String, dynamic>) _p.bonuses = Bonuses.fromJson(a['bonuses'] as Map<String, dynamic>);
     if (a.containsKey('treasure')) _p.treasure = a['treasure'] as Map<String, dynamic>?;
     if (a['onMap'] is bool) _p.showOnMap = a['onMap'] as bool;
+    if (a['perfect'] is bool) _p.perfectRing = a['perfect'] as bool;
+    // An admin moved this player: go there (once).
+    final tp = a['teleport'];
+    if (tp is Map<String, dynamic>) {
+      final at = (tp['at'] as num?)?.toInt() ?? 0;
+      if (at > _p.teleportDoneAt) {
+        _p.teleportDoneAt = at;
+        g.location.pinTo(LatLng((tp['lat'] as num).toDouble(), (tp['lng'] as num).toDouble()));
+        g.toast('An admin moved you to where they are');
+      }
+    }
     final owned = a['owned'];
     if (owned is List) {
       _p.owned

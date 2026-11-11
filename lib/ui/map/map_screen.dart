@@ -407,7 +407,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// A glowing feature was tapped. Out of range (or while something else
   /// is going on) nothing happens at all.
   Future<void> _useFeature(Game g, MapFeature f) async {
-    if (_usingFeature || !f.glow || f.kind.nest || !g.serverEconomy || !g.world.inRange(f.point)) return;
+    if (_usingFeature || !f.glow || !g.serverEconomy || !g.world.inRange(f.point)) return;
+    if (f.kind.nest) {
+      g.toast('This glowing ${f.kind == FeatureKind.bush ? 'bush' : 'sapling'} is a nest: songs spawn three times as often within 100 m of it');
+      return;
+    }
     _usingFeature = true;
     try {
       switch (f.kind) {
@@ -535,9 +539,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final earned = bonusChoicesAt(p.level);
     if (!g.serverEconomy || p.bonuses.unspent(p.level) <= 0 || p.bonusPromptedAt >= earned) return;
     if (!(ModalRoute.of(context)?.isCurrent ?? false) || HomeShell.currentTab.value != 0) return;
+    // Called from build: the profile must not change until the frame is
+    // done (changing it mid-build left every screen that shows the profile
+    // unable to update — settings switches, the shop, the map theme).
     p.bonusPromptedAt = earned;
-    p.changed();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      p.changed();
       if (mounted) showBonusChooser(context);
     });
   }
@@ -1070,6 +1077,26 @@ class _Hud extends StatelessWidget {
                 ),
               ],
             ),
+            if (g.location.pinned)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      g.location.unpin();
+                      g.refreshWorld();
+                    },
+                    child: const Glass(
+                      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.my_location, size: 16, color: kAccent),
+                        SizedBox(width: 8),
+                        Text('Teleported · tap to go back to your location', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
             if (battle != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),

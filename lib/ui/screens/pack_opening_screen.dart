@@ -153,7 +153,7 @@ class _Back extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     width: width,
-    height: width * 1.48,
+    height: width * kCardAspect,
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(width * 0.07),
       gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color, kSurface]),

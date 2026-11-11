@@ -111,8 +111,11 @@ class GenreZones {
     if (f & ZoneFlag.forest != 0) return Terrain.wood;
     const builtFlags = ZoneFlag.residential | ZoneFlag.commercial | ZoneFlag.retail | ZoneFlag.industrial | ZoneFlag.plaza |
         ZoneFlag.parking | ZoneFlag.campus | ZoneFlag.megaBuilding;
-    final built = f & builtFlags != 0 || t.counts[ZoneCount.buildings]![i] > 0 || t.counts[ZoneCount.roadMeters]![i] > 20;
-    return built ? Terrain.urban : Terrain.grass;
+    final roads = t.counts[ZoneCount.roadMeters]![i];
+    final built = f & builtFlags != 0 || t.counts[ZoneCount.buildings]![i] > 0 || roads > 20;
+    if (!built) return Terrain.grass;
+    // A street runs through this bit of town (where sewer grates go).
+    return roads > 15 ? Terrain.street : Terrain.urban;
   }
 
   static const radius = 160.0;

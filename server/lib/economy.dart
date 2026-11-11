@@ -86,6 +86,15 @@ class Account {
   /// Whether nearby players see this player on their map.
   bool showOnMap = true;
 
+  /// Admin testing: every tap on the catch / battle ring is perfect.
+  bool perfectRing = false;
+
+  /// An admin moved this player: where to, and when ({lat, lng, at}).
+  Map<String, dynamic>? teleport;
+
+  /// Until then, a jump in position isn't flagged (an admin moved them).
+  int travelGraceUntil = 0;
+
   /// Level bonuses (chosen and admin-given).
   Bonuses bonuses = Bonuses();
   int get level => levelForXp(xp);
@@ -207,6 +216,9 @@ class Account {
         if (treasure != null) 'treasure': treasure!.toJson(),
         'djDone': djDone,
         if (!showOnMap) 'hidden': true,
+        if (perfectRing) 'perfect': true,
+        'teleport': ?teleport,
+        if (travelGraceUntil > 0) 'grace': travelGraceUntil,
       };
 
   factory Account.fromJson(Map<String, dynamic> j, List<CardPayload> cards) {
@@ -251,6 +263,9 @@ class Account {
     if (j['treasure'] is Map<String, dynamic>) a.treasure = Treasure.fromJson(j['treasure'] as Map<String, dynamic>);
     (j['djDone'] as Map<String, dynamic>? ?? const {}).forEach((k, v) => a.djDone[k] = (v as num).toInt());
     a.showOnMap = j['hidden'] != true;
+    a.perfectRing = j['perfect'] == true;
+    a.teleport = j['teleport'] as Map<String, dynamic>?;
+    a.travelGraceUntil = (j['grace'] as num?)?.toInt() ?? 0;
     return a;
   }
 }
@@ -410,6 +425,8 @@ class Economy {
       'bonuses': a.bonuses.toJson(),
       'treasure': a.treasure?.toJson(),
       'onMap': a.showOnMap,
+      'perfect': a.perfectRing,
+      'teleport': a.teleport,
       if (ch == null) 'full': true else ...{
         if (ch.added.isNotEmpty) 'add': [for (final c in ch.added) c.toJson()],
         if (ch.removed.isNotEmpty) 'del': ch.removed,
@@ -474,6 +491,8 @@ class Economy {
   // ----------------------------------------------------------------- flags
   void _flag(Account a, String kind, String detail) {
     if (admins.contains(a.id)) return;
+    // An admin turned on perfect accuracy for testing.
+    if (a.perfectRing && (kind == 'perfect_rate' || kind == 'dj_accuracy')) return;
     final t = now();
     // One flag of a kind per hour is enough.
     if (a.flags.any((f) => f.kind == kind && t - f.at < 3600000)) return;
@@ -550,7 +569,7 @@ class Economy {
       final d = distanceMeters(a.lat!, a.lng!, lat, lng);
       final secs = math.max(1, (t - a.locAt) / 1000);
       final speed = d / secs;
-      if (d > 1000 && speed > 80) {
+      if (d > 1000 && speed > 80 && t > a.travelGraceUntil) {
         _flag(a, 'impossible_travel', '${(d / 1000).toStringAsFixed(1)} km in ${secs.round()} s');
       } else if (d >= 3 && speed <= 7) {
         a.stat('meters', d);
@@ -562,6 +581,12 @@ class Economy {
       ..lng = lng
       ..locAt = t;
     _active[a.id] = t;
+    // An admin's move has happened (or is too old to still be waiting for).
+    final tp = a.teleport;
+    if (tp != null &&
+        (t - ((tp['at'] as num?)?.toInt() ?? 0) > 10 * 60000 || distanceMeters(lat, lng, (tp['lat'] as num).toDouble(), (tp['lng'] as num).toDouble()) < 300)) {
+      a.teleport = null;
+    }
     // A treasure map is lost by straying too far from where it was found.
     final tr = a.treasure;
     if (tr != null && distanceMeters(lat, lng, tr.fromLat, tr.fromLng) > kTreasureMaxMeters) a.treasure = null;

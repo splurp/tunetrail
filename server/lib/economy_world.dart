@@ -55,9 +55,7 @@ extension EconomyWorld on Economy {
   // -------------------------------------------------------------- features
   /// The features of a cell that glow today.
   Iterable<WorldFeature> _glowingIn(Account a, int cx, int cy, int d) sync* {
-    final terrain = a.terrains['$cx:$cy:$d'];
-    if (terrain == null) return;
-    for (final f in WorldFeatures.inCell(cx, cy, terrain)) {
+    for (final f in WorldFeatures.inCell(cx, cy, (x, y) => a.terrains['$x:$y:$d'])) {
       if (WorldFeatures.glows(seed, cx, cy, f.square, d)) yield f;
     }
   }
@@ -467,6 +465,38 @@ extension EconomyWorld on Economy {
     }
     touch(a);
     return a.bonuses.toJson();
+  }
+
+  /// Admin: every ring tap of a player counts as perfect (for testing).
+  void adminPerfectRing(String adminId, String targetId, bool on) {
+    final a = _adminTarget(adminId, targetId);
+    a.perfectRing = on;
+    _logAdmin(a, adminId, on ? 'turned on perfect ring accuracy' : 'turned off perfect ring accuracy');
+    touch(a);
+  }
+
+  /// Admin: where a player last was ({lat, lng, at}), to go there.
+  Map<String, dynamic> adminWhereIs(String adminId, String targetId) {
+    final a = _adminTarget(adminId, targetId);
+    if (a.lat == null || a.lng == null) throw MarketException('This player hasn\'t opened the map yet');
+    final me = accounts[adminId];
+    if (me != null) me.travelGraceUntil = now() + 10 * 60000;
+    return {'lat': a.lat, 'lng': a.lng, 'at': a.locAt};
+  }
+
+  /// Admin: moves a player to where the admin is (their game moves them
+  /// there the next time it hears from the server).
+  void adminBringPlayer(String adminId, String targetId) {
+    final a = _adminTarget(adminId, targetId);
+    final me = accounts[adminId];
+    if (me == null || me.lat == null || me.lng == null) throw MarketException('Open the map first, so the server knows where you are');
+    final t = now();
+    a
+      ..teleport = {'lat': me.lat, 'lng': me.lng, 'at': t}
+      ..travelGraceUntil = t + 10 * 60000;
+    _logAdmin(a, adminId, 'moved them to ${engine.nameOf(adminId)}');
+    engine.notice(targetId, '${engine.nameOf(adminId)} moved you to where they are', title: 'Teleported');
+    touch(a);
   }
 
   /// Admin: a DJ turns up near a player (for half an hour).
