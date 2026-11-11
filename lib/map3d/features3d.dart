@@ -76,6 +76,10 @@ abstract final class FeatureMeshes {
     } else {
       hsl = hsl.withSaturation(hsl.saturation.clamp(0.3, 0.85));
     }
+    // Rock piles are stone: nearly grey. Plants (bushes, saplings) are
+    // the most colourful. So the two lumpy shapes are easy to tell apart.
+    if (k == FeatureKind.rocks) hsl = hsl.withSaturation(hsl.saturation * 0.25);
+    if (k.nest) hsl = hsl.withSaturation((hsl.saturation * 1.35).clamp(0.45, 0.95));
     // Half-way to black on light themes, half-way to white on dark ones.
     final l = light ? hsl.lightness * 0.5 : hsl.lightness + (1 - hsl.lightness) * 0.5;
     return hsl.withLightness(l.clamp(0.0, 1.0)).toColor();
@@ -109,16 +113,27 @@ abstract final class FeatureMeshes {
     final dark = _tone(c, -0.22), lightC = _tone(c, 0.2);
     switch (k) {
       case FeatureKind.bush:
-        m.ellipsoid(0, 0, 2.7, 4.4, 4.0, 3.1, c, lat: 3, lon: 6, jitter: 0.28, seed: 11 + v);
-        m.ellipsoid(3.1, 1.0, 1.9, 2.7, 2.5, 2.2, lightC, lat: 3, lon: 5, jitter: 0.3, seed: 21 + v);
-        m.ellipsoid(-2.7, -1.5, 1.7, 2.5, 2.6, 2.0, dark, lat: 3, lon: 5, jitter: 0.3, seed: 31 + v);
-        if (v != 0) m.ellipsoid(0.4, -3.0, 1.4, 2.0, 1.8, 1.6, c, lat: 3, lon: 5, jitter: 0.3, seed: 41 + v);
+        // A rounded, leafy shrub: soft domes (smooth, many facets), the
+        // top ones lighter, on a short dark base.
+        m.ellipsoid(0, 0, 3.0, 4.6, 4.3, 3.4, c, lat: 5, lon: 9, jitter: 0.07, seed: 11 + v);
+        m.ellipsoid(3.4, 1.2, 2.3, 2.9, 2.7, 2.4, c, lat: 4, lon: 8, jitter: 0.07, seed: 21 + v);
+        m.ellipsoid(-3.0, -1.5, 2.1, 2.8, 2.8, 2.3, c, lat: 4, lon: 8, jitter: 0.07, seed: 31 + v);
+        m.ellipsoid(0.6, 0.8, 5.6, 2.6, 2.4, 2.0, lightC, lat: 4, lon: 8, jitter: 0.06, seed: 41 + v);
+        m.ellipsoid(-1.2, 1.9, 4.6, 1.9, 1.8, 1.5, lightC, lat: 4, lon: 7, jitter: 0.06, seed: 51 + v);
+        if (v != 0) m.ellipsoid(0.4, -3.2, 1.8, 2.2, 2.0, 1.8, c, lat: 4, lon: 7, jitter: 0.07, seed: 61 + v);
+        // Little leaf tips poking out of the top.
+        for (var k = 0; k < 4; k++) {
+          final a = (k + v * 0.5) * math.pi / 2;
+          m.prism(math.cos(a) * 2.6, math.sin(a) * 2.4, 4.6, 6.4, 0.55, 0, 3, lightC, rot: a);
+        }
       case FeatureKind.rocks:
-        m.ellipsoid(0, 0, 1.9, 3.5, 2.9, 2.8, c, lat: 3, lon: 5, jitter: 0.5, seed: 12 + v);
-        m.ellipsoid(3.3, 1.2, 1.1, 2.3, 2.0, 1.7, dark, lat: 3, lon: 5, jitter: 0.5, seed: 22 + v);
-        m.ellipsoid(-2.9, 1.4, 1.0, 2.1, 2.3, 1.5, lightC, lat: 3, lon: 5, jitter: 0.5, seed: 32 + v);
-        m.ellipsoid(0.6, -2.9, 0.8, 1.8, 1.6, 1.2, c, lat: 3, lon: 5, jitter: 0.5, seed: 42 + v);
-        if (v == 2) m.ellipsoid(-0.4, 0.3, 4.2, 1.6, 1.5, 1.4, dark, lat: 3, lon: 5, jitter: 0.5, seed: 52);
+        // Angular stacked boulders: few big flat facets, stone-grey.
+        m.ellipsoid(0, 0, 1.6, 3.8, 3.1, 2.4, c, lat: 2, lon: 5, jitter: 0.55, seed: 12 + v);
+        m.ellipsoid(3.4, 1.4, 1.0, 2.4, 2.1, 1.6, dark, lat: 2, lon: 4, jitter: 0.6, seed: 22 + v);
+        m.ellipsoid(-3.1, 1.2, 0.9, 2.2, 2.4, 1.4, lightC, lat: 2, lon: 5, jitter: 0.6, seed: 32 + v);
+        m.ellipsoid(0.4, 0.3, 3.6, 2.0, 1.8, 1.5, lightC, lat: 2, lon: 4, jitter: 0.5, seed: 42 + v);
+        m.ellipsoid(0.8, -3.2, 0.6, 1.5, 1.3, 0.9, dark, lat: 2, lon: 4, jitter: 0.6, seed: 52 + v);
+        m.ellipsoid(-1.8, -2.4, 0.4, 0.9, 0.8, 0.6, c, lat: 2, lon: 4, jitter: 0.5, seed: 62 + v);
       case FeatureKind.lilypad:
         // One big round pad with a notch, a small one floating beside it,
         // and a flower bud.

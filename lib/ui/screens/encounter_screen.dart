@@ -26,6 +26,13 @@ class EncounterScreen extends StatefulWidget {
   /// Timing accuracy (0–100) for a tap [diff] of a beat off the beat: 100
   /// only within ±0.25% of a beat.
   static int accuracyOf(double diff) => _EncounterScreenState.accuracyFor(diff);
+
+  /// The catch animation (fast spin while pumping towards the viewer, then
+  /// a slow settle) at progress [t], for other screens that award a card.
+  static Matrix4 spinMatrix(double t) => _EncounterScreenState._spinMatrix(t);
+
+  /// The catch confetti burst at progress [t].
+  static CustomPainter confetti(double t, Color color) => _ConfettiPainter(t, color);
   @override
   State<EncounterScreen> createState() => _EncounterScreenState();
 }

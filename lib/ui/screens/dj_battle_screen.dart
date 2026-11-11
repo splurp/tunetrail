@@ -13,6 +13,7 @@ import '../../map3d/camera.dart';
 import '../../map3d/figure3d.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
+import '../widgets/edition_views.dart' show editionColor;
 import '../widgets/net_image.dart';
 import '../widgets/showcase_strip.dart';
 import '../widgets/stick_figure.dart';
@@ -447,7 +448,7 @@ class _Result extends StatelessWidget {
         if (won && prize != null) ...[
           GestureDetector(
             onTap: mine ? () => showCardFullView(context, prize) : null,
-            child: SongCardView(song: Song.fromPayload(prize), rarity: prize.rarity, shiny: prize.shiny, edition: prize.edition, serial: prize.serial, width: 120, live: false),
+            child: _PrizeCard(card: prize, celebrate: mine),
           ),
           const SizedBox(height: 8),
           Text(
@@ -465,6 +466,67 @@ class _Result extends StatelessWidget {
         FilledButton(onPressed: onClose, child: const Text('Back to map')),
       ]),
     );
+  }
+}
+
+/// The Canvas (or Shiny) the battle was won for: it lands with the same
+/// spin, pump and confetti as a caught song for the player who won it.
+class _PrizeCard extends StatefulWidget {
+  const _PrizeCard({required this.card, required this.celebrate});
+  final CardPayload card;
+  final bool celebrate;
+
+  @override
+  State<_PrizeCard> createState() => _PrizeCardState();
+}
+
+class _PrizeCardState extends State<_PrizeCard> with TickerProviderStateMixin {
+  late final AnimationController _spin = AnimationController(vsync: this, duration: const Duration(milliseconds: 1700));
+  late final AnimationController _fx = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.celebrate) {
+      HapticFeedback.heavyImpact();
+      GameScope.read(context).audio.playSfx(Sfx.catchSong);
+      _spin.forward(from: 0);
+      _fx.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _spin.dispose();
+    _fx.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.card;
+    const w = 150.0;
+    final color = c.edition == Edition.standard ? rarityColor(c.rarity) : editionColor(c.edition);
+    return Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+      AnimatedBuilder(
+        animation: _spin,
+        builder: (context, child) => Transform(alignment: Alignment.center, transform: EncounterScreen.spinMatrix(_spin.value), child: child),
+        child: SongCardView(song: Song.fromPayload(c), rarity: c.rarity, shiny: c.shiny, edition: c.edition, serial: c.serial, width: w, live: true),
+      ),
+      if (widget.celebrate)
+        Positioned(
+          left: -240,
+          right: -240,
+          top: -240,
+          bottom: -240,
+          child: IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _fx,
+              builder: (context, _) => _fx.value <= 0 || _fx.value >= 1 ? const SizedBox.shrink() : CustomPaint(painter: EncounterScreen.confetti(_fx.value, color)),
+            ),
+          ),
+        ),
+    ]);
   }
 }
 
