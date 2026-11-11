@@ -11,6 +11,10 @@ on:
         description: 'Publish as a named release with this tag (e.g. beta-1.0.0 → "Tunetrail Beta v1.0.0"); empty = dev build'
         required: false
         default: ''
+      release_title:
+        description: 'Optional title added to the release name (e.g. "Exploration Update")'
+        required: false
+        default: ''
       no_release:
         description: 'Build only: keep the files on this run (7 days) and publish no release'
         type: boolean
@@ -219,6 +223,8 @@ jobs:
       - name: Release name
         id: rel
         shell: bash
+        env:
+          TITLE: ${{ github.event.inputs.release_title }}
         run: |
           ref="${{ github.ref_name }}"
           tag="${{ github.event.inputs.release_tag }}"
@@ -233,6 +239,10 @@ jobs:
               echo "name=Tunetrail $ref" >> "$GITHUB_OUTPUT"; echo "pre=false" >> "$GITHUB_OUTPUT"
             fi
             echo "kind=Release" >> "$GITHUB_OUTPUT"
+            if [[ -n "$TITLE" ]]; then
+              name=$(grep '^name=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
+              echo "name=$name - ${TITLE//[$'\r\n']/ }" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "tag=dev-build-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
             echo "name=Tunetrail dev build ${{ github.run_number }}" >> "$GITHUB_OUTPUT"; echo "pre=true" >> "$GITHUB_OUTPUT"
