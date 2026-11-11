@@ -11,6 +11,9 @@ import 'package:video_player/video_player.dart';
 import '../data/samples.dart';
 import 'audio_service.dart';
 
+/// The audio engine's output rate (SoLoud's default, which the game uses).
+const int kSampleEngineRate = 44100;
+
 /// Live state of a breakdown, for drawing playheads.
 class SamplePlayback {
   const SamplePlayback({this.songId = 0, this.stage = -1, this.sourcePos, this.songPos, this.stages = const [], this.loading = false, this.error});
@@ -212,6 +215,22 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
       await _release();
       return;
     }
+    // Engine voices are scheduled inside the audio engine: each waits its
+    // exact number of samples, and all are released together, so they're
+    // in time with each other to the sample whatever the app is doing.
+    final engine = [for (final (c, v) in prepared) if (v is _SoLoudVoice && v.h != null) (c, v)];
+    for (final (c, v) in engine) {
+      _sl.setDelaySamples(v.h!, (c.at * kSampleEngineRate).round());
+      // A clip that doesn't fade in starts at full volume: the delay keeps
+      // it silent until its moment.
+      if (c.fadeIn <= 0.03) v.setVolume(c.volume);
+    }
+    if (engine.isNotEmpty) {
+      final group = _sl.createVoiceGroup();
+      _sl.addVoicesToGroup(group, [for (final (_, v) in engine) v.h!]);
+      _sl.setPause(group, false);
+      _sl.destroyVoiceGroup(group);
+    }
     _clock
       ..reset()
       ..start();
@@ -229,6 +248,14 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
       // they start early, muted, and the sync check (and any seek) happens
       // during that silent lead-in, so the audible start has no hitch.
       final pre = _preroll(c, v);
+      if (v is _SoLoudVoice) {
+        // Already scheduled in the engine; only note when the song enters.
+        if (c.track == SampleTrack.song) at(c.at, () => _songVoice = v);
+        if (c.fadeIn > 0.03) at(c.at, () => _fade(v, 0, c.volume, c.fadeIn));
+        at(c.end - c.fadeOut, () => _fade(v, c.volume, 0, c.fadeOut));
+        at(c.end + 0.05, () => v.setVolume(0));
+        continue;
+      }
       at(c.at - pre, () async {
         v.start();
         if (c.track == SampleTrack.song) _songVoice = v;
