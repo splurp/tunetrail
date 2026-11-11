@@ -239,6 +239,9 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
       valueListenable: player,
       builder: (context, pb, _) {
         final mine = pb.songId == s.song.id && pb.active;
+        // The waveforms open out once both have loaded and the breakdown
+        // has actually started (not while the previews are still loading).
+        final open = mine && _src != null && _mod != null && pb.stage >= 0;
         return LayoutBuilder(builder: (context, box) {
           final w = box.maxWidth;
           final rowH = (box.maxHeight.isFinite ? box.maxHeight : w) / 2;
@@ -249,14 +252,18 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
                   // when the breakdown plays they open out to the full width.
                   Positioned.fill(
                     child: TweenAnimationBuilder<double>(
-                      tween: Tween(end: mine && pb.active ? 1.0 : 0.0),
+                      tween: Tween(end: open ? 1.0 : 0.0),
                       duration: const Duration(milliseconds: 900),
                       curve: Curves.easeInOutCubic,
                       builder: (context, t, child) => Align(
                         alignment: top ? const Alignment(0, 0.35) : const Alignment(0, -0.35),
                         child: FractionallySizedBox(widthFactor: 0.46 + 0.54 * t, heightFactor: 0.6 + 0.4 * t, child: child),
                       ),
-                      child: CustomPaint(
+                      // Fades in when its data arrives instead of popping in.
+                      child: AnimatedOpacity(
+                        opacity: wave == null ? 0 : 1,
+                        duration: const Duration(milliseconds: 450),
+                        child: CustomPaint(
                         painter: _WavePainter(
                           wave: wave,
                           info: s,
@@ -264,6 +271,7 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
                           playhead: mine ? (top ? pb.sourcePos : pb.songPos) : null,
                           color: top ? const Color(0xFFFFB74D) : const Color(0xFF4DD0E1),
                         ),
+                      ),
                       ),
                     ),
                   ),
@@ -330,13 +338,14 @@ class _WavePainter extends CustomPainter {
 
   // Shared x axis: source-preview time; the song row is shifted so the
   // sampled audio lines up vertically (Tracklib-style).
-  // The window covers everything the breakdown plays from the source
-  // (with a little margin), so no heard part is off screen.
+  // The window covers everything the breakdown plays from either track
+  // (with a little margin), so no heard part and no playhead is off screen.
   late final (double, double) _window = () {
-    final src = info.clips.where((c) => c.track == SampleTrack.source);
-    if (src.isEmpty) return (info.alignSource - 17 * 0.62, 17.0);
-    final a = src.map((c) => c.from).reduce(math.min) - 0.3;
-    final b = src.map((c) => c.from + c.duration).reduce(math.max) + 0.3;
+    if (info.clips.isEmpty) return (info.alignSource - 17 * 0.62, 17.0);
+    final off = info.alignSong - info.alignSource;
+    double axis(SampleClip c, double t) => c.track == SampleTrack.source ? t : t - off;
+    final a = info.clips.map((c) => axis(c, c.from)).reduce(math.min) - 0.3;
+    final b = info.clips.map((c) => axis(c, c.from + c.duration)).reduce(math.max) + 0.3;
     return (a, b - a);
   }();
   double get _x0 => _window.$1;
@@ -352,11 +361,12 @@ class _WavePainter extends CustomPainter {
     final mid = size.height * (isSource ? 0.62 : 0.38);
     final amp = size.height * 0.3;
     double xOf(double axisT) => (axisT - _x0) / span * size.width;
+    if (w == null || w.isEmpty) return;
     // Mark where the sampled audio sits.
     final passA = xOf(info.alignSource), passB = xOf(info.alignSource + 2.0);
     canvas.drawRect(Rect.fromLTRB(passA, 0, passB, size.height), Paint()..color = color.withValues(alpha: 0.10));
     canvas.drawLine(Offset(passA, 0), Offset(passA, size.height), Paint()..color = color.withValues(alpha: 0.5));
-    if (w != null && w.isNotEmpty) {
+    {
       const perSec = 40.0;
       final path = Path();
       final bars = (size.width / 2.5).floor();
