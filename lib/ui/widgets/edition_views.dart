@@ -283,7 +283,11 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
                   ),
                 ]),
               );
-          final stage = mine && pb.stage >= 0 ? pb.stages[pb.stage].label : null;
+          // The current lyric line; with none, the playing track's credit.
+          var stage = mine && pb.stage >= 0 ? pb.stages[pb.stage].label : null;
+          if (stage != null && stage.isEmpty) {
+            stage = pb.songPos != null ? '${s.song.artistName} · ${s.song.title}' : '${s.source.artistName} · ${s.source.title} (${s.sourceYear})';
+          }
           return Container(
             color: widget.fullCard ? null : const Color(0xFF0B0B0F),
             child: Stack(children: [

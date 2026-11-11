@@ -149,10 +149,32 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
     return _itunesUrls[trackId] = url;
   }
 
+  /// Apple previews' audio, kept in memory only while the game runs.
+  final Map<int, Uint8List> _itunesBytes = {};
+
+  /// Apple previews (AAC) the audio engine couldn't decode (Linux without
+  /// FFmpeg): those fall back to the platform media player.
+  final Set<int> _noEngine = {};
+
   Future<_Voice?> _voiceFor(SampleInfo s, SampleTrack t) async {
     if (t == SampleTrack.source && s.sourceItunesId != null) {
-      final u = await _itunesPreview(s.sourceItunesId!);
-      return u == null ? null : _MediaVoice(u);
+      final id = s.sourceItunesId!;
+      final u = await _itunesPreview(id);
+      if (u == null) return null;
+      // Played by the same engine as the song, so every clip is timed to
+      // the sample on every device.
+      if (!_noEngine.contains(id)) {
+        try {
+          final bytes = _itunesBytes[id] ??= (await _http.get(Uri.parse(u)).timeout(const Duration(seconds: 15))).bodyBytes;
+          final src = await _sl.loadMem('src-$id-${DateTime.now().microsecondsSinceEpoch}.m4a', bytes);
+          _sources.add(src);
+          return _SoLoudVoice(_sl, src);
+        } catch (e) {
+          debugPrint('sample breakdown: engine can\'t play the Apple preview ($e); using the media player');
+          _noEngine.add(id);
+        }
+      }
+      return _MediaVoice(u);
     }
     final src = await audio.loadSource(t == SampleTrack.source ? s.source.id : s.song.id);
     if (src == null) return null;
@@ -256,11 +278,10 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
     });
   }
 
-  /// How far ahead of its reported position a media-player voice plays so
-  /// it's heard in time with the audio engine. Android's media player
-  /// reports positions about 90 ms before the audio comes out (measured
-  /// from a screen recording: Labi Siffre landed 97 ms after I Wonder);
-  /// elsewhere the two agree.
+  /// Fallback only (the audio engine normally plays every clip): how far
+  /// ahead of its reported position a media-player voice plays so it's
+  /// heard in time with the engine. Android's media player reports
+  /// positions about 90 ms before the audio comes out.
   static final double _androidMediaLead = defaultTargetPlatform == TargetPlatform.android && !kIsWeb ? 0.09 : 0;
   static double _lead(_Voice v) => v is _MediaVoice ? _androidMediaLead : 0;
 
