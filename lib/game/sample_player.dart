@@ -190,6 +190,7 @@ class SamplePlayer extends ValueNotifier<SamplePlayback> {
     final claim = await audio.claim();
     _claiming = false;
     value = SamplePlayback(songId: s.song.id, stages: s.stages, loading: true);
+    unawaited(SampleLyrics.load(s.song.id));
     final prepared = <(SampleClip, _Voice)>[];
     try {
       for (final c in s.clips) {

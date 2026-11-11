@@ -83,6 +83,7 @@ flutter:
     - assets/sfx/
     - assets/minigames/
     - assets/models/
+    - assets/sample_lyrics/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

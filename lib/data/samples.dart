@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
+
 import 'models.dart';
 
 /// Which preview a breakdown step plays.
@@ -34,9 +36,41 @@ class SampleRewind {
 
 /// A labelled section of the breakdown timeline.
 class SampleStage {
-  const SampleStage(this.label, this.start, this.end);
+  const SampleStage(this.label, this.start, this.end, {this.line});
   final String label;
   final double start, end;
+
+  /// Which row of the card's lyrics file this stage shows (0-based); see
+  /// [SampleLyrics]. Null for a plain [label].
+  final int? line;
+}
+
+/// Lyric lines for a Sample card's breakdown, read from
+/// `assets/sample_lyrics/<songId>.txt` (the modern song's Deezer id): one
+/// line per row, in order; blank rows and rows starting with `#` are
+/// skipped. Cards without a file show the playing track's credit instead.
+class SampleLyrics {
+  SampleLyrics._();
+  static final Map<int, List<String>> _cache = {};
+
+  /// The lines once [load]ed (empty when there's no file).
+  static List<String> cached(int songId) => _cache[songId] ?? const [];
+
+  static Future<List<String>> load(int songId) async {
+    final have = _cache[songId];
+    if (have != null) return have;
+    var lines = const <String>[];
+    try {
+      final text = await rootBundle.loadString('assets/sample_lyrics/$songId.txt');
+      lines = [
+        for (final l in const LineSplitter().convert(text))
+          if (l.trim().isNotEmpty && !l.trimLeft().startsWith('#')) l.trim()
+      ];
+    } catch (_) {
+      // No lyrics file for this card.
+    }
+    return _cache[songId] = lines;
+  }
 }
 
 /// One "song samples record" relationship plus a scripted, Tracklib-style
@@ -170,24 +204,9 @@ const double _songEnd = _cut + (29.9 - _songFrom);
 double _src(double p) => p - _srcFrom; // source preview time → breakdown time
 double _song(double p) => _cut + (p - _songFrom); // song preview time → breakdown time
 
-/// The lyric box during the I Wonder breakdown, one entry per line, in
-/// order (the slots below set when each shows). Lyrics aren't bundled: an
-/// empty entry shows the playing track's artist and title instead.
-const List<String> kIWonderLyrics = [
-  '', // 1. Labi Siffre: the hook line, first phrase
-  '', // 2.
-  '', // 3.
-  '', // 4. last phrase before the cut
-  '', // 5. I Wonder: the sampled hook that opens the verse
-  '', // 6. Kanye West's verse, first line
-  '', // 7.
-  '', // 8.
-  '', // 9.
-  '', // 10. last verse line
-  '', // 11. the sampled hook again, fading out
-];
-
-// (lyric index, start, end) in breakdown time.
+// (lyrics-file row, start, end) in breakdown time: rows 0–3 are Labi
+// Siffre's line before the cut, 4 the hook that opens the verse, 5–9 the
+// verse, 10 the hook again as it fades.
 final _iWonderLines = <(int, double, double)>[
   (0, _aiwAt - 0.05, _src(8.95)),
   (1, _src(8.95), _src(11.4)),
@@ -240,11 +259,11 @@ final _curated = <SampleInfo>[
       // the next "And I wonder".
       SampleClip(SampleTrack.song, at: _cut, from: _songFrom, fadeIn: _xf, fadeOut: 29.9 - (_songNextAiw + 0.9)),
     ],
-    // One stage per lyric line (see [kIWonderLyrics]). Onsets measured
+    // One stage per row of assets/sample_lyrics/630827252.txt. Onsets measured
     // from the vocals' energy in each preview.
     stages: [
       SampleStage('', 0, _aiwAt - 0.05),
-      for (final (i, start, end) in _iWonderLines) SampleStage(kIWonderLyrics[i], start, end),
+      for (final (i, start, end) in _iWonderLines) SampleStage('', start, end, line: i),
     ],
     sourceEnvelope: 'Kic3RTVGMDc5NS4lIB8nKyowKywrJjt6VC4oO09JTWRYd2/X/73Ds6WSgmNRQURTcnJeYWBRQz8zNTcxSltcYWN3cVk+Rj4wKScnNzpKPUEsKC4jLyskJDY0OC4pIiIjHh8cGx87Q05ISls+RjwzMTIuLSolJR4ZGBcYGBUXHkM8REI+MUMxKDEnJygqJiMiIRshGB8aEg8VP0Q8RDk7ND48LjEiMDUsNDIkLiIkHRkVFSRtcXZ0Y2JbVkRUPklQPUQ3QCQhIB0XFxcgTUQ4MSosICglJSMeLEgySEM+ODM7Ky8lKTVIS1ZPQThBPDIzNyswKS4gIiAeHhQTEBMOSj9OPUw2Qiw8LzkrNzMrRDIsKCwfHhgYExw+RDUzLCElIR4WDQ4ZMEJGRTZEPi86MiUsLSRSdGVdUUFEREI5OkVNZWdbWldQS1dPNzk0Z32PdUo+VIRhZUxKLmpbR0dCQzswKSsmIB8sPkM0My1ALiYtIR0pPC0tNzEmIh8cHxsdOTtETT88OjgsODQuOj1dhmI5KiIlGycnIjxIYVhNYlpFT0MwPlKSpristpZjWltUVkdSSml5d3lPUkRZRk9GVkI1NCYlIhweGxgaGSs0P0Q4SzlCOzQzNTNKQzdJOTQtJSclIhwgLC9SOk5EOkM1NjqPg7XM8L6EsKuli4lGQWdnfYV0g0I3OTQ5YGyJspeVpa2koJmbmpmgrKmUhXePhoB/jHF5hE5JT1lMLChDMzMoLzA5QUA3MzU1MjEqLDQ3KiszNiomJh0fHTFARVNFSUs4PT80QC0wWGlkSUI/NEM6PDo5XlteT0NCRTg2NTAwP1pYPUI0LTQqQC8sKEm1vr3AkaaEmIyOh3JwinBscoVtdpSJi2AtLi0+PkdSS1V1XFRYTVJeTU1aVlRCQ0E9NSEhFhMSEx8uMjY9Njs/PDk5OTo1MTAtMzMqKBsUExIMDAsgFBVcpXhBW1JVVyQUFTAfFScuJy4uLS0vMCcoJihRVElLQ0lHVj8wKyEXNWBBQkFKVD8/NionKSYlKyggGxobFxgWFBMfO0BSVUw1RDM6IiwmLCQlJyAlHSEeJRobGCMqMzMyKyUvKSonKSI1Pz84ODc8OzwyNDEwPUI5Ni8vLCgZGhgTLE5IU0lCPDIwIxsUDg1FOj8xOzktKC0kIyQhJR8gIxoZFRgUEhAREhA8Q05OTUpCNCosKScfJyMmJCAkHx0YGxQXGjtCQDs3NDY1My8uLURKS09FPD45OkFFNDMzMjU2KiwlIR0YFBASL1I3NCw6LjAgFhYPDCU9MzgyOCouJjEoHSYkHx4cGhkUEw8SEBISLjVWVlA5OC0rJiUkHSAiJSEaHR0dGRYeFRIqPUw9NC8zNTczLywqLkFEQzg9OkBCQDY5NEA5LzIsJiEkIxcZEw82TUk8Ozw4NTgnIR4TRGVPaGBQTUo+RTk6SDc9PzQ9KiYyHiElGCIjJldfXkRKOD0uMiYoJDiflWSHaEguUCsnLBwbHxMXGBUYRD8kHhmDgoyrbndgVE1gSEZLdKd6cmAvLDIjNBsgICyLp4NiYm1maW1oaFFTUlVXTkxNRENGQ0Y+PYZgf20=',
     note: 'Labi Siffre\'s line "And I wonder if you know what it means" is looped, with "what it means" repeated, as the hook.',

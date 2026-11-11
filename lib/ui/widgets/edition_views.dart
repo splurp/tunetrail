@@ -284,7 +284,12 @@ class _SampleBreakdownPanelState extends State<SampleBreakdownPanel> {
                 ]),
               );
           // The current lyric line; with none, the playing track's credit.
-          var stage = mine && pb.stage >= 0 ? pb.stages[pb.stage].label : null;
+          String? stage;
+          if (mine && pb.stage >= 0) {
+            final st = pb.stages[pb.stage];
+            final lines = SampleLyrics.cached(s.song.id);
+            stage = st.line != null && st.line! < lines.length ? lines[st.line!] : st.label;
+          }
           if (stage != null && stage.isEmpty) {
             stage = pb.songPos != null ? '${s.song.artistName} · ${s.song.title}' : '${s.source.artistName} · ${s.source.title} (${s.sourceYear})';
           }
