@@ -423,8 +423,10 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
     final s = widget.spawn;
     final c = rarityColor(r);
     final size = MediaQuery.sizeOf(context);
-    // Scale with the window: small on phones, much larger on PC screens.
-    final cardW = math.min(size.width * 0.5, (size.height - 300) / 1.55).clamp(190.0, 440.0);
+    // Scale with the window: as big as fits between the top bar and the
+    // text and buttons below (about half as big again as it used to be).
+    final room = size.height - 250;
+    final cardW = math.min(size.width * 0.64, room / kCardAspect).clamp(190.0, 700.0);
     return Scaffold(
       backgroundColor: Colors.black.withValues(alpha: 0.88),
       body: Container(
@@ -451,7 +453,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                     alignment: Alignment.center,
                     children: [
                       AnimatedScale(
-                        scale: _fled ? 0.2 : (_caught ? 1.05 : 0.82),
+                        scale: _fled ? 0.2 : (_caught ? 1.0 : 0.96),
                         duration: const Duration(milliseconds: 500),
                         curve: Curves.easeOutBack,
                         child: AnimatedOpacity(
@@ -474,7 +476,7 @@ class _EncounterScreenState extends State<EncounterScreen> with TickerProviderSt
                           child: AnimatedBuilder(
                             animation: _ring,
                             builder: (context, _) => CustomPaint(
-                              size: Size.square(math.min(size.width, size.height * 0.6) * 1.05),
+                              size: Size.square(math.min(size.width, room) * 1.05),
                               painter: _BeatRingPainter(_ringFracNow, _target, c, _cycleNow),
                             ),
                           ),
