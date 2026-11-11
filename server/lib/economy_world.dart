@@ -121,7 +121,7 @@ extension EconomyWorld on Economy {
   /// ground map the server has for the cell).
   void _settleDj(Account a, int cx, int cy, int d, int dayEnd) {
     final id = 'dj:$cx:$cy:$d';
-    if (worldDjs.containsKey(id) || noDj.contains(id)) return;
+    if (worldDjs.containsKey(id) || noDj.contains(id) || defeatedDjs.containsKey(id)) return;
     final ground = a.grounds['$cx:$cy:$d'];
     final songs = _playableDjSongs();
     if (ground == null || songs.isEmpty) return;
@@ -139,8 +139,12 @@ extension EconomyWorld on Economy {
   Iterable<DjNpc> _djsNear(Account a, double lat, double lng) sync* {
     final t = now();
     worldDjs.removeWhere((_, x) => x.expiresAt > 0 && x.expiresAt < t);
+    if (defeatedDjs.values.any((until) => until < t)) {
+      defeatedDjs.removeWhere((_, until) => until < t);
+      _saveDefeated();
+    }
     for (final dj in worldDjs.values) {
-      if (a.djDone.containsKey(dj.id)) continue;
+      if (a.djDone.containsKey(dj.id) || defeatedDjs.containsKey(dj.id)) continue;
       if (distanceMeters(lat, lng, dj.lat, dj.lng) <= 700) yield dj;
     }
   }
@@ -293,7 +297,24 @@ extension EconomyWorld on Economy {
     return _djSongs!;
   }
 
+  /// Loads the DJs beaten before a restart.
+  Future<void> loadWorld() async {
+    try {
+      final j = await catalog.store.loadBlob('defeatedDjs');
+      if (j is Map) {
+        for (final e in j.entries) {
+          if (e.value is num) defeatedDjs['${e.key}'] = (e.value as num).toInt();
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _saveDefeated() {
+    catalog.store.saveBlob('defeatedDjs', defeatedDjs).catchError((Object _) {});
+  }
+
   DjNpc _dj(Account a, String djId) {
+    if (defeatedDjs.containsKey(djId)) throw MarketException('Someone has already beaten this DJ');
     final known = worldDjs[djId];
     if (known != null && (known.expiresAt == 0 || known.expiresAt >= now())) return known;
     final p = djId.split(':');
@@ -428,6 +449,12 @@ extension EconomyWorld on Economy {
       touch(a);
     }
     if (!b.won) return;
+    // Beaten: the DJ leaves the map for everyone (for the rest of its day,
+    // or until a summoned one would have left).
+    final dj = b.dj;
+    defeatedDjs[dj.id] = dj.expiresAt > 0 ? math.max(dj.expiresAt, t + 60000) : t + 24 * 3600000;
+    worldDjs.remove(dj.id);
+    _saveDefeated();
     // One of the team, at random, takes home a Canvas of the song.
     final ids = scored.keys.toList();
     final winner = ids[rng.nextInt(ids.length)];

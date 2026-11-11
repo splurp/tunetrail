@@ -394,6 +394,21 @@ void main() {
       expect((st['live'] as Map)['p2'], 60);
     });
 
+    test('a beaten DJ leaves the map for every player, not only the winners', () {
+      econ.admins.add('p2');
+      econ.presence('p1', lat, lng);
+      econ.presence('p2', lat + 0.001, lng);
+      final dj = DjNpc.fromJson(econ.adminSummonDj('p2', 'p1'));
+      bool sees(String id) => (econ.worldAround(id)['djs'] as List).any((x) => x['id'] == dj.id);
+      expect(sees('p2'), true);
+      final b = econ.challengeDj('p1', dj.id, lat, lng);
+      expect(econ.scoreBattle('p1', b['id'] as String, 100, 40)['won'], true);
+      expect(sees('p1'), false);
+      expect(sees('p2'), false); // wasn't in the battle
+      expect(econ.presence('p2', lat + 0.001, lng)['djIds'], isNot(contains(dj.id)));
+      expect(() => econ.challengeDj('p2', dj.id, lat + 0.001, lng), throwsA(isA<MarketException>()));
+    });
+
     test('a battle nobody scores in is settled when its time is up', () {
       econ.admins.add('p2');
       econ.presence('p1', lat, lng);

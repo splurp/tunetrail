@@ -327,6 +327,10 @@ class Economy {
   /// Cells and days known to have no DJ ("dj:cx:cy:day").
   final Set<String> noDj = {};
 
+  /// DJs someone beat: gone for everyone until then (ms). Kept across
+  /// restarts.
+  final Map<String, int> defeatedDjs = {};
+
   /// DJ battles going on (and just finished), by id.
   final Map<String, Battle> battles = {};
   int _battleCounter = 0;

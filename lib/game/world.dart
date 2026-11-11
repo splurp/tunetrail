@@ -346,6 +346,10 @@ class WorldState extends ChangeNotifier {
       // fetch the world again to show it.
       final djIds = [for (final x in (j['djIds'] as List? ?? const [])) '$x'];
       if (djIds.any((id) => !djs.any((d) => d.id == id) && _summonSeen.add(id))) g._refreshSpawns(force: true);
+      // DJs the server no longer lists (someone beat them) leave the map.
+      if (j.containsKey('djIds') && djs.any((d) => !djIds.contains(d.id))) {
+        djs = [for (final d in djs) if (djIds.contains(d.id)) d];
+      }
       battles = [
         for (final x in (j['battles'] as List? ?? const []))
           NearbyBattle((x as Map)['id'] as String, DjNpc.fromJson(x['dj'] as Map<String, dynamic>), (x['endAt'] as num).toInt(), (x['players'] as num).toInt(), x['joined'] == true),

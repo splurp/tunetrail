@@ -83,6 +83,7 @@ Future<void> main(List<String> args) async {
       engine.collections[a.id] = a.cards.values.toList();
     }
   }
+  await economy.loadWorld();
   stdout.writeln('Economy: ${economy.accounts.length} accounts');
   if ((env['CATALOG_CRAWL'] ?? 'true').toLowerCase() != 'false') {
     unawaited(catalog.crawl().then((_) => catalog.fixGenres()).catchError((Object e) => stderr.writeln('catalogue crawl failed: $e')));
