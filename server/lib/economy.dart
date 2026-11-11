@@ -647,6 +647,9 @@ class Economy {
     final rate = a.bonuses.spawnMultiplier;
     final rarityBoost = a.bonuses.rarityWeights;
     final shinyBoost = a.bonuses.shinyMultiplier;
+    // Songs already showing around the player: a new spawn redraws rather
+    // than repeat one of them.
+    final showing = <int>{};
     for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng)) {
       final gk = '$cx:$cy:$d';
       var ground = a.grounds[gk];
@@ -669,12 +672,17 @@ class Economy {
         if (a.spent.containsKey(sid)) continue;
         var spawn = a.memo[sid];
         if (spawn == null) {
-          final made = spawner.spawnAt(cx, cy, d, slot, st?.$1 ?? 0, sLat, sLng,
-              expiresAt: dayEnd,
-              favorites: favs,
-              bias: combineBias(timeBias, zones['$cx:$cy'] ?? const {}),
-              rarityBoost: rarityBoost,
-              shinyBoost: shinyBoost);
+          WorldSpawn? made;
+          for (var reroll = 0; reroll < 4; reroll++) {
+            made = spawner.spawnAt(cx, cy, d, slot, st?.$1 ?? 0, sLat, sLng,
+                expiresAt: dayEnd,
+                favorites: favs,
+                bias: combineBias(timeBias, zones['$cx:$cy'] ?? const {}),
+                rarityBoost: rarityBoost,
+                shinyBoost: shinyBoost,
+                reroll: reroll);
+            if (made == null || !showing.contains(made.song.id)) break;
+          }
           if (made == null) continue;
           // A spawn keeps what it first showed until the day ends.
           spawn = a.memo[sid] = made;
@@ -682,6 +690,7 @@ class Economy {
         if (spawn.edition != Edition.standard && engine.serialsLeft(spawn.song.id, spawn.edition) <= 0) {
           spawn = a.memo[sid] = _downgrade(spawn);
         }
+        showing.add(spawn.song.id);
         out.add({...spawn.toJson(), if (a.purchased.containsKey(sid)) 'paid': true});
       }
     }

@@ -17,6 +17,13 @@ class GenreInfo {
 
 /// Genres, with spawn weights. Genre 0 is Deezer's all-genre chart (a
 /// source of popular songs, not a real genre).
+/// How many of the catalogue's most popular songs make up Top Hits.
+const int kTopHitsSongs = 400;
+
+/// A genre needs this many songs for its full spawn share; smaller ones
+/// spawn proportionally less.
+const int kFullGenreSongs = 150;
+
 const List<GenreInfo> kWorldGenres = [
   GenreInfo(0, 'Top Hits', 14),
   GenreInfo(132, 'Pop', 20),
@@ -188,6 +195,14 @@ class SongPool {
       final s = this.songs[id]!;
       _pools.putIfAbsent(s.genreId, () => List.generate(5, (_) => _Bucket()))[rarities[id]!.index].add(id, s.artistId);
     }
+    // Top Hits is the catalogue's most popular songs whatever their genre
+    // (as well as any still filed under it), so it never shrinks to the
+    // few chart songs left after genres are corrected.
+    final top = [for (final s in this.songs.values) if (s.genreId != 0) s]..sort((a, b) => b.rank != a.rank ? b.rank.compareTo(a.rank) : a.id.compareTo(b.id));
+    final hits = _pools.putIfAbsent(0, () => List.generate(5, (_) => _Bucket()));
+    for (final s in top.take(kTopHitsSongs)) {
+      hits[rarities[s.id]!.index].add(s.id, s.artistId);
+    }
     for (final g in _pools.values) {
       for (final b in g) {
         b.seal();
@@ -219,7 +234,9 @@ class SongPool {
   int pickGenre(Rng rng, {Map<int, double> bias = const {}}) {
     final available = [for (final g in kWorldGenres) if (_hasGenre(g.id)) g];
     if (available.isEmpty) return 0;
-    final weights = [for (final g in available) g.weight * (bias[g.id] ?? 1.0)];
+    // A genre with only a few songs gets a share to match, or those few
+    // songs would turn up over and over.
+    final weights = [for (final g in available) g.weight * (bias[g.id] ?? 1.0) * math.min(1.0, genreSize(g.id) / kFullGenreSongs)];
     final total = weights.fold<double>(0, (a, b) => a + b);
     var roll = rng.nextDouble() * total;
     for (var i = 0; i < available.length; i++) {
@@ -516,15 +533,17 @@ class WorldSpawner {
       Set<int> favorites = const {},
       Map<int, double> bias = const {},
       List<double> rarityBoost = const [1, 1, 1, 1, 1],
-      double shinyBoost = 1}) {
-    final r = Rng(hashInts([seed, cx, cy, d, slot, gen]));
+      double shinyBoost = 1,
+      int reroll = 0}) {
+    // [reroll] > 0 draws a different song for the same spot (same id).
+    final r = Rng(hashInts([seed, cx, cy, d, slot, gen, if (reroll > 0) 1000 + reroll]));
     final rolled = r.rollRarityBoosted(rarityBoost);
     final shiny = r.nextInt(kShinyOdds * 1000) < 1000 * shinyBoost;
     final er = r.nextInt(kSampleOdds * kCanvasOdds);
     final genre = pool.pickGenre(r, bias: bias);
     final base = pool.pickSong(r, genreId: genre, rarity: rolled);
     // Favourites roll on their own generator, so they never shift the rest.
-    final fav = pool.maybeFavorite(Rng(hashInts([seed, cx, cy, d, slot, gen, 77])), rolled, favorites);
+    final fav = pool.maybeFavorite(Rng(hashInts([seed, cx, cy, d, slot, gen, 77, if (reroll > 0) 1000 + reroll])), rolled, favorites);
     var song = fav ?? base;
     if (song == null) return null;
     var edition = Edition.standard;
