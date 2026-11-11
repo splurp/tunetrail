@@ -622,6 +622,44 @@ class MarketEngine {
     if (stale.isNotEmpty) _changed();
   }
 
+  /// Admin: [playerId] no longer has [card]. It leaves their public
+  /// collection, profile and showcase, and pending offers asking for it go
+  /// back to their senders (the player isn't told).
+  void dropCard(String playerId, CardPayload card) {
+    bool same(CardPayload c) => c.uid == card.uid || (card.edition.serialized && card.serial > 0 && c.songId == card.songId && c.edition == card.edition && c.serial == card.serial);
+    collections[playerId]?.removeWhere(same);
+    final stale = offers.values
+        .where((o) => o.direct && o.toId == playerId && o.status == TradeStatus.pending && o.requestedCards.any(same))
+        .toList();
+    for (final o in stale) {
+      o.status = TradeStatus.declined;
+      _returnOffer(o, '${nameOf(playerId)} no longer has those songs');
+      offers.remove(o.id);
+    }
+    final p = players[playerId];
+    if (p != null) p.editionShowcase = [for (final c in p.editionShowcase) if (!same(c)) c];
+    final s = showcases[playerId];
+    if (s != null && (s.cards.any(same) || s.playlists.any((l) => l.cards.any(same)))) {
+      final cards = [for (final c in s.cards) if (!same(c)) c];
+      if (cards.isEmpty) {
+        showcases.remove(playerId);
+      } else {
+        showcases[playerId] = Showcase(
+          playerId: s.playerId,
+          playerName: s.playerName,
+          title: s.title,
+          cards: cards,
+          playlists: [for (final l in s.playlists) ShowcasePlaylist(name: l.name, cards: [for (final c in l.cards) if (!same(c)) c])],
+          updatedAt: s.updatedAt,
+          likes: s.likes,
+          favoriteArtists: s.favoriteArtists,
+        );
+      }
+    }
+    onCollectionChanged?.call(playerId);
+    _changed();
+  }
+
   /// Players whose username contains [query] (exact and prefix matches
   /// first).
   List<PlayerSummary> searchPlayers(String query, {int limit = 30, String? excludeId}) {

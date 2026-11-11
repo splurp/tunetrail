@@ -353,6 +353,14 @@ void addEconomyRoutes(
     }),
   );
   r.post(
+    '/admin/players/<player>/cards/<uid>/remove',
+    (Request req, String player, String uid) => guard(() async {
+      final id = admin(req);
+      final c = e.adminRemoveCard(id, Uri.decodeComponent(player), int.parse(uid));
+      return ok({'removed': c.toJson()});
+    }),
+  );
+  r.post(
     '/admin/players/<player>/restore',
     (Request req, String player) => guard(() async {
       final id = admin(req);

@@ -933,6 +933,42 @@ class Economy {
     return n;
   }
 
+  /// Admin: takes one card out of [targetId]'s collection, with no notice
+  /// and no refund. Offers asking for it are returned, it leaves their
+  /// showcases, and a numbered edition's serial is freed to be found
+  /// again. Returns the card removed.
+  CardPayload adminRemoveCard(String adminId, String targetId, int uid) {
+    if (!admins.contains(adminId)) throw MarketException('Admins only');
+    final a = accounts[targetId];
+    if (a == null || !a.imported) throw MarketException('No such player');
+    final c = _remove(a, uid);
+    if (c == null) throw MarketException("They don't have that card any more (it may be listed, up for auction or traded)");
+    touch(a);
+    engine.dropCard(targetId, c);
+    // So restoring their pre-server cards can't bring it back.
+    legacy[targetId]?.removeWhere((x) => x.uid == uid);
+    var freed = false;
+    if (c.edition.serialized && c.serial > 0) {
+      bool same(CardPayload x) => x.songId == c.songId && x.edition == c.edition && x.serial == c.serial;
+      if (!accounts.values.any((x) => x.cards.values.any(same))) {
+        try {
+          engine.purgeSerial(c.songId, c.edition, c.serial);
+          freed = true;
+        } on MarketException {
+          // Still listed or offered somewhere: leave the number taken.
+        }
+      }
+    }
+    final what = '${c.title}${c.shiny ? ' (shiny)' : ''}${c.edition.serialized ? ' ${c.edition.label} #${c.serial}' : ''}';
+    _logAdmin(a, adminId, 'removed $what${freed ? ' and freed its number' : ''}');
+    final me = accounts[adminId];
+    if (me != null && me != a) {
+      _logAdmin(me, adminId, 'removed $what from ${engine.nameOf(targetId)}');
+      touch(me);
+    }
+    return c;
+  }
+
   /// Admin: gives back today's minigame rounds ([extra] > 0 adds rounds on
   /// top of the daily allowance).
   void adminMinigames(String adminId, String targetId, {int extra = 0}) {

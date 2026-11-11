@@ -5,6 +5,7 @@ import 'package:tunetrail_core/tunetrail_core.dart';
 
 import '../../data/models.dart';
 import '../../build_flags.dart';
+import '../../game/market_service.dart';
 import '../app.dart';
 import '../widgets/cards.dart';
 import '../widgets/profile_banner.dart';
@@ -82,32 +83,88 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
+  /// Admin build, admin account, a real player: admin card tools.
+  bool _admin(PublicProfile p) => kAdminBuild && GameScope.read(context).profile.isAdmin && !p.isBot;
+
+  /// Admin: takes [c] out of the player's collection (no notice, no refund).
+  Future<void> _removeCard(PublicProfile p, CardPayload c) async {
+    final g = GameScope.read(context);
+    final serial = c.edition.serialized && c.serial > 0 ? ' ${c.edition.label} #${c.serial}' : '';
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove this card?'),
+        content: Text(
+          '${c.title}$serial is taken out of ${p.name}\'s collection. They aren\'t told and get nothing back.'
+          '${serial.isEmpty ? '' : ' Its number is freed so it can be found again.'}',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    final m = g.market;
+    if (m is! RemoteMarket) return g.toast('Not connected to the server');
+    try {
+      await m.send('POST', '/admin/players/${Uri.encodeComponent(p.id)}/cards/${c.uid}/remove');
+      if (!mounted) return;
+      setState(() {
+        _cards.removeWhere((x) => x.uid == c.uid);
+        _picked.remove(c.uid);
+        if (_total > 0) _total--;
+      });
+      g.toast('Removed ${c.title} from ${p.name}');
+      unawaited(_load());
+    } catch (err) {
+      g.toast('$err');
+    }
+  }
+
   /// Under a card's full view: offer for it (with any ticked songs).
   Widget _fullViewActions(BuildContext ctx, PublicProfile p, CardPayload c) {
     final others = _picked.values.where((x) => x.uid != c.uid).length;
+    final me = p.id == GameScope.read(context).profile.playerId;
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: 10,
       runSpacing: 8,
       children: [
-        FilledButton.icon(
-          icon: const Icon(Icons.local_offer_outlined),
-          label: Text(others == 0 ? 'Make an offer' : 'Make an offer (with $others ticked)'),
-          onPressed: () async {
-            Navigator.pop(ctx);
-            final wanted = {..._picked, c.uid: c}.values.toList();
-            final sent = await composeDirectOffer(context, p, wanted);
-            if (sent == true && mounted) setState(_picked.clear);
-          },
-        ),
-        OutlinedButton(
-          style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
-          onPressed: () {
-            Navigator.pop(ctx);
-            _togglePick(c);
-          },
-          child: Text(_picked.containsKey(c.uid) ? 'Untick' : 'Tick for a bigger offer'),
-        ),
+        if (!me) ...[
+          FilledButton.icon(
+            icon: const Icon(Icons.local_offer_outlined),
+            label: Text(others == 0 ? 'Make an offer' : 'Make an offer (with $others ticked)'),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final wanted = {..._picked, c.uid: c}.values.toList();
+              final sent = await composeDirectOffer(context, p, wanted);
+              if (sent == true && mounted) setState(_picked.clear);
+            },
+          ),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _togglePick(c);
+            },
+            child: Text(_picked.containsKey(c.uid) ? 'Untick' : 'Tick for a bigger offer'),
+          ),
+        ],
+        if (_admin(p))
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+            icon: const Icon(Icons.delete_forever_outlined),
+            label: const Text('Remove from player (admin)'),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _removeCard(p, c);
+            },
+          ),
       ],
     );
   }
@@ -198,11 +255,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           actions: [
             // Admin build, admin accounts: gifts and song spawns.
             if (kAdminBuild && GameScope.of(context).profile.isAdmin && !p.isBot)
-              IconButton(
-                tooltip: 'Admin tools',
-                icon: const Icon(Icons.admin_panel_settings_outlined),
-                onPressed: () => showAdminPlayerTools(context, p.id, p.name),
-              ),
+              IconButton(tooltip: 'Admin tools', icon: const Icon(Icons.admin_panel_settings_outlined), onPressed: () => showAdminPlayerTools(context, p.id, p.name)),
             if (!me && !p.isBot)
               PopupMenuButton<String>(
                 onSelected: (v) => v == 'report' ? showPlayerReport(context, p.id, p.name) : _block(v == 'block'),
@@ -260,10 +313,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         if (p.coins != null || p.bits != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 10),
-                            child: Wrap(spacing: 8, children: [
-                              if (p.coins != null) CurrencyChip(icon: kCoinIcon, value: p.coins!, color: kCoinColor),
-                              if (p.bits != null) CurrencyChip(icon: kBitsIcon, value: p.bits!, color: kBitsColor),
-                            ]),
+                            child: Wrap(
+                              spacing: 8,
+                              children: [
+                                if (p.coins != null) CurrencyChip(icon: kCoinIcon, value: p.coins!, color: kCoinColor),
+                                if (p.bits != null) CurrencyChip(icon: kBitsIcon, value: p.bits!, color: kBitsColor),
+                              ],
+                            ),
                           ),
                         const SizedBox(height: 10),
                         if (!me && !p.isBot)
@@ -354,12 +410,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               SliverPadding(
                 padding: EdgeInsets.symmetric(horizontal: 14 + ((MediaQuery.sizeOf(context).width - 1000) / 2).clamp(0.0, double.infinity)),
                 sliver: SliverGrid.builder(
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 130,
-                    childAspectRatio: 0.64,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                  ),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 130, childAspectRatio: 0.64, crossAxisSpacing: 8, mainAxisSpacing: 8),
                   itemCount: _cards.length,
                   itemBuilder: (context, i) {
                     final c = _cards[i];
@@ -373,7 +424,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             shiny: c.shiny,
                             edition: c.edition,
                             serial: c.serial,
-                            onTap: () => showCardFullView(context, c, actions: me || p.isBot ? null : (ctx) => _fullViewActions(ctx, p, c)),
+                            onTap: () => showCardFullView(context, c, actions: _admin(p) || !(me || p.isBot) ? (ctx) => _fullViewActions(ctx, p, c) : null),
                             onLongPress: me || p.isBot ? null : () => _togglePick(c),
                           ),
                         ),
@@ -465,19 +516,13 @@ Future<bool?> composeDirectOffer(BuildContext context, PublicProfile to, List<Ca
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'You want ${wanted.length} song${wanted.length == 1 ? '' : 's'} (est. ${formatNumber(want)}):',
-                    style: const TextStyle(color: kTextSecondary),
-                  ),
-                  for (final c in wanted.take(5))
-                    Text('• ${c.title} — ${c.artistName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+                  Text('You want ${wanted.length} song${wanted.length == 1 ? '' : 's'} (est. ${formatNumber(want)}):', style: const TextStyle(color: kTextSecondary)),
+                  for (final c in wanted.take(5)) Text('• ${c.title} — ${c.artistName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
                   if (wanted.length > 5) Text('…and ${wanted.length - 5} more', style: const TextStyle(fontSize: 12, color: kTextTertiary)),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(
-                        child: Text('You offer ${mine.length} song${mine.length == 1 ? '' : 's'}${mine.isEmpty ? '' : ' (est. ${formatNumber(value)})'}'),
-                      ),
+                      Expanded(child: Text('You offer ${mine.length} song${mine.length == 1 ? '' : 's'}${mine.isEmpty ? '' : ' (est. ${formatNumber(value)})'}')),
                       TextButton.icon(
                         icon: const Icon(Icons.add, size: 18),
                         label: Text(mine.isEmpty ? 'Add songs' : 'Change'),
@@ -500,10 +545,7 @@ Future<bool?> composeDirectOffer(BuildContext context, PublicProfile to, List<Ca
                     maxLines: 2,
                     decoration: const InputDecoration(labelText: 'Note (optional)'),
                   ),
-                  const Text(
-                    'Your songs and coins are held until they answer. If they decline, everything comes back.',
-                    style: TextStyle(fontSize: 12, color: kTextTertiary),
-                  ),
+                  const Text('Your songs and coins are held until they answer. If they decline, everything comes back.', style: TextStyle(fontSize: 12, color: kTextTertiary)),
                 ],
               ),
             ),
