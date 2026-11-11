@@ -192,7 +192,7 @@ class SampleLibrary {
 // Labi's beats after his — on his next bar line, with the drums carrying
 // straight on. Labi's last word plays out at full volume underneath
 // Kanye's pickup (his voice ends at source 18.0). Then Kanye's lines, the
-// hook at 21.589, and a fade out.
+// hook at 21.589, Kanye's last word and a quick fade.
 const double _xf = 0.015; // de-click
 const double _srcBeat = 0.6388;
 const double _srcDownbeat = 7.688; // the beat "And I wonder" leads into
@@ -204,7 +204,9 @@ const double _songAiw = 6.542;
 const double _songDownbeat = 6.664; // the beat that hook leads into
 const double _songFrom = _songAiw - 0.1; // a hair before "And"
 const double _songLastAiw = 21.589;
-const double _songTo = _songLastAiw + 2.8; // the hook, then a 2 s fade
+// Kanye's last word ends about 23.0; full volume to 23.3, then a quick fade.
+const double _songFade = 0.4;
+const double _songTo = 23.3 + _songFade;
 // I Wonder's downbeat on Labi's 16th beat after his.
 const double _cut = (_srcDownbeat + 16 * _srcBeat - _srcFrom) - (_songDownbeat - _songFrom);
 const double _songEnd = _cut + (_songTo - _songFrom);
@@ -264,7 +266,7 @@ final _curated = <SampleInfo>[
       SampleClip(SampleTrack.source, at: 0, from: _srcFrom, to: _srcFrom + _cut + _srcTail, fadeIn: 0.25, fadeOut: _srcTailFade),
       // Hard cut on the bar line into I Wonder's verse; it fades out after
       // the next "And I wonder".
-      SampleClip(SampleTrack.song, at: _cut, from: _songFrom, to: _songTo, fadeIn: _xf, fadeOut: 2.0),
+      SampleClip(SampleTrack.song, at: _cut, from: _songFrom, to: _songTo, fadeIn: _xf, fadeOut: _songFade),
     ],
     // One stage per row of assets/sample_lyrics/630827252.txt. Onsets measured
     // from the vocals' energy in each preview.
