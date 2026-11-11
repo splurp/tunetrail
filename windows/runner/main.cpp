@@ -38,6 +38,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     ::DispatchMessage(&msg);
   }
 
+  // The window is gone and the game has saved: end the process right here.
+  // Letting it unwind normally can leave it hanging in the background while
+  // the audio and video libraries (SoLoud, ffmpeg) shut their threads down,
+  // which keeps Tunetrail.exe running and its files locked.
+  ::TerminateProcess(::GetCurrentProcess(), EXIT_SUCCESS);
   ::CoUninitialize();
   return EXIT_SUCCESS;
 }

@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'dart:ui' show AppExitResponse;
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
@@ -109,7 +111,31 @@ class Game extends ChangeNotifier {
     return g;
   }
 
+  /// Desktop: when the window is closed, save and let the app quit
+  /// (the Windows runner then ends the process — nothing keeps running in
+  /// the background).
+  AppLifecycleListener? _exitListener;
+
+  /// Saves everything held on this device and stops the music. Waits at
+  /// most two seconds.
+  Future<void> saveForExit() async {
+    try {
+      await Future.wait<void>([
+        profile.save(),
+        collection.save(),
+        catalog.flush(),
+        audio.stop(),
+      ]).timeout(const Duration(seconds: 2));
+    } catch (_) {}
+  }
+
   Future<void> _init() async {
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      _exitListener = AppLifecycleListener(onExitRequested: () async {
+        await saveForExit();
+        return AppExitResponse.exit;
+      });
+    }
     purchases = PurchaseService(onGrant: _grantProduct);
     unawaited(purchases.init());
     location.joystickMode = kAdminBuild && profile.debugEnabled && profile.joystickEnabled;
@@ -1899,6 +1925,7 @@ class Game extends ChangeNotifier {
 
   @override
   void dispose() {
+    _exitListener?.dispose();
     _tick?.cancel();
     _inboxTimer?.cancel();
     _collectionSync?.cancel();

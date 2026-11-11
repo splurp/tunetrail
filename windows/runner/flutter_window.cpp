@@ -1,6 +1,7 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <thread>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -51,6 +52,18 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == WM_CLOSE && !closing_) {
+    closing_ = true;
+    // The window disappears straight away while the game saves (it gets a
+    // couple of seconds). If anything hangs, the process is ended anyway, so
+    // Tunetrail never lingers in the background after it's closed.
+    ::ShowWindow(hwnd, SW_HIDE);
+    std::thread([] {
+      ::Sleep(5000);
+      ::TerminateProcess(::GetCurrentProcess(), 0);
+    }).detach();
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
