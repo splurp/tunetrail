@@ -377,6 +377,23 @@ void main() {
       expect((econ.worldAround('p1')['djs'] as List).any((x) => x['id'] == dj.id), false);
     });
 
+    test('DJs are shared: a summoned DJ shows for players nearby; live scores are shared', () {
+      econ.admins.add('p2');
+      econ.presence('p1', lat, lng);
+      econ.presence('p2', lat + 0.001, lng);
+      final dj = DjNpc.fromJson(econ.adminSummonDj('p2', 'p2'));
+      bool sees(String id) => (econ.worldAround(id)['djs'] as List).any((x) => x['id'] == dj.id);
+      expect(sees('p1'), true);
+      expect(sees('p2'), true);
+      expect((econ.presence('p1', lat, lng)['djIds'] as List), contains(dj.id));
+      final b = econ.challengeDj('p1', dj.id, lat, lng);
+      econ.joinBattle('p2', b['id'] as String, lat + 0.001, lng);
+      econ.liveScore('p1', b['id'] as String, 80);
+      final st = econ.liveScore('p2', b['id'] as String, 60);
+      expect((st['live'] as Map)['p1'], 80);
+      expect((st['live'] as Map)['p2'], 60);
+    });
+
     test('a battle nobody scores in is settled when its time is up', () {
       econ.admins.add('p2');
       econ.presence('p1', lat, lng);

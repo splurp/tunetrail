@@ -118,6 +118,11 @@ void addEconomyRoutes(
         final b = await body(req);
         return withAcct(req, id, {'battle': e.scoreBattle(id, Uri.decodeComponent(bid), (b['acc'] as num?)?.toDouble() ?? 0, (b['beats'] as num?)?.toInt() ?? 0)});
       }));
+  r.post('/battles/<bid>/live', (Request req, String bid) => guard(() async {
+        final id = pid(req);
+        final b = await body(req);
+        return ok({'battle': e.liveScore(id, Uri.decodeComponent(bid), (b['acc'] as num?)?.toDouble() ?? 0)});
+      }));
   r.get('/battles/<bid>', (Request req, String bid) => guard(() async {
         final id = pid(req);
         return withAcct(req, id, {'battle': e.battleState(id, Uri.decodeComponent(bid))});

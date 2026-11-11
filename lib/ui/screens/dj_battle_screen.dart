@@ -74,6 +74,43 @@ class _DjBattleScreenState extends State<DjBattleScreen> with SingleTickerProvid
   String? _error;
   int _players = 1;
   Timer? _poll;
+
+  /// Everyone's running accuracy while the battle is on (from the server;
+  /// this player's own is always the one worked out here).
+  Map<String, double> _live = {};
+  Timer? _livePoll;
+
+  static const _blue = Color(0xFF3D7BFF), _red = Color(0xFFFF4D5E);
+
+  /// The team's accuracy so far, with the bonus for extra players already
+  /// applied (+50% for a second player, +25% for a third…).
+  double get _teamAccuracy {
+    final me = _g?.profile.playerId;
+    final values = <double>[
+      for (final e in _live.entries)
+        if (e.key != me) e.value,
+      _myAccuracy,
+    ];
+    return teamAccuracy(values);
+  }
+
+  double get _djAverage => _djBeats == 0 ? dj.accuracy : _djSum / _djBeats;
+
+  /// Sends this player's running accuracy every two seconds and picks up
+  /// everyone else's.
+  void _startLiveScores() {
+    _livePoll ??= Timer.periodic(const Duration(seconds: 2), (_) async {
+      final g = _g;
+      if (g == null || _phaseName != 'live' || _left) return;
+      try {
+        final b = await g.world.liveScore(id, _myAccuracy);
+        if (!mounted) return;
+        final live = b['live'];
+        _live = {if (live is Map) for (final e in live.entries) '${e.key}': (e.value as num).toDouble()};
+        _players = (b['players'] as List? ?? const []).length;
+      } catch (_) {}
+    });
+  }
   bool _left = false;
 
   int get _now => _g?.world.serverNow ?? DateTime.now().millisecondsSinceEpoch;
@@ -164,6 +201,7 @@ class _DjBattleScreenState extends State<DjBattleScreen> with SingleTickerProvid
     if (_phaseName == 'intro' && now >= startAt && _ringOn) {
       setState(() => _phaseName = 'live');
       _firstBeat = _beatPos.ceil();
+      _startLiveScores();
     }
     if (_phaseName == 'live') {
       final b = _beatPos.floor();
@@ -261,6 +299,7 @@ class _DjBattleScreenState extends State<DjBattleScreen> with SingleTickerProvid
   void dispose() {
     _left = true;
     _poll?.cancel();
+    _livePoll?.cancel();
     _ticker.dispose();
     _time.dispose();
     _g?.audio.stop();
@@ -317,32 +356,21 @@ class _DjBattleScreenState extends State<DjBattleScreen> with SingleTickerProvid
                 child: ValueListenableBuilder<double>(
                   valueListenable: _time,
                   builder: (_, _, _) {
-                    final mine = _myAccuracy, djAvg = _djBeats == 0 ? dj.accuracy : _djSum / _djBeats;
-                    final boost = 2 - math.pow(0.5, _players - 1);
-                    return Row(children: [
-                      _Score(label: _players > 1 ? 'You (team of $_players: ×${boost.toStringAsFixed(boost == boost.roundToDouble() ? 0 : 2)})' : 'You', value: mine, color: kAccent),
-                      const SizedBox(width: 10),
-                      _Score(label: dj.name, value: djAvg, color: const Color(0xFF3DDC84), alignEnd: true),
+                    final team = _teamAccuracy, djAvg = _djAverage;
+                    return Column(mainAxisSize: MainAxisSize.min, children: [
+                      Row(children: [
+                        _Score(label: _players > 1 ? 'Your team ($_players players)' : 'You', value: team, color: _blue),
+                        const SizedBox(width: 10),
+                        _Score(label: dj.name, value: djAvg, color: _red, alignEnd: true),
+                      ]),
+                      const SizedBox(height: 6),
+                      // Battle meter: each side's share of the two
+                      // accuracies added together.
+                      _BattleMeter(blueShare: team + djAvg <= 0 ? 0.5 : team / (team + djAvg)),
                     ]);
                   },
                 ),
               ),
-              if (live || _phaseName == 'intro')
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: ValueListenableBuilder<double>(
-                      valueListenable: _time,
-                      builder: (_, _, _) => LinearProgressIndicator(
-                        value: (1 - (endAt - _now) / (kBattleSeconds * 1000)).clamp(0.0, 1.0),
-                        minHeight: 5,
-                        color: kAccent,
-                        backgroundColor: Colors.white12,
-                      ),
-                    ),
-                  ),
-                ),
               const Spacer(),
               if (_phaseName == 'done')
                 _Result(state: _state, dj: dj, me: g.profile.playerId, onClose: () => Navigator.of(context).pop())
@@ -381,11 +409,78 @@ class _DjBattleScreenState extends State<DjBattleScreen> with SingleTickerProvid
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 12, color: kTextSecondary),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 14),
+                // Time left in the battle.
+                if (live || _phaseName == 'intro')
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: _time,
+                        builder: (_, _, _) => LinearProgressIndicator(
+                          value: (1 - (endAt - _now) / (kBattleSeconds * 1000)).clamp(0.0, 1.0),
+                          minHeight: 5,
+                          color: kAccent,
+                          backgroundColor: Colors.white12,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(height: 17),
               ],
             ]),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+/// Blue (the players) on the left, red (the DJ) on the right, meeting where
+/// the accuracies balance: each side's share of the two added together. It
+/// slides smoothly whenever the scores change.
+class _BattleMeter extends StatelessWidget {
+  const _BattleMeter({required this.blueShare});
+  final double blueShare;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: blueShare.clamp(0.0, 1.0)),
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutCubic,
+      builder: (context, share, _) => SizedBox(
+        height: 16,
+        child: LayoutBuilder(builder: (context, box) {
+          final split = box.maxWidth * share;
+          return Stack(clipBehavior: Clip.none, children: [
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Row(children: [
+                  Container(
+                    width: split,
+                    decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF2756C9), _DjBattleScreenState._blue])),
+                  ),
+                  Expanded(
+                    child: Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [_DjBattleScreenState._red, Color(0xFFC92742)]))),
+                  ),
+                ]),
+              ),
+            ),
+            // The middle: where the two are level.
+            Positioned(left: box.maxWidth / 2 - 1, top: -3, bottom: -3, child: Container(width: 2, color: Colors.white38)),
+            // Where they meet.
+            Positioned(
+              left: split - 2,
+              top: -2,
+              bottom: -2,
+              child: Container(width: 4, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(2), boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.white54)])),
+            ),
+          ]);
+        }),
       ),
     );
   }

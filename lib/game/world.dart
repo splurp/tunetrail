@@ -29,6 +29,15 @@ class NearbyPlayer {
   double heading = 0, drawHeading = 0;
   bool moving = false;
   int seenAt = 0;
+
+  /// The walk from one reported position to the next: it takes as long as
+  /// the time between the two reports, so the player walks steadily from A
+  /// to B instead of jumping and stopping.
+  double fromLat = 0, fromLng = 0;
+  int walkStart = 0, walkMs = 0;
+
+  /// When the server last heard where they are (their clock on it).
+  int serverAt = 0;
   final IdleDirector idle = IdleDirector();
 }
 
@@ -291,26 +300,52 @@ class WorldState extends ChangeNotifier {
         final id = m['id'] as String;
         seen.add(id);
         final lat = (m['lat'] as num).toDouble(), lng = (m['lng'] as num).toDouble();
+        final at = (m['at'] as num?)?.toInt() ?? now;
+        final fresh = !players.containsKey(id);
         final np = players.putIfAbsent(
             id,
             () => NearbyPlayer(id)
               ..drawLat = lat
               ..drawLng = lng
+              ..fromLat = lat
+              ..fromLng = lng
               ..drawHeading = (m['hdg'] as num?)?.toDouble() ?? 0);
         np
           ..name = m['name'] as String? ?? ''
           ..look = (m['look'] as Map<String, dynamic>?) ?? const {}
           ..level = (m['level'] as num?)?.toInt() ?? 1
-          ..moving = metersBetween(LatLng(np.lat, np.lng), LatLng(lat, lng)) > 1.5 && np.seenAt != 0
-          ..lat = lat
-          ..lng = lng
           ..heading = (m['hdg'] as num?)?.toDouble() ?? 0
           ..seenAt = now;
+        if (!fresh && at > np.serverAt && (lat != np.lat || lng != np.lng)) {
+          final jump = metersBetween(LatLng(np.drawLat, np.drawLng), LatLng(lat, lng));
+          if (jump > 300) {
+            // Teleported (or a long gap): just appear there.
+            np
+              ..drawLat = lat
+              ..drawLng = lng
+              ..fromLat = lat
+              ..fromLng = lng
+              ..walkMs = 0;
+          } else {
+            // Walk there from wherever they're drawn now, taking as long as
+            // the gap between the two reports.
+            np
+              ..fromLat = np.drawLat
+              ..fromLng = np.drawLng
+              ..walkStart = DateTime.now().millisecondsSinceEpoch
+              ..walkMs = (at - np.serverAt).clamp(1500, 30000);
+          }
+        }
+        np
+          ..serverAt = at
+          ..lat = lat
+          ..lng = lng;
       }
       players.removeWhere((id, _) => !seen.contains(id));
-      // A DJ an admin just summoned: fetch the world again to show it.
-      final summoned = [for (final x in (j['summoned'] as List? ?? const [])) '$x'];
-      if (summoned.any((id) => !djs.any((d) => d.id == id) && _summonSeen.add(id))) g._refreshSpawns(force: true);
+      // A DJ new to this game (summoned, or found by another player):
+      // fetch the world again to show it.
+      final djIds = [for (final x in (j['djIds'] as List? ?? const [])) '$x'];
+      if (djIds.any((id) => !djs.any((d) => d.id == id) && _summonSeen.add(id))) g._refreshSpawns(force: true);
       battles = [
         for (final x in (j['battles'] as List? ?? const []))
           NearbyBattle((x as Map)['id'] as String, DjNpc.fromJson(x['dj'] as Map<String, dynamic>), (x['endAt'] as num).toInt(), (x['players'] as num).toInt(), x['joined'] == true),
@@ -326,19 +361,28 @@ class WorldState extends ChangeNotifier {
   /// Glides the drawn players towards where they were last seen (called
   /// every frame by the map).
   void animate(double dt) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
     for (final p in players.values) {
-      final k = math.min(1.0, dt * 0.9);
-      final far = metersBetween(LatLng(p.drawLat, p.drawLng), LatLng(p.lat, p.lng));
-      if (far > 120) {
-        p.drawLat = p.lat;
-        p.drawLng = p.lng;
+      var target = p.heading;
+      if (p.walkMs > 0) {
+        final u = ((nowMs - p.walkStart) / p.walkMs).clamp(0.0, 1.0);
+        p
+          ..drawLat = p.fromLat + (p.lat - p.fromLat) * u
+          ..drawLng = p.fromLng + (p.lng - p.fromLng) * u;
+        final span = metersBetween(LatLng(p.fromLat, p.fromLng), LatLng(p.lat, p.lng));
+        p.moving = u < 1 && span > 1.5;
+        // Face the way they're walking.
+        if (p.moving) target = const Distance().bearing(LatLng(p.fromLat, p.fromLng), LatLng(p.lat, p.lng));
+        if (u >= 1) p.walkMs = 0;
       } else {
-        p.drawLat += (p.lat - p.drawLat) * k;
-        p.drawLng += (p.lng - p.drawLng) * k;
+        p
+          ..drawLat = p.lat
+          ..drawLng = p.lng
+          ..moving = false;
       }
-      final dh = ((p.heading - p.drawHeading + 540) % 360) - 180;
+      final dh = ((target - p.drawHeading + 540) % 360) - 180;
       p.drawHeading = (p.drawHeading + dh * math.min(1.0, dt * 4) + 360) % 360;
-      p.idle.update(dt, p.moving && far > 0.6);
+      p.idle.update(dt, p.moving);
     }
     for (final dj in djs) {
       djIdle(dj.id).update(dt, false);
@@ -368,6 +412,13 @@ class WorldState extends ChangeNotifier {
 
   Future<Map<String, dynamic>> score(String battleId, double accuracy, int beats) async {
     final j = await g.econ.call('POST', '/battles/${Uri.encodeComponent(battleId)}/score', body: {'acc': accuracy, 'beats': beats}, source: CardSource.wild);
+    return j['battle'] as Map<String, dynamic>;
+  }
+
+  /// Sends this player's running accuracy; answers with the battle and
+  /// everyone's running accuracies (`live`).
+  Future<Map<String, dynamic>> liveScore(String battleId, double accuracy) async {
+    final j = await g.econ.call('POST', '/battles/${Uri.encodeComponent(battleId)}/live', body: {'acc': accuracy});
     return j['battle'] as Map<String, dynamic>;
   }
 

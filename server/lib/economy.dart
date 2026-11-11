@@ -319,6 +319,14 @@ class Economy {
   final Map<String, Map<int, CardPayload?>> pendingCards = {};
   final Set<String> rewriteCards = {};
 
+  /// The world's DJs, the same for every player: worked out once per cell
+  /// and day (from the first ground map the server gets for it), plus the
+  /// ones admins summon. By id.
+  final Map<String, DjNpc> worldDjs = {};
+
+  /// Cells and days known to have no DJ ("dj:cx:cy:day").
+  final Set<String> noDj = {};
+
   /// DJ battles going on (and just finished), by id.
   final Map<String, Battle> battles = {};
   int _battleCounter = 0;

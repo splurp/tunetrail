@@ -32,6 +32,10 @@ class Battle {
 
   /// Players and the accuracy each handed in (null until they do).
   final Map<String, double?> players = {};
+
+  /// Each player's running accuracy while the battle is on (for the live
+  /// team score and battle meter).
+  final Map<String, double> live = {};
   bool resolved = false;
   bool won = false;
   double team = 0;
@@ -91,19 +95,14 @@ extension EconomyWorld on Economy {
     final glow = <Map<String, dynamic>>[];
     final djs = <Map<String, dynamic>>[];
     a.djDone.removeWhere((_, until) => until < t);
-    a.summonedDjs.removeWhere((x) => x.expiresAt < t);
-    final songs = _playableDjSongs();
     for (final (cx, cy) in WorldSpawner.cellsAround(lat, lng)) {
       for (final f in _glowingIn(a, cx, cy, d)) {
         if (!a.claimedFeatures.contains('${f.id}:$d')) glow.add(f.toJson());
       }
-      final ground = a.grounds['$cx:$cy:$d'];
-      if (ground == null) continue;
-      final dj = WorldDjs.inCell(seed, cx, cy, d, ground, songs, expiresAt: dayEnd);
-      if (dj != null && !a.djDone.containsKey(dj.id)) djs.add(dj.toJson());
+      _settleDj(a, cx, cy, d, dayEnd);
     }
-    for (final dj in a.summonedDjs) {
-      if (!a.djDone.containsKey(dj.id)) djs.add(dj.toJson());
+    for (final dj in _djsNear(a, lat, lng)) {
+      djs.add(dj.toJson());
     }
     return {'glow': glow, 'djs': djs};
   }
@@ -116,6 +115,34 @@ extension EconomyWorld on Economy {
       if (f.square == sq) return f;
     }
     throw MarketException('Nothing there');
+  }
+
+  /// Works out a cell's DJ for the day once, for everyone (from the first
+  /// ground map the server has for the cell).
+  void _settleDj(Account a, int cx, int cy, int d, int dayEnd) {
+    final id = 'dj:$cx:$cy:$d';
+    if (worldDjs.containsKey(id) || noDj.contains(id)) return;
+    final ground = a.grounds['$cx:$cy:$d'];
+    final songs = _playableDjSongs();
+    if (ground == null || songs.isEmpty) return;
+    final dj = WorldDjs.inCell(seed, cx, cy, d, ground, songs, expiresAt: dayEnd);
+    if (dj == null) {
+      if (noDj.length > 200000) noDj.clear();
+      noDj.add(id);
+    } else {
+      worldDjs[id] = dj;
+    }
+  }
+
+  /// The DJs a player can see: any player's, within about 700 m, except
+  /// ones this player beat today (or that are taking a break from them).
+  Iterable<DjNpc> _djsNear(Account a, double lat, double lng) sync* {
+    final t = now();
+    worldDjs.removeWhere((_, x) => x.expiresAt > 0 && x.expiresAt < t);
+    for (final dj in worldDjs.values) {
+      if (a.djDone.containsKey(dj.id)) continue;
+      if (distanceMeters(lat, lng, dj.lat, dj.lng) <= 700) yield dj;
+    }
   }
 
   /// Uses a glowing feature the player is standing by: coins from a sewer
@@ -244,9 +271,10 @@ extension EconomyWorld on Economy {
       if (distanceMeters(lat, lng, b.dj.lat, b.dj.lng) > kBattleJoinMeters) continue;
       near.add({'id': b.id, 'dj': b.dj.toJson(), 'endAt': b.endAt, 'players': b.players.length, 'joined': b.players.containsKey(id)});
     }
-    // DJs an admin summoned since the game last asked what's around.
-    final summoned = [for (final d in a.summonedDjs) if (d.expiresAt >= t && !a.djDone.containsKey(d.id)) d.id];
-    return {'players': players, 'battles': near, 'now': t, if (summoned.isNotEmpty) 'summoned': summoned};
+    // The DJs around now (the game fetches the world again if one is new
+    // to it: summoned, or found by another player).
+    final djIds = [for (final dj in _djsNear(a, lat, lng)) dj.id];
+    return {'players': players, 'battles': near, 'now': t, 'djIds': djIds};
   }
 
   void setShowOnMap(String id, bool show) {
@@ -266,9 +294,8 @@ extension EconomyWorld on Economy {
   }
 
   DjNpc _dj(Account a, String djId) {
-    for (final s in a.summonedDjs) {
-      if (s.id == djId && s.expiresAt >= now()) return s;
-    }
+    final known = worldDjs[djId];
+    if (known != null && (known.expiresAt == 0 || known.expiresAt >= now())) return known;
     final p = djId.split(':');
     final (d, dayEnd) = _day(a);
     if (p.length == 4 && p[0] == 'dj' && p[3] == '$d') {
@@ -294,6 +321,7 @@ extension EconomyWorld on Economy {
         for (final e in b.players.entries)
           {'id': e.key, 'name': engine.nameOf(e.key), 'look': engine.players[e.key]?.look ?? const {}, if (b.resolved && e.value != null) 'acc': e.value},
       ],
+      'live': {for (final e in b.live.entries) e.key: e.value},
       'done': b.resolved,
       if (b.resolved) ...{
         'won': b.won,
@@ -355,6 +383,15 @@ extension EconomyWorld on Economy {
       if (b.players.values.every((v) => v != null)) _resolve(b);
     }
     return battleState(id, battleId);
+  }
+
+  /// A player's running accuracy during the battle; answers with the
+  /// battle (everyone's running accuracies).
+  Map<String, dynamic> liveScore(String id, String battleId, double accuracy) {
+    final b = battles[battleId];
+    if (b == null || !b.players.containsKey(id)) throw MarketException('That battle is over');
+    if (!b.resolved && accuracy.isFinite) b.live[id] = accuracy.clamp(0.0, 100.0).toDouble();
+    return _battleJson(b, id);
   }
 
   Map<String, dynamic> battleState(String id, String battleId) {
@@ -520,7 +557,7 @@ extension EconomyWorld on Economy {
       accuracy: djAccuracy(song.rank),
       expiresAt: t + 30 * 60000,
     );
-    a.summonedDjs.add(dj);
+    worldDjs[dj.id] = dj;
     _logAdmin(a, adminId, 'summoned $name (${song.title})');
     if (adminId != targetId) engine.notice(targetId, '$name has turned up near you — find them on the map for a DJ battle', title: 'DJ battle');
     return dj.toJson();
