@@ -184,22 +184,24 @@ class SampleLibrary {
 // Beat grids (onset comb fit): the source runs at 93.92 BPM with beats at
 // 3.216 + n·0.6388 s; I Wonder at 95.68 BPM, beats at 3.528 + n·0.6271 s.
 // In both, "And I wonder" is a pickup just before a downbeat (source 7.688;
-// song 11.681 for the hook at 11.557).
+// song 6.664 for the hook at 6.542).
 //
 // The breakdown: Labi Siffre from "And I wonder" (fading in over the
 // breath before it) to the end of his line, then a cut so that the
-// I Wonder hook that opens Kanye's lines (11.557) lands exactly 16 of
+// I Wonder hook that opens Kanye's lines (6.542) lands exactly 16 of
 // Labi's beats after his — on his next bar line, with the drums carrying
-// straight on. Labi's last word rings out underneath for a moment. Then
-// Kanye's lines, the hook at 21.589, and a fade out.
+// straight on. Labi's last word plays out at full volume underneath
+// Kanye's pickup (his voice ends at source 18.0). Then Kanye's lines, the
+// hook at 21.589, and a fade out.
 const double _xf = 0.015; // de-click
 const double _srcBeat = 0.6388;
 const double _srcDownbeat = 7.688; // the beat "And I wonder" leads into
 const double _srcFrom = 7.25; // the breath before "And"
 const double _aiwAt = 7.6 - _srcFrom; // "And I wonder" in breakdown time
-const double _srcTail = 0.35; // Labi's last word decays past the cut
-const double _songAiw = 11.557;
-const double _songDownbeat = 11.681; // the beat that hook leads into
+const double _srcTail = 0.47; // Labi's last word finishes past the cut (to source 18.15)
+const double _srcTailFade = 0.15;
+const double _songAiw = 6.542;
+const double _songDownbeat = 6.664; // the beat that hook leads into
 const double _songFrom = _songAiw - 0.1; // a hair before "And"
 const double _songLastAiw = 21.589;
 const double _songTo = _songLastAiw + 2.8; // the hook, then a 2 s fade
@@ -217,10 +219,10 @@ final _iWonderLines = <(int, double, double)>[
   (1, _src(8.95), _src(11.4)),
   (2, _src(11.4), _src(14.45)),
   (3, _src(14.45), _cut),
-  (4, _cut, _song(12.0)),
-  (5, _song(12.0), _song(13.4)),
-  (6, _song(13.4), _song(15.9)),
-  (7, _song(15.9), _song(17.4)),
+  (4, _cut, _song(7.9)),
+  (5, _song(7.9), _song(10.3)),
+  (6, _song(10.3), _song(16.2)),
+  (7, _song(16.2), _song(17.4)),
   (8, _song(17.4), _song(18.9)),
   (9, _song(18.9), _song(_songLastAiw - 0.1)),
   (10, _song(_songLastAiw - 0.1), _songEnd),
@@ -259,7 +261,7 @@ final _curated = <SampleInfo>[
     alignSong: _songAiw,
     clips: [
       // Labi Siffre's hook line, from a bar before it to the cut.
-      SampleClip(SampleTrack.source, at: 0, from: _srcFrom, to: _srcFrom + _cut + _srcTail, fadeIn: 0.25, fadeOut: _srcTail),
+      SampleClip(SampleTrack.source, at: 0, from: _srcFrom, to: _srcFrom + _cut + _srcTail, fadeIn: 0.25, fadeOut: _srcTailFade),
       // Hard cut on the bar line into I Wonder's verse; it fades out after
       // the next "And I wonder".
       SampleClip(SampleTrack.song, at: _cut, from: _songFrom, to: _songTo, fadeIn: _xf, fadeOut: 2.0),
