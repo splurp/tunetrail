@@ -193,16 +193,20 @@ class SongCardView extends StatelessWidget {
   static const _radius = 120 / 1122;
   static const _stroke = 10 / 1122;
   static const _side = 108 / 1122; // text inset
-  static const _titleSize = 100 / 1122;
-  static const _artistSize = 50 / 1122;
-  static const _pillH = 79 / 1122;
-  static const _pillPadX = 52 / 1122;
+  static const _titleSize = 80 / 1122;
+  static const _artistSize = 42 / 1122;
+  static const _pillH = 64 / 1122;
+  static const _pillText = 38 / 1122;
+  static const _pillPadX = 40 / 1122;
   static const _bottom = 66 / 1122; // pill to the card's bottom edge
+  // The serial badge, smaller than in the design and sitting level with
+  // the pill.
   static const _badgeRight = 76 / 1122;
-  static const _badgeBottom = 73 / 1122;
-  static const _badgeH = 110 / 1122;
-  static const _badgePadX = 25 / 1122;
-  static const _badgeRadius = 24 / 1122;
+  static const _badgeBottom = 66 / 1122;
+  static const _badgeH = 66 / 1122;
+  static const _badgePadX = 16 / 1122;
+  static const _badgeRadius = 15 / 1122;
+  static const _badgeText = 46 / 1122;
 
   /// The pane (80% black) covers the bottom 36.6% of the card, fading in
   /// over its top 35%.
@@ -237,7 +241,13 @@ class SongCardView extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: radius,
         color: const Color(0xFF151515),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.8), blurRadius: w * 0.09)],
+        boxShadow: edition == Edition.canvas
+            // Canvas editions glow in their rarity's colour.
+            ? [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: w * 0.05),
+                BoxShadow(color: canvasGlowColor(rarity).withValues(alpha: 0.75), blurRadius: w * 0.13, spreadRadius: w * 0.008),
+              ]
+            : [BoxShadow(color: Colors.black.withValues(alpha: 0.8), blurRadius: w * 0.09)],
       ),
       // The edge stroke sits over everything, half outside the card.
       foregroundDecoration: BoxDecoration(
@@ -270,19 +280,19 @@ class SongCardView extends StatelessWidget {
           // Title, artist and the rarity / edition pill.
           Positioned(
             left: w * _side,
-            right: w * (_badgeRight + (serial > 0 ? 0.16 : 0.0)),
+            right: w * (_badgeRight + (serial > 0 ? 0.11 : 0.0)),
             bottom: w * _bottom,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(song.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: _font(w * _titleSize, FontWeight.w700, Colors.white)),
-              SizedBox(height: w * 0.029),
-              Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: _font(w * _artistSize, FontWeight.w700, const Color(0xFF8D8D8D))),
-              SizedBox(height: w * 0.044),
+              Text(song.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: _font(w * _titleSize, FontWeight.w600, Colors.white)),
+              SizedBox(height: w * 0.024),
+              Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: _font(w * _artistSize, FontWeight.w600, const Color(0xFF8D8D8D))),
+              SizedBox(height: w * 0.036),
               _Pill(
                 label: isEd ? edition.label : (shiny ? 'Shiny ${rarity.label}' : rarity.label),
                 color: c,
                 height: w * _pillH,
                 padX: w * _pillPadX,
-                fontSize: w * _artistSize,
+                fontSize: w * _pillText,
                 shiny: shiny,
               ),
             ]),
@@ -296,7 +306,7 @@ class SongCardView extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: w * _badgePadX),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(w * _badgeRadius)),
-                child: Text('#$serial', style: _font(w * _titleSize, FontWeight.w700, const Color(0xFF282828), letterSpacing: w * _titleSize * 0.06)),
+                child: Text('#$serial', style: _font(w * _badgeText, FontWeight.w600, const Color(0xFF282828), letterSpacing: w * _badgeText * 0.04)),
               ),
             ),
         ]),
@@ -319,8 +329,11 @@ class SongCardView extends StatelessWidget {
       );
 }
 
-/// The card typeface (Montserrat, bundled).
-const String kCardFont = 'Montserrat';
+/// A Canvas card's glow: its rarity's colour (Rare a lighter blue).
+Color canvasGlowColor(Rarity r) => r == Rarity.rare ? Color.lerp(rarityColor(r), Colors.white, 0.3)! : rarityColor(r);
+
+/// The card typeface (Inter Tight, bundled).
+const String kCardFont = 'InterTight';
 
 /// A standard card's art: the album cover at 80% of the card's width over
 /// a blurred, darkened copy of itself.
@@ -368,7 +381,7 @@ class _Pill extends StatelessWidget {
   Widget build(BuildContext context) {
     // The text is a pale tint of the pill's own colour.
     final ink = Color.lerp(color, Colors.white, 0.86)!;
-    Widget text = Text(label, maxLines: 1, style: SongCardView._font(fontSize, FontWeight.w700, ink));
+    Widget text = Text(label, maxLines: 1, style: SongCardView._font(fontSize, FontWeight.w600, ink));
     if (shiny) {
       text = ValueListenableBuilder<double>(
         valueListenable: glintClock,
@@ -486,9 +499,9 @@ class CardTile extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 6, 8, 7),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: SongCardView._font(12, FontWeight.w700, Colors.white)),
+            Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: SongCardView._font(12, FontWeight.w600, Colors.white)),
             const SizedBox(height: 3),
-            Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: SongCardView._font(10.5, FontWeight.w700, const Color(0xFF8D8D8D))),
+            Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: SongCardView._font(10.5, FontWeight.w600, const Color(0xFF8D8D8D))),
             const SizedBox(height: 5),
             _Pill(
               label: edition != Edition.standard ? edition.label : (shiny ? 'Shiny ${rarity.label}' : rarity.label),
@@ -593,7 +606,7 @@ const kBitsIcon = Icons.diamond_outlined;
 
 /// A price with the coin icon.
 class CoinPrice extends StatelessWidget {
-  const CoinPrice(this.value, {super.key, this.style = const TextStyle(fontWeight: FontWeight.w700, color: kTextPrimary), this.iconSize = 15});
+  const CoinPrice(this.value, {super.key, this.style = const TextStyle(fontWeight: FontWeight.w600, color: kTextPrimary), this.iconSize = 15});
   final int value;
   final TextStyle style;
   final double iconSize;

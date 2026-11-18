@@ -29,7 +29,7 @@ Future<void> main() async {
   } catch (_) {}
   // Bundled fonts' licences, for the licences page.
   LicenseRegistry.addLicense(() async* {
-    yield LicenseEntryWithLineBreaks(['Montserrat'], await rootBundle.loadString('assets/fonts/OFL.txt'));
+    yield LicenseEntryWithLineBreaks(['Inter Tight'], await rootBundle.loadString('assets/fonts/OFL.txt'));
   });
   runApp(const TunetrailApp());
 }

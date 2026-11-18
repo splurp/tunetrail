@@ -103,18 +103,16 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
-  # Montserrat (SIL OFL 1.1, assets/fonts/OFL.txt): the song cards.
+  # Inter Tight (SIL OFL 1.1, assets/fonts/OFL.txt): the song cards.
   fonts:
-    - family: Montserrat
+    - family: InterTight
       fonts:
-        - asset: assets/fonts/Montserrat-Medium.ttf
+        - asset: assets/fonts/InterTight-Medium.ttf
           weight: 500
-        - asset: assets/fonts/Montserrat-SemiBold.ttf
+        - asset: assets/fonts/InterTight-SemiBold.ttf
           weight: 600
-        - asset: assets/fonts/Montserrat-Bold.ttf
+        - asset: assets/fonts/InterTight-Bold.ttf
           weight: 700
-        - asset: assets/fonts/Montserrat-ExtraBold.ttf
-          weight: 800
 
   # fonts:
   #   - family: Schyler
