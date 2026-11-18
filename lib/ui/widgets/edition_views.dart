@@ -14,10 +14,11 @@ import 'cards.dart' show RarityLabel;
 import 'net_image.dart';
 import 'ui_kit.dart';
 
+/// Edition colours: muted, to sit with the rarity colours.
 Color editionColor(Edition e) => switch (e) {
-      Edition.canvas => const Color(0xFFFF8A65),
-      Edition.sample => const Color(0xFF4DD0E1),
-      Edition.live => const Color(0xFFFF4D6D),
+      Edition.canvas => const Color(0xFFD9774F), // burnt coral
+      Edition.sample => const Color(0xFF3FA39C), // deep teal
+      Edition.live => const Color(0xFFC75C78), // dusty rose
       Edition.standard => kTextSecondary,
     };
 

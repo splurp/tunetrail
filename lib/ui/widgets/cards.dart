@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:tunetrail_core/tunetrail_core.dart';
@@ -7,7 +8,6 @@ import '../../data/models.dart';
 import '../../data/samples.dart';
 import 'edition_views.dart';
 import 'net_image.dart';
-import 'store_links.dart';
 import 'ui_kit.dart';
 
 export 'ui_kit.dart';
@@ -18,8 +18,9 @@ Color rarityColor(Rarity r) => Color(r.argb);
 /// glint, so thousands of shiny cards cost one ticker, not one each.
 final ValueNotifier<double> glintClock = ValueNotifier(0);
 
-/// Height of a big card for its width (every edition).
-const double kCardAspect = 1.5;
+/// Height of a big card for its width (every edition): the card design's
+/// 1122 × 1867.
+const double kCardAspect = 1867 / 1122;
 
 /// Diagonal light sweep painted over a child (the "shiny" glint).
 class Glint extends StatelessWidget {
@@ -157,8 +158,12 @@ class RarityDot extends StatelessWidget {
       );
 }
 
-/// Large song card: art, title, artist, album, rarity. Used in detail
-/// views, encounters and pack openings.
+/// Large song card, laid out from the card design (Tunetrail_card_design.psd,
+/// a 1122 × 1867 card): the art fills the card — the music video for Canvas
+/// and Live, the breakdown for Sample, the album cover at 80% width over a
+/// blurred copy of it for the rest — with a darkened pane at the bottom
+/// holding the title, artist, rarity pill and serial number. Used in detail
+/// views, encounters, showcases and pack openings.
 class SongCardView extends StatelessWidget {
   const SongCardView({
     super.key,
@@ -176,160 +181,244 @@ class SongCardView extends StatelessWidget {
   final Rarity rarity;
   final bool shiny;
   final double width;
+
+  /// Shown under the card.
   final Widget? footer;
   final Edition edition;
 
   /// Animate edition media (music video) — off for cheap previews.
   final bool live;
 
+  // Measurements from the design, as fractions of the card's width.
+  static const _radius = 120 / 1122;
+  static const _stroke = 10 / 1122;
+  static const _side = 108 / 1122; // text inset
+  static const _titleSize = 100 / 1122;
+  static const _artistSize = 50 / 1122;
+  static const _pillH = 79 / 1122;
+  static const _pillPadX = 52 / 1122;
+  static const _bottom = 66 / 1122; // pill to the card's bottom edge
+  static const _badgeRight = 76 / 1122;
+  static const _badgeBottom = 73 / 1122;
+  static const _badgeH = 110 / 1122;
+  static const _badgePadX = 25 / 1122;
+  static const _badgeRadius = 24 / 1122;
+
+  /// The pane (80% black) covers the bottom 36.6% of the card, fading in
+  /// over its top 35%.
+  static const _paneFrac = 684 / 1867;
+
   @override
   Widget build(BuildContext context) {
-    // Editions are exclusive of rarity and shininess: they use their own
-    // colour and label.
+    final w = width;
+    final h = w * kCardAspect;
+    // Editions are exclusive of rarity and shininess: their own colour and name.
     final isEd = edition != Edition.standard;
     final c = isEd ? editionColor(edition) : rarityColor(rarity);
-    final glow = isEd || rarity.index >= Rarity.epic.index;
     final shiny = this.shiny && !isEd;
-    if (edition == Edition.canvas || edition == Edition.live) return _canvas(context, c);
     final sample = edition == Edition.sample ? SampleLibrary.of(song.id) : null;
-    if (sample != null) return _canvas(context, c, sample: sample);
-    final card = Container(
-      width: width,
-      // The same height as a Canvas / Live / Sample card (side by side in a
-      // showcase they line up), whatever the length of the title.
-      height: footer == null ? width * kCardAspect : null,
-      padding: EdgeInsets.all(width * 0.045),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(width * 0.07),
-        color: const Color(0xFF111114),
-        border: Border.all(color: c.withValues(alpha: 0.85), width: 1.4),
-        boxShadow: [
-          if (glow) BoxShadow(color: c.withValues(alpha: 0.28), blurRadius: width * 0.14),
-          const BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 10)),
-        ],
-      ),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        AspectRatio(
-          aspectRatio: 1,
-          child: sample != null
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(width * 0.045),
-                  child: Stack(children: [
-                    Positioned.fill(child: SampleBreakdownPanel(info: sample)),
-                    if (serial > 0) Positioned(top: width * 0.02, right: width * 0.02, child: SerialBadge(serial, edition, size: width * 0.04)),
-                  ]),
-                )
-              : LayoutBuilder(
-                  builder: (context, box) => Art(song.cover(500), size: box.maxWidth, radius: width * 0.045, decodeSize: 500),
-                ),
-        ),
-        SizedBox(height: width * 0.05),
-        Row(children: [
-          Expanded(child: VariantLabel(rarity: rarity, shiny: shiny, edition: edition, fontSize: width * 0.048)),
-          Text(songGenreName(song).toUpperCase(), style: TextStyle(color: kTextTertiary, fontSize: width * 0.038, letterSpacing: 0.8)),
-        ]),
-        SizedBox(height: width * 0.02),
-        Text(song.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: width * 0.072, fontWeight: FontWeight.w700, color: kTextPrimary, height: 1.15)),
-        if (footer == null) const Spacer() else SizedBox(height: width * 0.015),
-        Row(children: [
-          if (song.artistPicMd5.isNotEmpty) ...[
-            Art(artistPicUrl(song.artistPicMd5, size: 56), size: width * 0.075, circle: true),
-            SizedBox(width: width * 0.025),
-          ],
-          Expanded(
-            child: Text(song.artistName,
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.052, color: kTextSecondary, fontWeight: FontWeight.w500)),
-          ),
-        ]),
-        // Album line, with the Apple Music / Spotify buttons in the corner.
-        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Expanded(child: Text(song.albumTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.043, color: kTextTertiary))),
-          if (width >= 110) StoreLinks(song: song, size: math.max(16.0, width * 0.08), gap: width * 0.02),
-        ]),
-        ?footer,
-      ]),
-    );
-    return Glint(enabled: shiny, radius: width * 0.07, child: card);
-  }
+    final radius = BorderRadius.circular(w * _radius);
 
-  /// Canvas edition: the music video (or, without one, the cover art)
-  /// fills the whole card; details float on top.
-  ///
-  /// Sample edition uses the same full-card layout: the cover art faintly
-  /// behind, the two waveforms filling the card's height.
-  Widget _canvas(BuildContext context, Color c, {SampleInfo? sample}) {
-    const glow = true;
-    final h = width * kCardAspect;
-    return Container(
-      width: width,
+    final Widget media;
+    if (edition == Edition.canvas || edition == Edition.live) {
+      media = CanvasBackdrop(song: song, live: live, liveFootage: edition == Edition.live);
+    } else if (sample != null) {
+      media = Stack(fit: StackFit.expand, children: [
+        Opacity(opacity: 0.22, child: Art(song.cover(500), size: h, radius: 0, decodeSize: 600)),
+        Positioned(left: 0, right: 0, top: 0, bottom: h * (_paneFrac - 0.06), child: SampleBreakdownPanel(info: sample, fullCard: true)),
+      ]);
+    } else {
+      media = _CoverMedia(song: song, width: w);
+    }
+
+    final card = Container(
+      width: w,
       height: h,
-      // The border is drawn over the video, so it isn't hidden at the
-      // rounded corners.
-      foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(width * 0.07),
-        border: Border.all(color: c.withValues(alpha: 0.9), width: 1.4),
-      ),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(width * 0.07),
-        color: Colors.black,
-        boxShadow: [
-          if (glow) BoxShadow(color: c.withValues(alpha: 0.28), blurRadius: width * 0.14),
-          const BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 10)),
-        ],
+        borderRadius: radius,
+        color: const Color(0xFF151515),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.8), blurRadius: w * 0.09)],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(fit: StackFit.expand, children: [
-        if (sample == null)
-          CanvasBackdrop(song: song, live: live, liveFootage: edition == Edition.live)
-        else ...[
-          Opacity(opacity: 0.22, child: LayoutBuilder(builder: (context, box) => Art(song.cover(500), size: math.max(box.maxWidth, box.maxHeight), radius: 0, decodeSize: 600))),
-          Positioned(left: 0, right: 0, top: 0, bottom: width * 0.3, child: SampleBreakdownPanel(info: sample, fullCard: true)),
-        ],
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0x66000000), Color(0x00000000), Color(0x00000000), Color(0xCC000000), Color(0xF2000000)],
-              stops: [0, 0.18, 0.45, 0.78, 1],
+      // The edge stroke sits over everything, half outside the card.
+      foregroundDecoration: BoxDecoration(
+        borderRadius: radius,
+        border: Border.all(color: const Color(0xFF0E0E0E), width: w * _stroke, strokeAlign: BorderSide.strokeAlignCenter),
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: Stack(fit: StackFit.expand, children: [
+          media,
+          // The pane: fades in, then 80% black to the bottom.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: h * _paneFrac,
+            child: const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x00000000), Color(0x12000000), Color(0x38000000), Color(0x69000000), Color(0x96000000), Color(0xBD000000), Color(0xCC000000)],
+                  stops: [0, 0.058, 0.117, 0.175, 0.234, 0.292, 0.351],
+                ),
+              ),
             ),
           ),
-        ),
-        Positioned(
-          left: width * 0.05,
-          right: width * 0.05,
-          top: width * 0.05,
-          child: Row(children: [
-            Expanded(child: VariantLabel(rarity: rarity, shiny: false, edition: edition, fontSize: width * 0.048)),
-            if (serial > 0) SerialBadge(serial, edition, size: width * 0.04),
-          ]),
-        ),
-        Positioned(
-          left: width * 0.05,
-          right: width * 0.05,
-          bottom: width * 0.05,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(songGenreName(song).toUpperCase(), style: TextStyle(color: Colors.white60, fontSize: width * 0.036, letterSpacing: 0.8)),
-            SizedBox(height: width * 0.01),
-            Text(song.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: width * 0.078, fontWeight: FontWeight.w800, color: Colors.white, height: 1.1, shadows: const [Shadow(blurRadius: 8)])),
-            SizedBox(height: width * 0.012),
-            Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.052, color: Colors.white, fontWeight: FontWeight.w500)),
-            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(child: Text(song.albumTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: width * 0.042, color: Colors.white70))),
-              if (width >= 110) StoreLinks(song: song, size: math.max(16.0, width * 0.08), gap: width * 0.02),
+          // Inner shadow round the edge.
+          IgnorePointer(child: CustomPaint(painter: _InnerShadow(radius: w * _radius, depth: w * 0.045))),
+          // Title, artist and the rarity / edition pill.
+          Positioned(
+            left: w * _side,
+            right: w * (_badgeRight + (serial > 0 ? 0.16 : 0.0)),
+            bottom: w * _bottom,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(song.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: _font(w * _titleSize, FontWeight.w700, Colors.white)),
+              SizedBox(height: w * 0.029),
+              Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: _font(w * _artistSize, FontWeight.w700, const Color(0xFF8D8D8D))),
+              SizedBox(height: w * 0.044),
+              _Pill(
+                label: isEd ? edition.label : (shiny ? 'Shiny ${rarity.label}' : rarity.label),
+                color: c,
+                height: w * _pillH,
+                padX: w * _pillPadX,
+                fontSize: w * _artistSize,
+                shiny: shiny,
+              ),
             ]),
-            ?footer,
-          ]),
+          ),
+          if (serial > 0)
+            Positioned(
+              right: w * _badgeRight,
+              bottom: w * _badgeBottom,
+              child: Container(
+                height: w * _badgeH,
+                padding: EdgeInsets.symmetric(horizontal: w * _badgePadX),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(w * _badgeRadius)),
+                child: Text('#$serial', style: _font(w * _titleSize, FontWeight.w700, const Color(0xFF282828), letterSpacing: w * _titleSize * 0.06)),
+              ),
+            ),
+        ]),
+      ),
+    );
+    final out = Glint(enabled: shiny, radius: w * _radius, child: card);
+    final f = footer;
+    if (f == null) return out;
+    return Column(mainAxisSize: MainAxisSize.min, children: [out, SizedBox(height: w * 0.04), f]);
+  }
+
+  static TextStyle _font(double size, FontWeight weight, Color color, {double letterSpacing = 0}) => TextStyle(
+        fontFamily: kCardFont,
+        fontSize: size,
+        fontWeight: weight,
+        color: color,
+        height: 1.0,
+        letterSpacing: letterSpacing,
+        leadingDistribution: TextLeadingDistribution.even,
+      );
+}
+
+/// The card typeface (Montserrat, bundled).
+const String kCardFont = 'Montserrat';
+
+/// A standard card's art: the album cover at 80% of the card's width over
+/// a blurred, darkened copy of itself.
+class _CoverMedia extends StatelessWidget {
+  const _CoverMedia({required this.song, required this.width});
+  final Song song;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = width;
+    final h = w * kCardAspect;
+    return Stack(fit: StackFit.expand, children: [
+      ClipRect(
+        child: ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: w * 0.06, sigmaY: w * 0.06, tileMode: TileMode.clamp),
+          // Square, so centred to fill the taller card evenly.
+          child: OverflowBox(maxWidth: h, maxHeight: h, child: Art(song.cover(250), size: h, radius: 0, decodeSize: 200)),
         ),
-      ]),
+      ),
+      const ColoredBox(color: Color(0xA6000000)),
+      Positioned(
+        left: w * 0.1,
+        top: w * 0.1,
+        width: w * 0.8,
+        height: w * 0.8,
+        child: DecoratedBox(
+          decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.55), blurRadius: w * 0.06, offset: Offset(0, w * 0.015))]),
+          child: Art(song.cover(500), size: w * 0.8, radius: 0, decodeSize: 500),
+        ),
+      ),
+    ]);
+  }
+}
+
+/// Rarity / edition name on a solid pill of its colour.
+class _Pill extends StatelessWidget {
+  const _Pill({required this.label, required this.color, required this.height, required this.padX, required this.fontSize, this.shiny = false});
+  final String label;
+  final Color color;
+  final double height, padX, fontSize;
+  final bool shiny;
+
+  @override
+  Widget build(BuildContext context) {
+    // The text is a pale tint of the pill's own colour.
+    final ink = Color.lerp(color, Colors.white, 0.86)!;
+    Widget text = Text(label, maxLines: 1, style: SongCardView._font(fontSize, FontWeight.w700, ink));
+    if (shiny) {
+      text = ValueListenableBuilder<double>(
+        valueListenable: glintClock,
+        builder: (context, t, child) => ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: (rect) {
+            final x = rect.width * (t * 2.2 - 0.6);
+            return LinearGradient(
+              colors: [ink, ink, Colors.white, const Color(0xFFE1F5FE), ink, ink],
+              stops: const [0, 0.3, 0.45, 0.55, 0.7, 1],
+            ).createShader(Rect.fromLTWH(x - rect.width * 0.5, 0, rect.width, rect.height));
+          },
+          child: child,
+        ),
+        child: text,
+      );
+    }
+    // Hugs its text (it sits in a left-aligned column).
+    return Container(
+      height: height,
+      padding: EdgeInsets.symmetric(horizontal: padX),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(height / 2)),
+      child: Center(widthFactor: 1, child: text),
     );
   }
+}
+
+/// A soft dark shadow inside a rounded card's edge.
+class _InnerShadow extends CustomPainter {
+  _InnerShadow({required this.radius, required this.depth});
+  final double radius, depth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rrect = RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius));
+    canvas.clipRRect(rrect);
+    final frame = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect((Offset.zero & size).inflate(depth * 2))
+      ..addRRect(rrect.deflate(depth * 0.3));
+    canvas.drawPath(
+      frame,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.9)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, depth * 0.3),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_InnerShadow old) => old.radius != radius || old.depth != depth;
 }
 
 /// Compact tile used in the 100k-item collection grid. Deliberately cheap:
@@ -363,11 +452,13 @@ class CardTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = edition != Edition.standard ? editionColor(edition) : rarityColor(rarity);
     final shiny = this.shiny && edition == Edition.standard;
+    // The card design in miniature: a dark rounded card, the cover, then
+    // the title, artist and a rarity / edition pill in the card font.
     Widget tile = Container(
       decoration: BoxDecoration(
-        color: kSurface,
+        color: const Color(0xFF151515),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: selected ? kAccent : kOutline, width: selected ? 2 : 1),
+        border: Border.all(color: selected ? kAccent : const Color(0xFF2A2A2A), width: selected ? 2 : 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -392,14 +483,21 @@ class CardTile extends StatelessWidget {
             ]),
           ),
         ),
-        Container(height: 2, color: c),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 6, 8, 7),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kTextPrimary)),
-            Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: kTextSecondary)),
-            const SizedBox(height: 2),
-            VariantLabel(rarity: rarity, shiny: shiny, edition: edition, fontSize: 10),
+            Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: SongCardView._font(12, FontWeight.w700, Colors.white)),
+            const SizedBox(height: 3),
+            Text(song.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: SongCardView._font(10.5, FontWeight.w700, const Color(0xFF8D8D8D))),
+            const SizedBox(height: 5),
+            _Pill(
+              label: edition != Edition.standard ? edition.label : (shiny ? 'Shiny ${rarity.label}' : rarity.label),
+              color: c,
+              height: 15,
+              padX: 7,
+              fontSize: 9,
+              shiny: shiny,
+            ),
           ]),
         ),
       ]),

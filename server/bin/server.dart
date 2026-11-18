@@ -280,6 +280,9 @@ Router buildRouter(MarketEngine m, Auth auth, {Set<String> admins = const {}, Ec
   r.get('/serials/<song>/<edition>', (Request req, String song, String edition) => guard(() async => ok({
         'left': m.serialsLeft(int.parse(song), Edition.fromIndex(int.parse(edition))),
       })));
+  r.get('/serials/<song>/<edition>/<sn>', (Request req, String song, String edition, String sn) => guard(() async => ok(
+        m.pullerOf(int.parse(song), Edition.fromIndex(int.parse(edition)), int.parse(sn)) ?? const <String, dynamic>{},
+      )));
   r.post('/serials/<song>/<edition>/claim', (Request req, String song, String edition) => guard(() async {
         final me = pid(req);
         // Games may send the song, for the Edition Checker's recent pulls.

@@ -6,6 +6,7 @@ import 'package:tunetrail_core/tunetrail_core.dart';
 import '../../data/models.dart';
 import '../../data/samples.dart';
 import '../app.dart';
+import 'card_stage.dart';
 import 'cards.dart';
 import '../screens/report_dialogs.dart';
 
@@ -52,40 +53,53 @@ class CardPlayButton extends StatelessWidget {
   }
 }
 
-/// A card shown big, with its own play button ([actions]: buttons under
-/// it, such as making an offer).
+/// A card shown big on the card design's dotted backdrop, with the
+/// Spotify / info / Apple Music buttons under it; close, play and report
+/// along the top ([actions]: buttons under it, such as making an offer).
 Future<void> showCardFullView(BuildContext context, CardPayload card, {Widget Function(BuildContext ctx)? actions}) {
-  final size = MediaQuery.sizeOf(context);
-  final w = math.min(size.width * 0.82, math.min(420.0, (size.height - 160) / 1.5));
-  return showDialog<void>(
-    context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.8),
-    builder: (ctx) => Dialog(
+  return Navigator.of(context).push(PageRouteBuilder<void>(
+    opaque: false,
+    barrierDismissible: true,
+    barrierColor: Colors.transparent,
+    transitionDuration: const Duration(milliseconds: 220),
+    reverseTransitionDuration: const Duration(milliseconds: 180),
+    transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: CurvedAnimation(parent: a, curve: Curves.easeOut), child: child),
+    pageBuilder: (ctx, _, _) => Scaffold(
       backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: const EdgeInsets.all(16),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        SongCardView(song: Song.fromPayload(card), rarity: card.rarity, shiny: card.shiny, edition: card.edition, serial: card.serial, width: w),
-        const SizedBox(height: 16),
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          CardPlayButton(card: card, size: 30),
-          const SizedBox(width: 16),
-          Material(
-            color: Colors.white.withValues(alpha: 0.12),
-            shape: const CircleBorder(),
-            child: IconButton(tooltip: 'Report this song', icon: const Icon(Icons.flag_outlined, color: Colors.white), onPressed: () => showSongReport(ctx, card)),
-          ),
-          const SizedBox(width: 16),
-          Material(
-            color: Colors.white.withValues(alpha: 0.12),
-            shape: const CircleBorder(),
-            child: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(ctx)),
-          ),
-        ]),
-        if (actions != null) ...[const SizedBox(height: 14), actions(ctx)],
-      ]),
+      body: DottedBackdrop(
+        child: SafeArea(
+          child: LayoutBuilder(builder: (ctx, box) {
+            // The card and its buttons fill the height left by the top bar
+            // (and any actions), never wider than the screen allows.
+            final room = box.maxHeight - 64 - (actions != null ? 64 : 0);
+            final w = math.min(box.maxWidth * 0.78, math.min(460.0, room / (kCardAspect + 0.25)));
+            return Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+                child: Row(children: [
+                  IconButton(tooltip: 'Close', icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.pop(ctx)),
+                  const Spacer(),
+                  CardPlayButton(card: card, size: 24),
+                  const SizedBox(width: 8),
+                  IconButton(tooltip: 'Report this song', icon: const Icon(Icons.flag_outlined, color: Colors.white54), onPressed: () => showSongReport(ctx, card)),
+                ]),
+              ),
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      CardStage(card: card, width: w),
+                      if (actions != null) ...[const SizedBox(height: 18), actions(ctx)],
+                    ]),
+                  ),
+                ),
+              ),
+            ]);
+          }),
+        ),
+      ),
     ),
-  );
+  ));
 }
 
 /// A showcase: big cards (videos for Canvas/Live editions) in one
@@ -101,7 +115,7 @@ class ShowcaseStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final h = cardWidth * 1.5;
+    final h = cardWidth * kCardAspect;
     return SizedBox(
       height: h + 8,
       child: ListView.separated(

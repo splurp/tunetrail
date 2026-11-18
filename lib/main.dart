@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fvp/fvp.dart' as fvp;
 import 'package:path_provider/path_provider.dart';
 
@@ -25,5 +27,9 @@ Future<void> main() async {
     final samples = Directory('${Directory.systemTemp.path}/tunetrail_samples');
     if (await samples.exists()) await samples.delete(recursive: true);
   } catch (_) {}
+  // Bundled fonts' licences, for the licences page.
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks(['Montserrat'], await rootBundle.loadString('assets/fonts/OFL.txt'));
+  });
   runApp(const TunetrailApp());
 }

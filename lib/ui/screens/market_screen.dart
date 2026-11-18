@@ -157,13 +157,16 @@ class OffersScreen extends StatelessWidget {
 
 // --------------------------------------------------------------- browse
 class _Browse extends StatefulWidget {
-  const _Browse();
+  const _Browse({this.initialText = ''});
+
+  /// Starts with this search (an artist's market).
+  final String initialText;
   @override
   State<_Browse> createState() => _BrowseState();
 }
 
 class _BrowseState extends State<_Browse> {
-  ListingQuery _q = const ListingQuery();
+  late ListingQuery _q = ListingQuery(text: widget.initialText);
   List<Listing> _items = [];
   List<Auction> _auctions = [];
   bool _loading = false;
@@ -277,7 +280,8 @@ class _BrowseState extends State<_Browse> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-          child: TextField(
+          child: TextFormField(
+            initialValue: widget.initialText,
             decoration: const InputDecoration(hintText: 'Search listings', prefixIcon: Icon(Icons.search, size: 20)),
             onChanged: (v) {
               _debounce?.cancel();
@@ -641,7 +645,7 @@ class _ListingTileState extends State<ListingTile> {
                 shiny: it.card.shiny,
                 edition: it.card.edition,
                 serial: it.card.serial,
-                onTap: () => g.audio.playOne(it.card.songId),
+                onTap: () => showCardFullView(context, it.card),
                 trailing: Padding(
                   padding: const EdgeInsets.only(left: 8),
                   child: widget.mine
@@ -1506,4 +1510,16 @@ class _ShowcaseEditorState extends State<ShowcaseEditor> {
       ),
     );
   }
+}
+
+/// The market's listings for one artist (from a card's info menu).
+class ArtistMarketScreen extends StatelessWidget {
+  const ArtistMarketScreen({super.key, required this.artistName});
+  final String artistName;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text('$artistName · Market', overflow: TextOverflow.ellipsis)),
+        body: ContentWidth(maxWidth: 1000, child: _Browse(initialText: artistName)),
+      );
 }

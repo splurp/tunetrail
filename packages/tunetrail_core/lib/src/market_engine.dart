@@ -49,6 +49,7 @@ class MarketEngine {
       if (n >= edition.maxSerials) return null;
       serials[key] = sn = n + 1;
     }
+    if (playerId != null) pullers['$key:$sn'] = {'by': nameOf(playerId), 'at': now()};
     if (song != null) {
       recentPulls.insert(0, {
         'song': song.toJson(),
@@ -61,6 +62,19 @@ class MarketEngine {
     }
     onChanged?.call();
     return sn;
+  }
+
+  /// Who pulled each numbered card and when: "songId:edition:serial" →
+  /// {by, at}.
+  final Map<String, Map<String, dynamic>> pullers = {};
+
+  /// Who pulled a numbered card ({by, at}), when known.
+  Map<String, dynamic>? pullerOf(int songId, Edition edition, int serial) {
+    final known = pullers['$songId:${edition.index}:$serial'];
+    if (known != null) return known;
+    // Cards pulled before pullers were recorded: the recent pulls list.
+    final p = recentPulls.where((p) => (p['song'] as Map?)?['id'] == songId && p['ed'] == edition.index && p['sn'] == serial && p['by'] != null).firstOrNull;
+    return p == null ? null : {'by': p['by'], 'at': p['at']};
   }
 
   /// Serial numbers given back by [purgeSerial], per "songId:edition".
@@ -96,6 +110,7 @@ class MarketEngine {
       p.editionShowcase = [for (final c in p.editionShowcase) if (!same(c)) c];
       n += before - p.editionShowcase.length;
     }
+    if (pullers.remove('$songId:${edition.index}:$serial') != null) n++;
     final before = recentPulls.length;
     recentPulls.removeWhere((p) => (p['song'] as Map?)?['id'] == songId && p['ed'] == edition.index && p['sn'] == serial);
     n += before - recentPulls.length;
@@ -1154,6 +1169,7 @@ class MarketEngine {
         'serials': serials,
         if (freedSerials.isNotEmpty) 'freedSerials': freedSerials,
         'pulls': recentPulls,
+        if (pullers.isNotEmpty) 'pullers': pullers,
         'messages': {
           for (final e in messages.entries) e.key: [for (final m in e.value) m.toJson()]
         },
@@ -1176,6 +1192,9 @@ class MarketEngine {
     recentPulls
       ..clear()
       ..addAll([for (final p in (j['pulls'] as List? ?? const [])) Map<String, dynamic>.from(p as Map)]);
+    pullers
+      ..clear()
+      ..addAll({for (final e in (j['pullers'] as Map<String, dynamic>? ?? const {}).entries) e.key: Map<String, dynamic>.from(e.value as Map)});
     players
       ..clear()
       ..addEntries([

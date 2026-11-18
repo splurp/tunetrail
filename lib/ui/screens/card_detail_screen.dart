@@ -7,6 +7,7 @@ import 'package:tunetrail_core/tunetrail_core.dart';
 import '../../data/collection.dart';
 import '../../data/samples.dart';
 import '../app.dart';
+import '../widgets/card_stage.dart';
 import '../widgets/cards.dart';
 import 'artist_screen.dart';
 import 'copyright_screen.dart';
@@ -40,15 +41,19 @@ class CardDetailScreen extends StatelessWidget {
       ),
       body: AdaptivePanes(flex: const [4, 5], panes: [
        [
-        Center(
-            child: SongCardView(
-                song: s,
-                rarity: card.rarity,
-                shiny: card.shiny,
-                edition: card.edition,
-                serial: card.serial,
-                // On wide screens the card gets its own pane, sized by height.
-                width: isWideLayout(context) ? ((MediaQuery.sizeOf(context).height - 200) / 1.5).clamp(260.0, 460.0) : w.clamp(200, 340) * 0.85)),
+        Builder(builder: (context) {
+          // On wide screens the card gets its own pane, sized by height.
+          final cw = isWideLayout(context) ? ((MediaQuery.sizeOf(context).height - 260) / (kCardAspect + 0.25)).clamp(240.0, 440.0) : w.clamp(200, 380) * 0.78;
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: DottedBackdrop(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: cw * 0.12),
+                child: Center(child: CardStage(card: payload, width: cw.toDouble())),
+              ),
+            ),
+          );
+        }),
         const SizedBox(height: 18),
         Wrap(alignment: WrapAlignment.center, spacing: 10, runSpacing: 10, children: [
           if (card.edition == Edition.sample && SampleLibrary.of(s.id) != null)

@@ -84,6 +84,8 @@ flutter:
     - assets/minigames/
     - assets/models/
     - assets/sample_lyrics/
+    - assets/fonts/OFL.txt
+    - assets/brand/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -101,6 +103,19 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
+  # Montserrat (SIL OFL 1.1, assets/fonts/OFL.txt): the song cards.
+  fonts:
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Montserrat-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Montserrat-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Montserrat-ExtraBold.ttf
+          weight: 800
+
   # fonts:
   #   - family: Schyler
   #     fonts:

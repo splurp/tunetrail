@@ -37,6 +37,9 @@ abstract class MarketBackend {
   Future<int?> claimSerial(int songId, Edition edition, {SongInfo? song});
   Future<int> serialsLeft(int songId, Edition edition);
 
+  /// Who pulled a numbered card and when ({by, at}), or null if unknown.
+  Future<Map<String, dynamic>?> pullerOf(int songId, Edition edition, int serial);
+
   /// The latest pulls of an edition anywhere: {song, ed, sn, at, by}.
   Future<List<Map<String, dynamic>>> recentPulls(Edition edition);
 
@@ -306,6 +309,9 @@ class LocalMarket extends MarketBackend {
   }
 
   @override
+  Future<Map<String, dynamic>?> pullerOf(int songId, Edition edition, int serial) async => engine.pullerOf(songId, edition, serial);
+
+  @override
   Future<List<Showcase>> showcases() async => engine.browseShowcases();
   @override
   Future<Showcase> setShowcase(String title, List<CardPayload> cards, List<ShowcasePlaylist> playlists, {List<FavoriteArtist> favoriteArtists = const []}) async =>
@@ -508,6 +514,11 @@ class RemoteMarket extends MarketBackend {
   @override
   Future<int> serialsLeft(int songId, Edition edition) async =>
       ((await _send('GET', '/serials/$songId/${edition.index}') as Map)['left'] as num).toInt();
+  @override
+  Future<Map<String, dynamic>?> pullerOf(int songId, Edition edition, int serial) async {
+    final j = await _send('GET', '/serials/$songId/${edition.index}/$serial') as Map;
+    return j.isEmpty ? null : Map<String, dynamic>.from(j);
+  }
   @override
   Future<List<Showcase>> showcases() async => _list(await _send('GET', '/showcases'), Showcase.fromJson);
   @override

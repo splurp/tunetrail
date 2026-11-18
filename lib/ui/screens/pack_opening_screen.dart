@@ -54,7 +54,7 @@ class _PackOpeningScreenState extends State<PackOpeningScreen> with TickerProvid
     final single = widget.cards.length == 1;
     // A single pull (e.g. the Artist Blind Box) gets a big, centred card.
     final cardW = single
-        ? math.max(120.0, math.min(360.0, math.min(w - 64, (h - 260) / 1.5)))
+        ? math.max(120.0, math.min(360.0, math.min(w - 64, (h - 260) / kCardAspect)))
         : math.min(w > 900 ? 260.0 : 170.0, math.min((w - 48) / (widget.cards.length > 3 ? (w > 900 ? 5.4 : 2.2) : 2), (h - 220) / (w > 900 ? 1.6 : 3.2)));
     final best = widget.cards.map((c) => c.card.rarity.index).reduce(math.max);
     // No back button: the songs are already in the collection, and leaving

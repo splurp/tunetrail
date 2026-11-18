@@ -40,7 +40,7 @@ class StoreLinks extends StatelessWidget {
   /// A Spotify search for the song (opens the app when installed).
   static Uri spotifyUrl(Song s) => Uri.parse('https://open.spotify.com/search/${Uri.encodeComponent(_query(s))}');
 
-  static Future<void> _open(Future<Uri> url) async {
+  static Future<void> open(Future<Uri> url) async {
     try {
       await launchUrl(await url, mode: LaunchMode.externalApplication);
     } catch (_) {}
@@ -53,14 +53,14 @@ class StoreLinks extends StatelessWidget {
         tooltip: 'Open in Apple Music',
         size: size,
         painter: _AppleMusicLogo(),
-        onTap: () => _open(appleMusicUrl(song)),
+        onTap: () => open(appleMusicUrl(song)),
       ),
       SizedBox(width: gap),
       _LogoButton(
         tooltip: 'Open in Spotify',
         size: size,
         painter: _SpotifyLogo(),
-        onTap: () => _open(Future.value(spotifyUrl(song))),
+        onTap: () => open(Future.value(spotifyUrl(song))),
       ),
     ]);
   }
