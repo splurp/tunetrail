@@ -198,11 +198,11 @@ class SongCardView extends StatelessWidget {
   static const _pillH = 64 / 1122;
   static const _pillText = 38 / 1122;
   static const _pillPadX = 40 / 1122;
-  static const _bottom = 66 / 1122; // pill to the card's bottom edge
+  static const _bottom = 100 / 1122; // pill to the card's bottom edge
   // The serial badge, smaller than in the design and sitting level with
   // the pill.
   static const _badgeRight = 76 / 1122;
-  static const _badgeBottom = 66 / 1122;
+  static const _badgeBottom = 100 / 1122;
   static const _badgeH = 66 / 1122;
   static const _badgePadX = 16 / 1122;
   static const _badgeRadius = 15 / 1122;
