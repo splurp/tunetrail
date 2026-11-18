@@ -53,9 +53,10 @@ class CardStage extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = width;
     final song = Song.fromPayload(card);
-    // Buttons: 155 px on the 1122 px card, centres 212 px apart, 124 px below it.
-    final icon = w * 0.138;
-    final gap = w * 0.189 - icon;
+    // Buttons: half the design's 155 px (on the 1122 px card), all the same
+    // size, 124 px below the card.
+    final icon = w * 0.069;
+    final gap = icon * 0.9;
     return Column(mainAxisSize: MainAxisSize.min, children: [
       SongCardView(song: song, rarity: card.rarity, shiny: card.shiny, edition: card.edition, serial: card.serial, width: w, live: live),
       SizedBox(height: w * 0.11),
@@ -74,6 +75,8 @@ class CardStage extends StatelessWidget {
         _ImageButton(
           asset: 'assets/brand/apple.png',
           size: icon,
+          // Narrower than the round marks: a touch bigger to look the same size.
+          scale: 1.1,
           tooltip: 'Listen on Apple Music',
           onTap: () => StoreLinks.open(StoreLinks.appleMusicUrl(song)),
         ),
@@ -83,9 +86,9 @@ class CardStage extends StatelessWidget {
 }
 
 class _ImageButton extends StatelessWidget {
-  const _ImageButton({required this.asset, required this.size, required this.tooltip, required this.onTap});
+  const _ImageButton({required this.asset, required this.size, required this.tooltip, required this.onTap, this.scale = 1});
   final String asset;
-  final double size;
+  final double size, scale;
   final String tooltip;
   final VoidCallback onTap;
 
@@ -97,7 +100,10 @@ class _ImageButton extends StatelessWidget {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onTap,
-            child: SizedBox.square(dimension: size, child: Image.asset(asset, fit: BoxFit.contain, filterQuality: FilterQuality.medium)),
+            child: SizedBox.square(
+              dimension: size,
+              child: Transform.scale(scale: scale, child: Image.asset(asset, fit: BoxFit.contain, filterQuality: FilterQuality.medium)),
+            ),
           ),
         ),
       );
@@ -111,8 +117,8 @@ class _InfoButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A 144 px ring with a 20 px stroke, beside 155 px logos.
-    final d = size * 144 / 155;
+    // A thin ring the same size as the logos.
+    final d = size;
     return Tooltip(
       message: 'Card info',
       child: MouseRegion(
@@ -127,9 +133,9 @@ class _InfoButton extends StatelessWidget {
                 width: d,
                 height: d,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFF8D8D8D), width: d * 20 / 144)),
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFF8D8D8D), width: math.max(1.2, d * 0.07))),
                 child: Text('i',
-                    style: TextStyle(fontFamily: kCardFont, fontWeight: FontWeight.w700, fontSize: d * 0.66, height: 1.0, color: const Color(0xFF7E7E7E))),
+                    style: TextStyle(fontFamily: kCardFont, fontWeight: FontWeight.w500, fontSize: d * 0.58, height: 1.0, color: const Color(0xFF8D8D8D))),
               ),
             ),
           ),
