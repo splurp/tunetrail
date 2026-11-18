@@ -208,9 +208,10 @@ class SongCardView extends StatelessWidget {
   static const _badgeRadius = 15 / 1122;
   static const _badgeText = 46 / 1122;
 
-  /// The pane (80% black) covers the bottom 36.6% of the card, fading in
-  /// over its top 35%.
-  static const _paneFrac = 684 / 1867;
+  /// The pane (80% black) covers the bottom of the card, fading in over its
+  /// top 240 px; it starts 100 px lower than in the design (the gap under
+  /// the rarity pill), so more of the art shows.
+  static const _paneFrac = 584 / 1867;
 
   @override
   Widget build(BuildContext context) {
@@ -270,7 +271,7 @@ class SongCardView extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [Color(0x00000000), Color(0x12000000), Color(0x38000000), Color(0x69000000), Color(0x96000000), Color(0xBD000000), Color(0xCC000000)],
-                  stops: [0, 0.058, 0.117, 0.175, 0.234, 0.292, 0.351],
+                  stops: [0, 0.068, 0.137, 0.205, 0.274, 0.342, 0.411],
                 ),
               ),
             ),
